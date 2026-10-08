@@ -1,144 +1,144 @@
 ---
-import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import PostThumb from '../components/PostThumb.astro';
-import ClassificationBadge from '../components/ClassificationBadge.astro';
 import SkyStage from '../components/SkyStage.astro';
-import TiltCard from '../components/motion/TiltCard.tsx';
-import { getPosts } from '../lib/content';
-import { ALLEGATIONS } from '../lib/allegations';
-import { ALLEGATIONS_EN } from '../lib/allegations-en';
+import VerdictBadge from '../components/VerdictBadge.astro';
+import { getKlaim, getPakar } from '../lib/pakar';
 import { SITE } from '../lib/site';
-import { localizedPath, type Locale } from '../i18n';
-import { firstImage } from '../lib/header-image';
+import { localizedPath, routePath, type Locale } from '../i18n';
 import { HOME_SECTIONS } from '../lib/sky/states';
-import poskota from '../assets/home/poskota-cyberattack.png';
-import burungAbabil from '../assets/home/burung-ababil.png';
 
 const { locale = 'id' } = Astro.props as { locale?: Locale };
-const posts = (await getPosts()).slice(0, 6);
+const pakar = (await getPakar()).sort((a, b) => a.data.name.localeCompare(b.data.name)).slice(0, 6);
+const claims = (await getKlaim()).slice(0, 5);
+const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
 const SECTIONS = [...HOME_SECTIONS];
 const T = {
   id: {
-    title: 'Abil Sudarman: Operasi Ababil',
-    description: 'Operasi Ababil: kawal terbuka atas klaim Abil Sudarman. Terjemahan artikel, bukti, dan hak jawab, sebagai catatan dan pendapat, bukan putusan.',
-    h1: 'Operasi Ababil: Kawal Abil Sudarman', sub: 'Operasi untuk mengungkap Abil Sudarman',
-    lead: 'Seperti kawanan ababil yang membawa batu kecil satu per satu, operasi ini mengumpulkan bukti dan terjemahan artikel secara terbuka. Ini catatan dan pendapat Rahmat Wibowo, bukan putusan. Abil Sudarman berhak menanggapi setiap tulisan.',
-    readCta: 'Baca artikel terjemahan',
-    heroAlt: 'Dua burung layang-layang memegang batu kecil di kakinya, dengan teks “Burung Ababil bawa batu neraka?”',
-    whoH: 'Siapa Abil Sudarman', whoLead: 'Kreator konten dan konselor karier, menurut pemberitaan. Konteks berikut bukan tuduhan.',
-    claimsIntro: (labels: string) => `Ringkasnya, klaim yang sedang diperiksa menyangkut ${labels}. Rincian dan statusnya ada di daftar klaim.`,
-    join: (list: string[]) => list.join(', ').replace(/, ([^,]*)$/, ' dan $1'),
-    photoAlt: 'Tangkapan gambar dari pemberitaan: Abil Sudarman berbicara, dengan teks “6000+ cyberattack sejak siang tadi”',
-    caption: 'Abil Sudarman melaporkan sekitar 6.000 serangan siber terhadap Ordal.id setelah mengunggah video tentang Komdigi',
-    captionLink: 'Pewarta Nusantara, 31 Januari 2026', credit: 'Sumber foto: Poskota (tertera pada gambar).',
-    claimsH: 'Klaim yang sedang diperiksa',
-    claimsLead: 'Ringkasan klaim tentang Abil Sudarman yang dipublikasikan atau dikutip, beserta status pemeriksaannya. Ini bukan tuduhan dan bukan putusan; belum ada konfirmasi bukan berarti klaimnya salah.',
-    claimsNote: 'Gambar dan keterangan lengkap ada di', claimsNoteLink: 'halaman Bukti',
-    evidenceH: 'Bukti dan artikel', noPosts: 'Belum ada artikel yang dipublikasikan.',
-    contribH: 'Ikut mengumpulkan bukti',
-    contribLead: 'Kode situs ini open source. Punya dokumen, tangkapan layar, atau sumber yang dapat diperiksa, baik yang memperkuat maupun yang membantah klaim di atas? Kirim lewat GitHub.',
+    title: SITE.name,
+    description: 'Kawal Kepakaran menguji klaim para pakar: kredensial diperiksa, bukti dibuka, dan setiap pakar yang disebut berhak menjawab.',
+    h1: 'Kawal Kepakaran', sub: 'Menguji klaim para pakar',
+    lead: 'Siapa pun bisa menyebut diri pakar. Kami memeriksa klaim kepakaran dengan bukti yang bisa dilacak, lalu membuka hasilnya beserta hak jawab. Isinya catatan dan pendapat penulis, bukan putusan.',
+    claimsCta: 'Lihat cek klaim', methodCta: 'Cara kami memeriksa',
+    emblemAlt: 'Lambang Kawal Kepakaran: gunungan wayang dengan timbangan',
+    howH: 'Cara kami memeriksa',
+    steps: [
+      ['Catat klaim', 'Kutip klaimnya, di mana dan kapan disampaikan.'],
+      ['Periksa kredensial dan bukti', 'Tanya penerbit kredensial dan kumpulkan bukti yang bisa dilacak.'],
+      ['Beri putusan, buka hak jawab', 'Satu dari empat putusan dengan tingkat keyakinan; pakar yang disebut dapat menjawab.'],
+    ],
+    methodLink: 'Baca metode lengkap',
+    pakarH: 'Pakar yang diperiksa', pakarAll: 'Semua pakar', noPakar: 'Belum ada pakar yang dimuat.',
+    claimsH: 'Cek klaim terbaru', claimsAll: 'Semua cek klaim', noClaims: 'Belum ada klaim yang dimuat.',
+    caseH: 'Kasus 001: Abil Sudarman',
+    caseLead: 'Kasus pertama kami memeriksa klaim kredensial dan jabatan Abil Sudarman, lengkap dengan artikel, bukti, dan linimasa.',
+    caseCta: 'Buka Kasus 001',
+    contribH: 'Ikut menguji klaim',
+    contribLead: 'Kode situs ini open source. Punya dokumen, tangkapan layar, atau sumber yang dapat diperiksa tentang klaim seorang pakar, baik yang memperkuat maupun yang membantah? Kirim lewat GitHub.',
     rules: ['Sertakan sumber yang dapat diperiksa dan tanggal pengambilan.', 'Tutup NIK, NIM, nomor telepon, dan data pribadi lain.', 'Tulis apa yang ditunjukkan dan apa yang tidak dibuktikan.', 'Tanpa rumor, tanpa data pribadi orang yang tidak terkait.'],
-    how: 'Cara berkontribusi', send: 'Kirim bukti (Issue)',
-    answerH: 'Jawaban', answerLead: 'Abil Sudarman berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap tulisan di sini.',
+    how: 'Cara berkontribusi', send: 'Kirim bukti atau klaim (Issue)',
+    answerH: 'Jawaban', answerLead: 'Setiap pakar yang disebut berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman di sini.',
     answerMuted: 'Tanggapan yang diterima dimuat apa adanya. Belum adanya tanggapan bukan pengakuan atas apa pun.', replyCta: 'Hak jawab',
-    alt: { name: 'Kawal Abil Sudarman', alternateName: 'Operasi Ababil' },
+    alt: { name: SITE.name, alternateName: 'Kawal Pakar' },
   },
   en: {
-    title: 'Abil Sudarman Fact-Check: Operation Ababil',
-    description: "Operation Ababil is an open fact-check of Abil Sudarman's claims: translated articles, evidence and the right of reply, presented as notes and opinion, not rulings.",
-    h1: 'Operation Ababil', sub: 'An open fact-check of Abil Sudarman',
-    lead: "Like a flock of ababil birds carrying small stones one by one, this operation gathers evidence and translated articles in the open. These are Rahmat Wibowo's notes and opinion, not a ruling. Abil Sudarman has the right to reply to every piece.",
-    readCta: 'Read the articles',
-    heroAlt: 'Two swallows holding a small stone in their feet, with the Indonesian text “Burung Ababil bawa batu neraka?” (“Ababil birds carrying stones from hell?”)',
-    whoH: 'Who is Abil Sudarman', whoLead: 'A content creator and career counsellor, according to news coverage. The context below is not an accusation.',
-    claimsIntro: (labels: string) => `In short, the claims being examined concern ${labels}. Details and their status are in the claims list.`,
-    join: (list: string[]) => list.join(', ').replace(/, ([^,]*)$/, ' and $1'),
-    photoAlt: 'Screenshot from news coverage: Abil Sudarman speaking, with the text “6000+ cyberattack since this afternoon”',
-    caption: 'Abil Sudarman reported about 6,000 cyberattacks on Ordal.id after posting a video about Komdigi',
-    captionLink: 'Pewarta Nusantara, 31 January 2026', credit: 'Photo source: Poskota (shown on the image).',
-    claimsH: 'Claims under examination',
-    claimsLead: 'A summary of claims about Abil Sudarman that have been published or quoted, with their verification status. This is not an accusation and not a ruling; not yet confirmed does not mean a claim is false.',
-    claimsNote: 'Full images and captions are on the', claimsNoteLink: 'Evidence page',
-    evidenceH: 'Evidence and articles', noPosts: 'No articles have been published yet.',
-    contribH: 'Help gather evidence',
-    contribLead: "This site's code is open source. Do you have documents, screenshots or sources that can be checked, whether they support or contradict the claims above? Send them through GitHub.",
+    title: SITE.name,
+    description: 'Kawal Kepakaran checks what experts claim: credentials verified, evidence opened, and every expert named has the right to reply.',
+    h1: 'Kawal Kepakaran', sub: 'Checking what experts claim',
+    lead: 'Anyone can call themselves an expert. We check claims of expertise against evidence that can be traced, then publish the result together with the right of reply. What you read is the author\'s notes and opinion, not a ruling.',
+    claimsCta: 'See the claim checks', methodCta: 'How we check',
+    emblemAlt: 'Kawal Kepakaran emblem: a wayang gunungan holding a pair of scales',
+    howH: 'How we check',
+    steps: [
+      ['Record the claim', 'Quote it, and where and when it was made.'],
+      ['Check credentials and evidence', 'Ask the credential issuer and gather evidence that can be traced.'],
+      ['Give a verdict, open the reply', 'One of four verdicts with a confidence level; the expert named can respond.'],
+    ],
+    methodLink: 'Read the full method',
+    pakarH: 'Experts checked', pakarAll: 'All experts', noPakar: 'No experts have been listed yet.',
+    claimsH: 'Latest claim checks', claimsAll: 'All claim checks', noClaims: 'No claim checks have been listed yet.',
+    caseH: 'Case 001: Abil Sudarman',
+    caseLead: 'Our first case checks Abil Sudarman\'s claimed credentials and roles, with articles, evidence and a timeline.',
+    caseCta: 'Open Case 001',
+    contribH: 'Help check claims',
+    contribLead: 'This site\'s code is open source. Do you have documents, screenshots or sources that can be checked about an expert\'s claim, whether they support or contradict it? Send them through GitHub.',
     rules: ['Include a checkable source and the date it was captured.', 'Mask ID numbers, student numbers, phone numbers and other personal data.', 'Write what the item shows and what it does not prove.', 'No rumours, and no personal data of unrelated people.'],
-    how: 'How to contribute', send: 'Submit evidence (Issue)',
-    answerH: 'Reply', answerLead: 'Abil Sudarman has the right to respond, correct, or add context to every piece here.',
+    how: 'How to contribute', send: 'Submit evidence or a claim (Issue)',
+    answerH: 'Reply', answerLead: 'Every expert named has the right to respond, correct, or add context to any page here.',
     answerMuted: 'Responses received are published as received. The absence of a response is not an admission of anything.', replyCta: 'Right of reply',
-    alt: { name: 'Kawal Abil Sudarman', alternateName: 'Operation Ababil' },
+    alt: { name: SITE.name, alternateName: 'Expert Watch' },
   },
 }[locale];
-const allegations = ALLEGATIONS.map((a) => (locale === 'en' ? { ...a, ...ALLEGATIONS_EN[a.id] } : a));
-const DESCRIPTION = T.description;
 const websiteLd = {
   '@context': 'https://schema.org', '@type': 'WebSite', name: T.alt.name, alternateName: T.alt.alternateName,
   '@id': `${SITE.url}/#website`, url: new URL(localizedPath('home', locale), SITE.url).toString(), sameAs: [SITE.url, SITE.repo],
-  inLanguage: locale, description: DESCRIPTION,
+  inLanguage: locale, description: T.description,
   author: { '@type': 'Person', name: SITE.author },
   publisher: { '@type': 'Organization', '@id': 'https://www.infraloka.co.id/#organization', name: 'Infraloka', url: 'https://www.infraloka.co.id' },
 };
-const REPORT = 'https://www.pewartanusantara.com/berita/dibungkam-situs-ordal-id-kena-6-000-serangan-siber-usai-bongkar-borok-loker-komdigi/';
 ---
-<BaseLayout title={T.title} description={DESCRIPTION} path={localizedPath('home', locale)} locale={locale} jsonLd={websiteLd}>
+<BaseLayout title={T.title} description={T.description} path={localizedPath('home', locale)} locale={locale} jsonLd={websiteLd}>
   <SkyStage sectionIds={SECTIONS} />
   <div class="home-main">
     <section id="operasi" class="home-section container">
       <div class="home-hero">
-      <div class="glass stack">
-        <div class="stack">
-          <h1>{T.h1}</h1>
-          <p class="hero-sub">{T.sub}</p>
-          <p class="lead muted">{T.lead}</p>
-          <a class="btn" href={localizedPath('articles', locale)}>{T.readCta}</a>
+        <div class="glass stack">
+          <div class="stack">
+            <h1>{T.h1}</h1>
+            <p class="hero-sub">{T.sub}</p>
+            <p class="lead muted">{T.lead}</p>
+            <div class="btn-row">
+              <a class="btn" href={routePath('claims', locale)}>{T.claimsCta}</a>
+              <a class="btn" href={routePath('method', locale)}>{T.methodCta}</a>
+            </div>
+          </div>
         </div>
-      </div>
-      <figure class="home-hero__art">
-        <Image src={burungAbabil} alt={T.heroAlt} widths={[400, 640]} sizes="(min-width: 900px) 34rem, calc(100vw - 2rem)" quality={55} loading="eager" fetchpriority="high" />
-      </figure>
+        <figure class="home-hero__art">
+          <img src="/logo-kawal.svg" alt={T.emblemAlt} width="320" height="320" loading="eager" fetchpriority="high" decoding="async" />
+        </figure>
       </div>
     </section>
 
     <section id="siapa" class="home-section container home-pair">
       <div class="glass stack">
-        <h2>{T.whoH}</h2>
-        <p class="muted lead">{T.whoLead}</p>
-        <p class="lead">{T.claimsIntro(T.join(allegations.map((a) => a.label)))}</p>
-        <figure class="figure-quote">
-          <Image src={poskota} alt={T.photoAlt} widths={[330, 520]} sizes="(min-width: 900px) 520px, calc(100vw - 4rem)" quality={60} />
-          <figcaption>
-            {T.caption}
-            (<a href={REPORT} rel="noopener noreferrer" target="_blank">{T.captionLink}</a>).
-            {T.credit}
-          </figcaption>
-        </figure>
+        <h2>{T.howH}</h2>
+        <ol class="stack">
+          {T.steps.map(([h, p]) => <li><strong>{h}.</strong> {p}</li>)}
+        </ol>
+        <p><a href={routePath('method', locale)}>{T.methodLink} →</a></p>
       </div>
-      <div class="glass stack" id="dugaan">
-        <h2>{T.claimsH}</h2>
-        <p class="muted lead">{T.claimsLead}</p>
-        <ul class="dugaan-list">
-          {allegations.map((a) => (
-            <li class="dugaan-item">
-              <h3>{a.claim}</h3>
-              <p class="muted">{a.status}</p>
-            </li>))}
-        </ul>
-        <p class="muted dugaan-note">{T.claimsNote} <a href={localizedPath('evidence', locale)}>{T.claimsNoteLink}</a>.</p>
+      <div class="glass stack">
+        <h2>{T.pakarH}</h2>
+        {pakar.length === 0 ? (
+          <p class="muted">{T.noPakar}</p>
+        ) : (
+          <ul class="stack">
+            {pakar.map((p) => <li><a href={localizedPath('experts', locale, p.id)}>{p.data.name}</a> <span class="muted">· {p.data.field}</span></li>)}
+          </ul>
+        )}
+        <p><a href={routePath('experts', locale)}>{T.pakarAll} →</a></p>
       </div>
     </section>
 
     <section id="bukti" class="home-section container">
       <div class="glass stack">
-        <h2>{T.evidenceH}</h2>
-        {posts.length === 0
-          ? <p class="muted">{T.noPosts}</p>
-          : <div class="grid">{posts.map((p) => (
-              <TiltCard client:visible href={localizedPath('articles', locale, p.id)}>
-                <PostThumb title={p.data.title} slug={p.id} image={firstImage(p.body ?? '')} />
-                <ClassificationBadge value={p.data.classification} locale={locale} />
-                <h3 class="card-title">{locale === 'en' ? p.data.originalTitle : p.data.title}</h3>
-              </TiltCard>))}</div>}
+        <h2>{T.claimsH}</h2>
+        {claims.length === 0 ? (
+          <p class="muted">{T.noClaims}</p>
+        ) : (
+          <ul class="stack">
+            {claims.map((k) => (
+              <li>
+                <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>{' '}
+                <VerdictBadge verdict={k.data.verdict} locale={locale} />
+                <span class="muted"> · {nameOf(k.data.pakar)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p><a href={routePath('claims', locale)}>{T.claimsAll} →</a></p>
+        <h3>{T.caseH}</h3>
+        <p>{T.caseLead}</p>
+        <a class="btn" href={routePath('caseHome', locale)}>{T.caseCta}</a>
       </div>
     </section>
 
@@ -150,8 +150,8 @@ const REPORT = 'https://www.pewartanusantara.com/berita/dibungkam-situs-ordal-id
           {T.rules.map((r) => <li>{r}</li>)}
         </ul>
         <div class="btn-row">
-          <a class="btn" href={`${SITE.repo}/blob/master/CONTRIBUTING.md`} rel="noopener" target="_blank">{T.how}</a>
-          <a class="btn" href={`${SITE.repo}/issues/new`} rel="noopener" target="_blank">{T.send}</a>
+          <a class="btn" href={`${SITE.repo}/blob/main/CONTRIBUTING.md`} rel="noopener" target="_blank">{T.how}</a>
+          <a class="btn" href={`${SITE.repo}/issues/new/choose`} rel="noopener" target="_blank">{T.send}</a>
         </div>
       </div>
     </section>
@@ -161,7 +161,7 @@ const REPORT = 'https://www.pewartanusantara.com/berita/dibungkam-situs-ordal-id
         <h2>{T.answerH}</h2>
         <p class="lead">{T.answerLead}</p>
         <p class="muted lead">{T.answerMuted}</p>
-        <a class="btn" href={localizedPath('reply', locale)}>{T.replyCta}</a>
+        <a class="btn" href={routePath('reply', locale)}>{T.replyCta}</a>
       </div>
     </section>
   </div>

@@ -34,12 +34,13 @@ describe('home sky without a framework runtime', () => {
 });
 
 describe('home image delivery', () => {
-  it('prioritises the hero image and serves it responsively and compressed', () => {
+  it('prioritises the hero emblem and reserves its space so the layout does not shift', () => {
     const home = read('src/pages/index.astro');
-    const hero = home.slice(home.indexOf('src={burungAbabil}'), home.indexOf('</figure>'));
+    const hero = home.slice(home.indexOf('src="/logo-kawal.svg"'), home.indexOf('</figure>'));
     expect(hero).toContain('fetchpriority="high"');
-    expect(hero).toContain('widths={[400, 640]}');
-    expect(hero).toMatch(/quality=\{\d+\}/);
+    expect(hero).toContain('loading="eager"');
+    expect(hero).toMatch(/width="\d+"/);
+    expect(hero).toMatch(/height="\d+"/);
   });
   it('gives static assets a long cache lifetime', () => {
     const headers = read('public/_headers');

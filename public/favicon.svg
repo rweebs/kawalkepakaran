@@ -1,13 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Logo Kawal Abil Sudarman">
-  <circle cx="32" cy="32" r="31" fill="#0a0e1a"/>
-  <circle cx="32" cy="32" r="28.5" fill="none" stroke="#f59e0b" stroke-width="2"/>
-  <g fill="#9fb0d0">
-    <path d="M32 27 C26 22 15 21 7 30 C17 29 23 33 29 41 Z"/>
-    <path d="M32 27 C38 22 49 21 57 30 C47 29 41 33 35 41 Z"/>
-  </g>
-  <ellipse cx="32" cy="33" rx="4.2" ry="10" fill="#2a3040" stroke="#9fb0d0" stroke-width="1"/>
-  <circle cx="32" cy="23.5" r="3.4" fill="#2a3040" stroke="#9fb0d0" stroke-width="1"/>
-  <path d="M29 42 L32 51 L35 42 Z" fill="#2a3040" stroke="#9fb0d0" stroke-width="1"/>
-  <circle cx="32" cy="46.5" r="3.6" fill="#e08a2e"/>
-  <circle cx="31" cy="45.4" r="1.1" fill="#ffd9a0"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="31" fill="#0b1020"/>
+  <path d="M32 8 C38 15 44 21 44 32 C44 43 38 51 32 56 C26 51 20 43 20 32 C20 21 26 15 32 8 Z" fill="#1a2147" stroke="#e3b341" stroke-width="2.5"/>
+  <g stroke="#e3b341" stroke-width="3" stroke-linecap="round" fill="none"><path d="M23 28 H41"/><path d="M32 22 V46"/></g>
 </svg>

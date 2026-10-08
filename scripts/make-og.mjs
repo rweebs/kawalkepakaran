@@ -38,21 +38,16 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" 
   <rect width="${W}" height="${H}" fill="url(#sky)"/>
   ${stars}
   ${flock}
-  <g transform="translate(70 90)">
-    <circle cx="36" cy="36" r="34" fill="#0a0e1a" stroke="#f59e0b" stroke-width="3"/>
-    <g transform="translate(4 4) scale(0.875)">
-      <g fill="#9fb0d0"><path d="M32 27 C26 22 15 21 7 30 C17 29 23 33 29 41 Z"/><path d="M32 27 C38 22 49 21 57 30 C47 29 41 33 35 41 Z"/></g>
-      <ellipse cx="32" cy="33" rx="4.2" ry="10" fill="#2a3040" stroke="#9fb0d0" stroke-width="1"/>
-      <circle cx="32" cy="23.5" r="3.4" fill="#2a3040" stroke="#9fb0d0" stroke-width="1"/>
-      <path d="M29 42 L32 51 L35 42 Z" fill="#2a3040" stroke="#9fb0d0" stroke-width="1"/>
-      <circle cx="32" cy="46.5" r="3.6" fill="#e08a2e"/>
-    </g>
+  <g transform="translate(70 80) scale(1.15)">
+    <circle cx="32" cy="32" r="31" fill="#0b1020" stroke="#e3b341" stroke-width="2.5"/>
+    <path d="M32 8 C38 15 44 21 44 32 C44 43 38 51 32 56 C26 51 20 43 20 32 C20 21 26 15 32 8 Z" fill="#1a2147" stroke="#e3b341" stroke-width="1.5"/>
+    <g stroke="#e3b341" stroke-width="1.6" stroke-linecap="round" fill="none"><path d="M23.5 27 H40.5"/><path d="M32 21 V45"/><path d="M27.5 45 H36.5"/><path d="M23.5 27 L21 34 H26 Z"/><path d="M40.5 27 L38 34 H43 Z"/></g>
   </g>
-  <text x="160" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#f1f5f9" letter-spacing="2">KAWAL ABIL SUDARMAN</text>
-  <text x="70" y="330" font-family="Helvetica, Arial, sans-serif" font-size="108" font-weight="800" fill="#f1f5f9">Operasi Ababil</text>
-  <text x="74" y="396" font-family="Helvetica, Arial, sans-serif" font-size="38" fill="#f59e0b">Operasi untuk mengungkap Abil Sudarman</text>
-  <text x="74" y="470" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#94a3b8">Bukti terbuka · terjemahan terbuka · hak jawab terbuka</text>
-  <text x="74" y="570" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#60a5fa">abilsudarman.my.id</text>
+  <text x="170" y="140" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#f1f5f9" letter-spacing="3">KAWAL KEPAKARAN</text>
+  <text x="70" y="330" font-family="Georgia, 'Times New Roman', serif" font-size="68" font-weight="700" fill="#f1f5f9">Menguji klaim para pakar</text>
+  <text x="74" y="396" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#e3b341">Kredensial diperiksa · bukti dibuka · hak jawab</text>
+  <text x="74" y="470" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#94a3b8">Catatan dan pendapat penulis, bukan putusan</text>
+  <text x="74" y="570" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#93c5fd">kawalkepakaran.org</text>
 </svg>`;
 
 mkdirSync('public/og', { recursive: true });

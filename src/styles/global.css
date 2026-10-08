@@ -1,11 +1,14 @@
 :root {
-  --bg-primary: #0a0e1a; --bg-secondary: #111827;
-  --bg-card: rgba(17, 24, 39, 0.7); --bg-glass-border: rgba(148, 163, 184, 0.1);
-  --accent-blue: #3b82f6; --accent-amber: #f59e0b; --accent-green: #10b981; --accent-red: #ef4444;
-  --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-accent: #60a5fa;
-  --gradient-hero: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+  --bg-primary: #0b1020; --bg-secondary: #121a33;
+  --bg-card: rgba(18, 26, 51, 0.7); --bg-glass-border: rgba(148, 163, 184, 0.12);
+  --accent-blue: #3b82f6; --accent-amber: #e3b341; --accent-green: #10b981; --accent-red: #ef4444;
+  --text-primary: #f1f5f9; --text-secondary: #a3b1c6; --text-accent: #93c5fd;
+  --gradient-hero: linear-gradient(135deg, #0b1020 0%, #1a2147 50%, #0b1020 100%);
+  /* Verdicts: each pairs a hue with its own glyph and a text label, so colour is never the only signal. All >= 7:1 on --bg-primary. */
+  --verdict-confirmed: #6ee7a0; --verdict-partly: #fcd34d; --verdict-unsupported: #fda4af; --verdict-unverified: #a5c8ff;
   --radius-md: 0.75rem; --radius-lg: 1rem; --radius-full: 9999px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, Georgia, 'Times New Roman', serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 *, *::before, *::after { box-sizing: border-box; }
@@ -16,7 +19,7 @@ main { flex: 1; }
 a { color: var(--text-accent); }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent-amber); outline-offset: 3px; border-radius: 4px; }
 img { max-width: 100%; height: auto; border-radius: var(--radius-md); }
-h1, h2, h3 { line-height: 1.2; }
+h1, h2, h3 { line-height: 1.2; font-family: var(--font-display); letter-spacing: 0.005em; }
 .container { width: min(1100px, 100% - 2rem); margin-inline: auto; }
 .reading { width: min(70ch, 100% - 2rem); margin-inline: auto; padding-block: 2rem 4rem; }
 .reading blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--accent-blue); color: var(--text-secondary); }
@@ -29,6 +32,15 @@ h1, h2, h3 { line-height: 1.2; }
 .badge { display: inline-block; padding: 0.15rem 0.7rem; border-radius: var(--radius-full); font-size: 0.8rem;
   font-weight: 600; border: 1px solid currentColor; }
 .badge--amber { color: var(--accent-amber); } .badge--green { color: var(--accent-green); } .badge--blue { color: var(--text-accent); }
+.verdict::before { margin-right: 0.35em; font-weight: 700; }
+.verdict[data-verdict='dikonfirmasi'] { color: var(--verdict-confirmed); }
+.verdict[data-verdict='dikonfirmasi']::before { content: '✓'; }
+.verdict[data-verdict='sebagian'] { color: var(--verdict-partly); }
+.verdict[data-verdict='sebagian']::before { content: '◐'; }
+.verdict[data-verdict='tidak-terbukti'] { color: var(--verdict-unsupported); }
+.verdict[data-verdict='tidak-terbukti']::before { content: '✕'; }
+.verdict[data-verdict='belum-terverifikasi'] { color: var(--verdict-unverified); }
+.verdict[data-verdict='belum-terverifikasi']::before { content: '?'; }
 .banner { background: rgba(245, 158, 11, 0.08); border-bottom: 1px solid rgba(245, 158, 11, 0.35);
   color: var(--text-primary); font-size: 0.85rem; padding: 0.6rem 0; }
 .btn { display: inline-block; padding: 0.6rem 1.1rem; border-radius: var(--radius-full); background: #1d4ed8;
