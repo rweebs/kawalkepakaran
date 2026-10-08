@@ -1,20 +1,24 @@
 import { getCollection } from 'astro:content';
 import { includeDrafts } from './publish';
-import { assertKlaimRefsPakar } from './pakar-refs';
+import { assertKlaimRefsPakar, selectVisible } from './pakar-refs';
 
 export { assertKlaimRefsPakar };
 
 const INCLUDE_DRAFTS = includeDrafts(process.env);
 
-export async function getPakar() {
-  return getCollection('pakar', (e) => INCLUDE_DRAFTS || !e.data.draft);
+async function visible() {
+  const [pakar, klaim] = await Promise.all([getCollection('pakar'), getCollection('klaim')]);
+  return selectVisible(pakar, klaim, INCLUDE_DRAFTS);
 }
 
-/** Published claims; throws if any claim (draft or not) names a pakar without a profile. */
+/** Pakar that may be shown; throws if a shown claim names a missing or draft pakar. */
+export async function getPakar() {
+  return (await visible()).pakar;
+}
+
+/** Claims that may be shown; throws if a claim names a missing pakar, or a shown claim names a draft pakar. */
 export async function getKlaim() {
-  const [pakar, klaim] = await Promise.all([getCollection('pakar'), getCollection('klaim')]);
-  assertKlaimRefsPakar(pakar.map((p) => p.id), klaim);
-  return klaim.filter((k) => INCLUDE_DRAFTS || !k.data.draft);
+  return (await visible()).klaim;
 }
 
 export async function klaimForPakar(slug: string) {

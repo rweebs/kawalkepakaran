@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { pakarSchema, klaimSchema } from '../src/lib/schemas';
-import { assertKlaimRefsPakar } from '../src/lib/pakar-refs';
+import { assertKlaimRefsPakar, selectVisible } from '../src/lib/pakar-refs';
 
 const pakar = { name: 'A', field: 'f', summary: 's', summaryEn: 's', credentials: [] };
 const klaim = {
@@ -27,6 +27,28 @@ describe('assertKlaimRefsPakar', () => {
   });
   it('passes when every claim has a profile', () => {
     expect(() => assertKlaimRefsPakar(['a'], [{ id: 'k1', data: { pakar: 'a' } }])).not.toThrow();
+  });
+});
+
+describe('selectVisible (drafts)', () => {
+  const p = (id: string, draft = false) => ({ id, data: { draft } });
+  const k = (id: string, pakar: string, draft = false) => ({ id, data: { pakar, draft } });
+
+  it('fails clearly when a published claim names a draft pakar', () => {
+    expect(() => selectVisible([p('a', true)], [k('k1', 'a')], false)).toThrow(/k1.*a/);
+  });
+  it('hides a draft claim of a draft pakar without error', () => {
+    const out = selectVisible([p('a', true), p('b')], [k('k1', 'a', true), k('k2', 'b')], false);
+    expect(out.pakar.map((x) => x.id)).toEqual(['b']);
+    expect(out.klaim.map((x) => x.id)).toEqual(['k2']);
+  });
+  it('shows drafts when asked to', () => {
+    const out = selectVisible([p('a', true)], [k('k1', 'a', true)], true);
+    expect(out.pakar).toHaveLength(1);
+    expect(out.klaim).toHaveLength(1);
+  });
+  it('still fails on a claim naming a pakar that does not exist', () => {
+    expect(() => selectVisible([p('a')], [k('k1', 'zzz', true)], false)).toThrow(/k1.*zzz/);
   });
 });
 
