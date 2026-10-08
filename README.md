@@ -1,12 +1,13 @@
-# Kawal Abil Sudarman
+# Kawal Kepakaran
 
 > 🇬🇧 English · [🇮🇩 Bahasa Indonesia](README.id.md)
 
-**Live site:** <https://abilsudarman.my.id> (Indonesian) · <https://abilsudarman.my.id/en> (English)
+**Live site:** <https://kawalkepakaran.org> (Indonesian) · <https://kawalkepakaran.org/en> (English)
 
-This repository holds the source of **Kawal Abil Sudarman** ("Operation Ababil"), an open fact-check website. It publishes
-Rahmat Wibowo's articles about the public claims of Abil Sudarman, together with the evidence, a dated timeline, and a
-**right of reply** for the people named.
+This repository holds the source of **Kawal Kepakaran**, an open fact-check of the claims of experts (*pakar*). It checks
+credentials, track record and evidence, gives each claim a verdict with a confidence level, and offers every expert named
+a **right of reply**. The first documented case, **Case 001**, is Abil Sudarman: the articles, evidence and dated
+timeline from the project's earlier life as "Kawal Abil Sudarman" are kept under `/kasus/abil-sudarman`.
 
 Everything on the site is the author's **opinion and notes, not a court ruling**. The site says so on every page.
 
@@ -23,21 +24,27 @@ Everything on the site is the author's **opinion and notes, not a court ruling**
 
 | Page | What it is for |
 |---|---|
-| Home (`/`, `/en`) | Overview and the main allegations, each marked as the author's allegation |
-| Articles (`/artikel`, `/en/articles`) | The author's articles, in Indonesian and English |
-| Evidence (`/bukti`, `/en/evidence`) | Screenshots, each with "what it shows" and "what it does not prove" |
-| Timeline (`/linimasa`, `/en/timeline`) | A dated record of what the author wrote, sent and did |
-| Right of reply (`/hak-jawab`, `/en/right-of-reply`) | How Abil Sudarman or anyone named can respond; replies are published as received |
-| Bowobharata (`/bowobharata`) | The story told as a Mahabharata allegory, with a 3D battle scene |
+| Home (`/`, `/en`) | The idea in one screen, the latest claim checks, the experts checked |
+| Experts (`/pakar`, `/en/experts`) | One profile per pakar: credentials checked, claims tested, replies |
+| Claim checks (`/klaim`, `/en/claims`) | Each claim with a verdict (confirmed / partly / not supported / cannot yet be verified), a confidence level, evidence and "what this does not prove" |
+| Method (`/metode`, `/en/method`) | How credentials and claims are judged |
+| Right of reply (`/hak-jawab`, `/en/right-of-reply`) | How any expert named can respond; replies are published as received |
+| Case 001 (`/kasus/abil-sudarman`, `/en/cases/abil-sudarman`) | Articles, evidence, timeline and the Bowobharata 3D allegory for the first case |
 | About, videos, TikTok, books, PageSpeed, disclaimer | Supporting pages |
+
+## Add an expert or a claim
+
+Open an issue with the **Submit a pakar claim or evidence** form (see [CONTRIBUTING.md](CONTRIBUTING.md)), or send a pull
+request that adds one JSON file under `src/content/pakar/` or `src/content/klaim/` (the fields are in `src/lib/schemas.ts`).
+Every claim needs a source, "what the evidence shows" and "what it does not prove".
 
 ## Run it on your computer (about 10 minutes)
 
 You need **Node.js 22** and **npm** (check with `node -v`).
 
 ```bash
-git clone https://github.com/rweebs/abilsudarman.git
-cd abilsudarman
+git clone https://github.com/rweebs/kawalkepakaran.git
+cd kawalkepakaran
 npm ci            # install exactly the locked dependencies
 npm run dev       # live preview at http://localhost:4321 (shows draft articles too)
 ```
@@ -80,12 +87,17 @@ docs/             Documentation
 
 ## Publishing and deployment
 
-1. Merge to `master`. GitHub Actions runs the tests and the build (`.github/workflows/ci.yml`).
-2. Cloudflare builds and deploys the site to <https://abilsudarman.my.id> from the same repository.
+1. Merge to `main`. GitHub Actions runs the tests and the build (`.github/workflows/ci.yml`).
+2. Cloudflare builds and deploys the site to <https://kawalkepakaran.org> from the same repository.
 3. Details, including what to check after a release, are in the [Engineering guide](docs/engineering-guide.md#deploying).
 
 Before any public release of new claims, have a **legal adviser review** the text (Indonesian ITE law, the new Criminal
 Code, and the personal data protection law). See the [Business guide](docs/business-guide.md#6-legal-and-safety-rules).
+
+## Licenses
+
+Code: [MIT](LICENSE). Original written content: [CC BY 4.0](LICENSE-CONTENT.md) (third-party material such as evidence
+screenshots stays under its owners' terms). The move from the old domain is described in [docs/redirects.md](docs/redirects.md).
 
 ## Contact
 

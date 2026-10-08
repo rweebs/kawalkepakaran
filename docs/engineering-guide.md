@@ -11,7 +11,7 @@ things fit together and how to make common changes safely.
 
 ```text
  Markdown / JSON content ─┐
- TypeScript logic (lib) ───┼─► Astro build ─► plain HTML + CSS + JS in dist/ ─► Cloudflare ─► abilsudarman.my.id
+ TypeScript logic (lib) ───┼─► Astro build ─► plain HTML + CSS + JS in dist/ ─► Cloudflare ─► kawalkepakaran.org
  Page templates (.astro) ──┘        │
                                     └─► scripts/check-dist.mjs  (blocks the release if any page breaks a rule)
 ```
@@ -129,7 +129,7 @@ image **before** adding it.
 - Description: 70 to 160 characters. Exactly one `<h1>` per page. Canonical URL must match the page URL.
 - hreflang pairs and `og:` tags are produced by `BaseLayout`. Do not hand-write them.
 - Structured data (JSON-LD) must be valid JSON; the checker parses it.
-- When a title does not already mention the subject, long titles get the suffix "· Abil Sudarman".
+- When a title does not already mention the subject, long titles get the suffix "· Kepakaran".
 
 ## 6. The build and its safety checks
 
@@ -201,11 +201,11 @@ Content Security Policy. Only YouTube (nocookie) and TikTok may be embedded. Ast
 
 ## 10. Deploying
 
-- **CI:** `.github/workflows/ci.yml` runs on every push and pull request to `master`: install, `npm test`, `npm run build`,
+- **CI:** `.github/workflows/ci.yml` runs on every push and pull request to `main`: install, `npm test`, `npm run build`,
   upload `dist/`.
 - **Production:** the site is served by Cloudflare as static assets from `dist/` (configured in `wrangler.jsonc`) at
-  <https://abilsudarman.my.id>. Cloudflare's own build integration builds with `npm run build` and deploys with Wrangler
-  when `master` changes.
+  <https://kawalkepakaran.org>. Cloudflare's own build integration builds with `npm run build` and deploys with Wrangler
+  when `main` changes.
 - **Known gap:** the workflow's "Deploy to Cloudflare" job needs the repository secrets `CLOUDFLARE_API_TOKEN` and
   `CLOUDFLARE_ACCOUNT_ID`. Until they are added, that job fails (the test-and-build job still passes). Either add the
   secrets, or delete the deploy and smoke-test jobs and rely on Cloudflare's build.

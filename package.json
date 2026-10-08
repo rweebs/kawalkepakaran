@@ -2,6 +2,11 @@
   "name": "kawal-kepakaran",
   "private": true,
   "version": "0.0.1",
+  "description": "Kawal Kepakaran: an open fact-check of expert claims",
+  "license": "MIT",
+  "homepage": "https://kawalkepakaran.org",
+  "repository": { "type": "git", "url": "git+https://github.com/rweebs/kawalkepakaran.git" },
+  "bugs": { "url": "https://github.com/rweebs/kawalkepakaran/issues" },
   "type": "module",
   "scripts": {
     "dev": "INCLUDE_DRAFTS=1 astro dev",

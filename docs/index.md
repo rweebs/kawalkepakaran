@@ -1,4 +1,4 @@
-# Documentation index
+# Kawal Kepakaran: documentation index
 
 > 🇬🇧 English · 🇮🇩 Bahasa Indonesia (every guide has an `.id.md` twin)
 
@@ -7,6 +7,7 @@
 | New here and want the overview | [README](../README.md) | [README.id](../README.id.md) |
 | A business reader, editor, lawyer or partner | [Business guide](business-guide.md) | [Panduan bisnis](business-guide.id.md) |
 | A junior or new engineer | [Engineering guide](engineering-guide.md) | [Panduan engineering](engineering-guide.id.md) |
+| How the old domain redirects | [Redirects](redirects.md) | same file |
 | Sending evidence or a correction | [CONTRIBUTING](../CONTRIBUTING.md) (English and Indonesian) | same file |
 
 ## Quick answers

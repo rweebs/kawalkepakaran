@@ -6,12 +6,13 @@ For editors, lawyers, partners and anyone who needs to understand the site witho
 
 ## 1. What this site is
 
-**Kawal Abil Sudarman** (<https://abilsudarman.my.id>) is an open fact-check website run by Rahmat Wibowo. It publishes:
+**Kawal Kepakaran** (<https://kawalkepakaran.org>) is an open fact-check of expert (*pakar*) claims, run by Rahmat Wibowo. It publishes:
 
-- **Articles** the author wrote about Abil Sudarman's public claims (translated into Indonesian, or originally in English).
+- **Pakar profiles and claim checks**: each claim gets a verdict (confirmed, partly, not supported, cannot yet be verified), a confidence level, the evidence, and "what this does not prove". The **Method** page explains how.
+- **Case 001 (Abil Sudarman)**: the first case, with the author's articles (translated into Indonesian, or originally in English).
 - **Evidence**: screenshots and records, each explained.
 - **A timeline**: a dated record of what the author wrote, sent and did.
-- **A right of reply**: a standing offer for Abil Sudarman, and anyone else named, to respond.
+- **A right of reply**: a standing offer for every pakar named to respond.
 - **Bowobharata**: the same story told as a Mahabharata allegory, with a 3D scene. It is a creative page, clearly marked as
   allegory, opinion and AI-generated art.
 
@@ -48,9 +49,9 @@ The full contributor steps are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## 5. Right of reply and corrections
 
-- Abil Sudarman, and anyone else named, may reply by email (address on the Right of reply page).
+- Every pakar named, and anyone else named, may reply by email (address on the Right of reply page).
 - A reply is published **as received, without editing**, at the end of the related article under the heading
-  *"Tanggapan Abil Sudarman"*, with the date it was received.
+  *"Tanggapan"* followed by the pakar's name, with the date it was received.
 - Requests for correction or removal follow the same page. The author decides and records the change.
 
 ## 6. Legal and safety rules
@@ -71,7 +72,7 @@ The full contributor steps are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 | 3. Review | Author + legal adviser | Text, evidence, labels and hedging are checked |
 | 4. Finalise | Editor / engineer | The draft is marked **final** |
 | 5. Automated checks | Computer | About 700 tests, then a build with a safety scan of every page |
-| 6. Publish | Engineer | Merged to `master`; the site is rebuilt and deployed automatically |
+| 6. Publish | Engineer | Merged to `main`; the site is rebuilt and deployed automatically |
 | 7. Verify | Editor | Open the live page and check it reads correctly in both languages |
 
 A typical small change (a corrected sentence) takes minutes once approved. The automated checks take about a minute.

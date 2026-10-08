@@ -11,7 +11,7 @@ bagaimana bagian-bagiannya saling terhubung dan cara membuat perubahan umum deng
 
 ```text
  Konten Markdown / JSON ──┐
- Logika TypeScript (lib) ──┼─► Build Astro ─► HTML + CSS + JS biasa di dist/ ─► Cloudflare ─► abilsudarman.my.id
+ Logika TypeScript (lib) ──┼─► Build Astro ─► HTML + CSS + JS biasa di dist/ ─► Cloudflare ─► kawalkepakaran.org
  Templat halaman (.astro) ─┘        │
                                     └─► scripts/check-dist.mjs  (menahan rilis jika ada halaman yang melanggar aturan)
 ```
@@ -129,7 +129,7 @@ pribadi pada gambar **sebelum** menambahkannya.
 - Deskripsi: 70 sampai 160 karakter. Tepat satu `<h1>` per halaman. URL kanonik harus sama dengan URL halaman.
 - Pasangan hreflang dan tag `og:` dibuat oleh `BaseLayout`. Jangan menulisnya manual.
 - Data terstruktur (JSON-LD) harus JSON yang valid; pemeriksa menguraikannya.
-- Bila judul belum menyebut subjeknya, judul panjang diberi akhiran "· Abil Sudarman".
+- Bila judul belum menyebut subjeknya, judul panjang diberi akhiran "· Kepakaran".
 
 ## 6. Build dan pemeriksaan keamanannya
 
@@ -202,11 +202,11 @@ per halaman untuk skrip (`astro.config.mjs`). Masa simpan cache gambar, model, d
 
 ## 10. Deploy
 
-- **CI:** `.github/workflows/ci.yml` berjalan di setiap push dan pull request ke `master`: pasang dependensi, `npm test`,
+- **CI:** `.github/workflows/ci.yml` berjalan di setiap push dan pull request ke `main`: pasang dependensi, `npm test`,
   `npm run build`, unggah `dist/`.
 - **Produksi:** situs disajikan Cloudflare sebagai aset statis dari `dist/` (dikonfigurasi di `wrangler.jsonc`) di
-  <https://abilsudarman.my.id>. Integrasi build Cloudflare membangun dengan `npm run build` dan men-deploy dengan Wrangler
-  saat `master` berubah.
+  <https://kawalkepakaran.org>. Integrasi build Cloudflare membangun dengan `npm run build` dan men-deploy dengan Wrangler
+  saat `main` berubah.
 - **Kekurangan yang diketahui:** job "Deploy to Cloudflare" di workflow membutuhkan secret repositori `CLOUDFLARE_API_TOKEN`
   dan `CLOUDFLARE_ACCOUNT_ID`. Selama belum ditambahkan, job itu gagal (job uji-dan-build tetap lolos). Tambahkan secret
   tersebut, atau hapus job deploy dan smoke test lalu andalkan build Cloudflare.

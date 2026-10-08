@@ -1,4 +1,4 @@
-# Contributing / Berkontribusi
+# Contributing to Kawal Kepakaran / Berkontribusi ke Kawal Kepakaran
 
 [🇬🇧 English](#english) · [🇮🇩 Bahasa Indonesia](#bahasa-indonesia)
 
@@ -6,8 +6,8 @@
 
 ## 🇬🇧 English: contributing evidence and code
 
-The code and content of this site are open. Anyone may send evidence, whether it supports or disputes a claim about Abil
-Sudarman. The site publishes notes and opinion, not rulings; every item is shown as a claim that can be checked.
+The code and content of this site are open. Anyone may send evidence, whether it supports or disputes the claim of an expert (pakar) listed here, or propose a new
+pakar or claim to check. The site publishes notes and opinion, not rulings; every item is shown as a claim that can be checked.
 
 ### Rules
 
@@ -16,12 +16,13 @@ Sudarman. The site publishes notes and opinion, not rulings; every item is shown
    covered before you send anything.
 3. **Two statements are required:** what the image shows, and what it does **not** prove.
 4. **No rumour, no doxxing.** Only matters tied to a public claim. No baseless accusations.
-5. **Right of reply.** Abil Sudarman may respond; replies are published as received.
+5. **Right of reply.** Any pakar named may respond; replies are published as received.
 
 ### How to send
 
-**By issue (easiest):** open <https://github.com/rweebs/abilsudarman/issues/new>, attach the image or link, and fill in the
-two statements above.
+**By issue (easiest):** open <https://github.com/rweebs/kawalkepakaran/issues/new/choose>, pick **Submit a pakar claim or
+evidence** (`submit-claim`), attach the image or link, and fill in the two statements above. Corrections and replies use the
+other form.
 
 **By pull request:**
 
@@ -34,7 +35,7 @@ two statements above.
 
 - Read the [Engineering guide](docs/engineering-guide.md) first (setup, folder map, how to add an article, a timeline entry
   or a page).
-- Branch from `master`, keep one logical change per commit, and use messages like `feat(seo): …` or `fix(build): …`.
+- Branch from `main`, keep one logical change per commit, and use messages like `feat(seo): …` or `fix(build): …`.
 - Run `npm test && npm run build` before opening the PR. CI runs the same.
 - Keep wording about people hedged ("I allege", "in my opinion"). Do not change the disclaimer or right-of-reply text without
   the author's approval.
@@ -49,7 +50,7 @@ See the Right of reply page on the site.
 
 ## 🇮🇩 Bahasa Indonesia: berkontribusi bukti dan kode
 
-Kode dan konten situs ini terbuka. Siapa pun boleh mengirim bukti, baik yang memperkuat maupun yang membantah klaim tentang Abil Sudarman. Situs ini memuat catatan dan pendapat, bukan putusan; setiap bukti dimuat sebagai klaim yang dapat diperiksa.
+Kode dan konten situs ini terbuka. Siapa pun boleh mengirim bukti, baik yang memperkuat maupun yang membantah klaim seorang pakar yang tercantum di sini, atau mengusulkan pakar dan klaim baru untuk diperiksa. Situs ini memuat catatan dan pendapat, bukan putusan; setiap bukti dimuat sebagai klaim yang dapat diperiksa.
 
 ### Aturan
 
@@ -57,11 +58,11 @@ Kode dan konten situs ini terbuka. Siapa pun boleh mengirim bukti, baik yang mem
 2. **Tutup data pribadi.** NIK, NIM, nomor telepon, alamat rumah, dan data pribadi pihak yang tidak terkait harus ditutup sebelum dikirim.
 3. **Dua keterangan wajib:** apa yang ditunjukkan gambar, dan apa yang **tidak** dibuktikan olehnya.
 4. **Tanpa rumor, tanpa doxxing.** Hanya hal yang berkaitan dengan klaim publik. Tidak ada tuduhan tanpa dasar.
-5. **Hak jawab.** Abil Sudarman berhak menanggapi; tanggapan dimuat apa adanya.
+5. **Hak jawab.** Setiap pakar yang disebut berhak menanggapi; tanggapan dimuat apa adanya.
 
 ### Cara mengirim
 
-**Lewat Issue** (paling mudah): buka https://github.com/rweebs/abilsudarman/issues/new, lampirkan gambar atau tautan, dan isi dua keterangan di atas.
+**Lewat Issue** (paling mudah): buka https://github.com/rweebs/kawalkepakaran/issues/new/choose, pilih **Kirim klaim atau bukti pakar** (`submit-claim`), lampirkan gambar atau tautan, dan isi dua keterangan di atas. Koreksi dan hak jawab memakai formulir lainnya.
 
 **Lewat Pull Request:**
 1. Fork repo, lalu simpan gambar yang sudah ditutup datanya di `public/img/`.
@@ -72,7 +73,7 @@ Kode dan konten situs ini terbuka. Siapa pun boleh mengirim bukti, baik yang mem
 
 - Baca dulu [Panduan engineering](docs/engineering-guide.id.md) (persiapan, peta folder, cara menambah artikel, entri linimasa,
   atau halaman).
-- Cabangkan dari `master`, satu perubahan logis per commit, dan pakai pesan seperti `feat(seo): …` atau `fix(build): …`.
+- Cabangkan dari `main`, satu perubahan logis per commit, dan pakai pesan seperti `feat(seo): …` atau `fix(build): …`.
 - Jalankan `npm test && npm run build` sebelum membuka PR. CI menjalankan hal yang sama.
 - Jaga kalimat tentang orang tetap berhati-hati ("saya menduga", "menurut saya"). Jangan mengubah disclaimer atau teks hak
   jawab tanpa persetujuan penulis.

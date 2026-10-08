@@ -6,12 +6,13 @@ Untuk editor, penasihat hukum, mitra, dan siapa pun yang perlu memahami situs in
 
 ## 1. Apa itu situs ini
 
-**Kawal Abil Sudarman** (<https://abilsudarman.my.id>) adalah situs cek fakta terbuka yang dijalankan Rahmat Wibowo. Isinya:
+**Kawal Kepakaran** (<https://kawalkepakaran.org>) adalah cek fakta terbuka atas klaim para pakar, dijalankan Rahmat Wibowo. Isinya:
 
-- **Artikel** tulisan penulis tentang klaim publik Abil Sudarman (diterjemahkan ke bahasa Indonesia, atau aslinya berbahasa Inggris).
+- **Profil pakar dan cek klaim**: tiap klaim diberi putusan (dikonfirmasi, sebagian, tidak terbukti, belum bisa diverifikasi), tingkat keyakinan, bukti, dan "yang tidak dibuktikan". Halaman **Metode** menjelaskan caranya.
+- **Kasus 001 (Abil Sudarman)**: kasus pertama, dengan artikel penulis (diterjemahkan ke bahasa Indonesia, atau aslinya berbahasa Inggris).
 - **Bukti**: tangkapan layar dan catatan, masing-masing dijelaskan.
 - **Linimasa**: catatan bertanggal tentang apa yang ditulis, dikirim, dan dilakukan penulis.
-- **Hak jawab**: tawaran tetap bagi Abil Sudarman, dan pihak lain yang disebut, untuk menanggapi.
+- **Hak jawab**: tawaran tetap bagi setiap pakar yang disebut untuk menanggapi.
 - **Bowobharata**: kisah yang sama dituturkan sebagai kiasan Mahabharata, dengan adegan 3D. Halaman ini bersifat kreatif dan
   ditandai jelas sebagai kiasan, pendapat, dan ilustrasi buatan AI.
 
@@ -47,8 +48,8 @@ Langkah lengkap bagi kontributor ada di [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## 5. Hak jawab dan koreksi
 
-- Abil Sudarman, dan pihak lain yang disebut, boleh menjawab lewat email (alamat ada di halaman Hak jawab).
-- Tanggapan dimuat **apa adanya, tanpa penyuntingan**, di akhir artikel terkait di bawah judul *"Tanggapan Abil Sudarman"*,
+- Setiap pakar yang disebut, dan pihak lain yang disebut, boleh menjawab lewat email (alamat ada di halaman Hak jawab).
+- Tanggapan dimuat **apa adanya, tanpa penyuntingan**, di akhir artikel terkait di bawah judul *"Tanggapan"* diikuti nama pakar,
   lengkap dengan tanggal diterima.
 - Permintaan koreksi atau penghapusan mengikuti halaman yang sama. Penulis memutuskan dan mencatat perubahannya.
 
@@ -69,7 +70,7 @@ Langkah lengkap bagi kontributor ada di [CONTRIBUTING.md](../CONTRIBUTING.md).
 | 3. Tinjauan | Penulis + penasihat hukum | Teks, bukti, label, dan kehati-hatian diperiksa |
 | 4. Finalisasi | Editor / engineer | Draf ditandai **final** |
 | 5. Pemeriksaan otomatis | Komputer | Sekitar 700 tes, lalu build dengan pemindaian keamanan setiap halaman |
-| 6. Terbit | Engineer | Digabung ke `master`; situs dibangun ulang dan di-deploy otomatis |
+| 6. Terbit | Engineer | Digabung ke `main`; situs dibangun ulang dan di-deploy otomatis |
 | 7. Verifikasi | Editor | Buka halaman tayang dan pastikan terbaca benar dalam kedua bahasa |
 
 Perubahan kecil (memperbaiki satu kalimat) memakan beberapa menit setelah disetujui. Pemeriksaan otomatis sekitar satu menit.

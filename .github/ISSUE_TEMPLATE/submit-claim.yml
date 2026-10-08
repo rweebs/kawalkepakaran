@@ -1,0 +1,50 @@
+name: Submit a pakar claim or evidence / Kirim klaim atau bukti pakar
+description: Propose an expert's claim to check, or evidence for or against one already listed.
+title: "[claim] "
+labels: ["claim"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kawal Kepakaran publishes notes and opinion, not rulings. Every item is shown as a claim that can be checked,
+        and the expert named has a right of reply. **Mask ID numbers, phone numbers and other personal data before attaching anything.**
+  - type: input
+    id: pakar
+    attributes:
+      label: Expert (pakar) / Nama pakar
+      description: Full name as publicly used.
+    validations:
+      required: true
+  - type: textarea
+    id: claim
+    attributes:
+      label: The claim / Klaim
+      description: Quote it exactly, and say where and when it was made (link or origin, date).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / Bukti
+      description: Links or attachments that can be checked, with the date a screenshot was taken.
+    validations:
+      required: true
+  - type: textarea
+    id: shows
+    attributes:
+      label: What it shows / Apa yang ditunjukkan
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: What it does NOT prove / Apa yang tidak dibuktikan
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Rules / Aturan
+      options:
+        - label: Personal data of unrelated people is masked, and this is tied to a public claim (no rumour, no doxxing).
+          required: true

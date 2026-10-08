@@ -1,0 +1,33 @@
+name: Correction or reply / Koreksi atau hak jawab
+description: Ask for a correction, or reply as an expert named on the site.
+title: "[correction] "
+labels: ["correction"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Replies are published **as received, without editing**, next to the page concerned, with the date received.
+        The absence of a reply is not an admission of anything. You can also use the email on the Right of reply page.
+  - type: input
+    id: page
+    attributes:
+      label: Page address / Alamat halaman
+      placeholder: https://kawalkepakaran.org/klaim/...
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type / Jenis
+      options:
+        - Correction of a fact / Koreksi fakta
+        - Reply from the expert named / Tanggapan dari pakar yang disebut
+        - Removal request / Permintaan penghapusan
+    validations:
+      required: true
+  - type: textarea
+    id: text
+    attributes:
+      label: Your text and any source / Teks dan sumber
+    validations:
+      required: true

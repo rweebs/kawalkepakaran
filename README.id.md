@@ -1,12 +1,13 @@
-# Kawal Abil Sudarman
+# Kawal Kepakaran
 
 > [🇬🇧 English](README.md) · 🇮🇩 Bahasa Indonesia
 
-**Situs:** <https://abilsudarman.my.id> (Indonesia) · <https://abilsudarman.my.id/en> (Inggris)
+**Situs:** <https://kawalkepakaran.org> (Indonesia) · <https://kawalkepakaran.org/en> (Inggris)
 
-Repositori ini berisi kode sumber **Kawal Abil Sudarman** ("Operasi Ababil"), situs cek fakta terbuka. Situs ini memuat
-tulisan Rahmat Wibowo tentang klaim publik Abil Sudarman, lengkap dengan bukti, linimasa bertanggal, dan **hak jawab**
-bagi pihak yang disebut.
+Repositori ini berisi kode sumber **Kawal Kepakaran**, situs cek fakta terbuka atas klaim para pakar. Situs ini memeriksa
+kredensial, rekam jejak, dan bukti, memberi setiap klaim putusan beserta tingkat keyakinan, dan membuka **hak jawab** bagi
+setiap pakar yang disebut. Kasus pertama yang didokumentasikan, **Kasus 001**, adalah Abil Sudarman: artikel, bukti, dan
+linimasa bertanggal dari masa awal proyek ("Kawal Abil Sudarman") tetap ada di `/kasus/abil-sudarman`.
 
 Semua isi situs adalah **pendapat dan catatan penulis, bukan putusan pengadilan**. Setiap halaman menyatakannya.
 
@@ -23,21 +24,27 @@ Semua isi situs adalah **pendapat dan catatan penulis, bukan putusan pengadilan*
 
 | Halaman | Fungsinya |
 |---|---|
-| Beranda (`/`, `/en`) | Ringkasan dan tuduhan utama, masing-masing ditandai sebagai tuduhan penulis |
-| Artikel (`/artikel`, `/en/articles`) | Tulisan penulis dalam bahasa Indonesia dan Inggris |
-| Bukti (`/bukti`, `/en/evidence`) | Tangkapan layar, masing-masing dengan "apa yang terlihat" dan "apa yang tidak dibuktikan" |
-| Linimasa (`/linimasa`, `/en/timeline`) | Catatan bertanggal tentang apa yang ditulis, dikirim, dan dilakukan penulis |
-| Hak jawab (`/hak-jawab`, `/en/right-of-reply`) | Cara Abil Sudarman atau pihak lain menanggapi; tanggapan dimuat apa adanya |
-| Bowobharata (`/bowobharata`) | Kisahnya dituturkan sebagai kiasan Mahabharata, dengan adegan perang 3D |
+| Beranda (`/`, `/en`) | Gagasannya dalam satu layar, cek klaim terbaru, pakar yang diperiksa |
+| Pakar (`/pakar`, `/en/experts`) | Satu profil per pakar: kredensial yang diperiksa, klaim yang diuji, tanggapan |
+| Cek klaim (`/klaim`, `/en/claims`) | Tiap klaim dengan putusan (dikonfirmasi / sebagian / tidak terbukti / belum bisa diverifikasi), tingkat keyakinan, bukti, dan "yang tidak dibuktikan" |
+| Metode (`/metode`, `/en/method`) | Cara kredensial dan klaim dinilai |
+| Hak jawab (`/hak-jawab`, `/en/right-of-reply`) | Cara setiap pakar yang disebut menanggapi; tanggapan dimuat apa adanya |
+| Kasus 001 (`/kasus/abil-sudarman`, `/en/cases/abil-sudarman`) | Artikel, bukti, linimasa, dan kiasan 3D Bowobharata untuk kasus pertama |
 | Tentang, video, TikTok, buku, PageSpeed, disclaimer | Halaman pendukung |
+
+## Menambah pakar atau klaim
+
+Buka Issue dengan formulir **Kirim klaim atau bukti pakar** (lihat [CONTRIBUTING.md](CONTRIBUTING.md)), atau kirim pull
+request yang menambah satu berkas JSON di `src/content/pakar/` atau `src/content/klaim/` (kolomnya ada di
+`src/lib/schemas.ts`). Setiap klaim perlu sumber, "apa yang ditunjukkan bukti", dan "apa yang tidak dibuktikan".
 
 ## Menjalankan di komputer Anda (sekitar 10 menit)
 
 Anda butuh **Node.js 22** dan **npm** (cek dengan `node -v`).
 
 ```bash
-git clone https://github.com/rweebs/abilsudarman.git
-cd abilsudarman
+git clone https://github.com/rweebs/kawalkepakaran.git
+cd kawalkepakaran
 npm ci            # pasang dependensi persis sesuai kunci versi
 npm run dev       # pratinjau langsung di http://localhost:4321 (draf ikut tampil)
 ```
@@ -80,12 +87,17 @@ docs/             Dokumentasi
 
 ## Menerbitkan dan deploy
 
-1. Gabungkan ke `master`. GitHub Actions menjalankan tes dan build (`.github/workflows/ci.yml`).
-2. Cloudflare membangun dan men-deploy situs ke <https://abilsudarman.my.id> dari repositori yang sama.
+1. Gabungkan ke `main`. GitHub Actions menjalankan tes dan build (`.github/workflows/ci.yml`).
+2. Cloudflare membangun dan men-deploy situs ke <https://kawalkepakaran.org> dari repositori yang sama.
 3. Rincian, termasuk apa yang dicek setelah rilis, ada di [Panduan engineering](docs/engineering-guide.id.md#deploy).
 
 Sebelum rilis publik klaim baru, minta **penasihat hukum meninjau** tulisannya (UU ITE, KUHP baru, dan UU Pelindungan Data
 Pribadi). Lihat [Panduan bisnis](docs/business-guide.id.md#6-aturan-hukum-dan-keamanan).
+
+## Lisensi
+
+Kode: [MIT](LICENSE). Konten tulisan asli: [CC BY 4.0](LICENSE-CONTENT.md) (materi pihak ketiga seperti tangkapan layar bukti
+tetap tunduk pada ketentuan pemiliknya). Perpindahan dari domain lama dijelaskan di [docs/redirects.md](docs/redirects.md).
 
 ## Kontak
 
