@@ -1,0 +1,85 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../i18n';
+
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('manifesto', locale);
+const X_THREAD = 'https://x.com/ibamarief/status/1708488529427476635';
+const NIAGA = 'https://www.niaga.asia/perkara-korupsi-chromebook-pt-dki-perberat-hukuman-ibrahim-arief-jadi-5-tahun/';
+
+const T = {
+  id: {
+    title: 'Bukan Daftar Hitam: manifesto',
+    h1: 'Bukan Daftar Hitam', crumb: 'Manifesto', kicker: 'Pernyataan penggagas Kawal Kepakaran',
+    description: 'Pernyataan penggagas Kawal Kepakaran: akuntabilitas harus terbuka, bersumber, dan memberi hak jawab, bukan daftar yang disimpan diam-diam.',
+    intro: [
+      'Pada 1 Oktober 2023, Ibrahim Arief menulis di X bahwa ia menyimpan sebuah “never-hire list”: daftar pribadi orang yang tidak akan pernah ia pekerjakan. Daftar itu, katanya, harus tetap rahasia berdasarkan nasihat hukum, dan ia mengajak para pemimpin menyimpan daftar masing-masing sebagai tugas kepada organisasi yang mereka pimpin. Utas itu dilihat ratusan ribu kali.',
+      'Saya tidak menulis ini untuk membantah hak seseorang memilih siapa yang ia pekerjakan. Itu hak setiap pemimpin. Saya menulis karena utas itu memperlihatkan dengan jelas apa yang tidak ingin saya bangun.',
+      'Daftar yang tersembunyi memegang kuasa tanpa tanggung jawab. Orang di dalamnya tidak tahu alasannya, tidak bisa menjawab, tidak bisa meminta koreksi, dan tidak ada yang bisa memeriksa apakah daftar itu benar. Bila setiap pemimpin menyimpan daftarnya sendiri, ketidakadilan kecil menjadi ribuan, tak terlihat dan tak bisa dibantah.',
+      'Kawal Kepakaran memilih jalan sebaliknya. Kami menguji klaim orang yang menjual kepakarannya kepada publik, dan semuanya terbuka:',
+    ],
+    principles: [
+      ['Kami memeriksa klaim, bukan orangnya.', 'Yang diuji adalah apa yang dikatakan di depan umum.'],
+      ['Setiap putusan menyebut sumbernya.', 'Tanpa bukti, tidak ada putusan.'],
+      ['Kami menulis apa yang tidak dibuktikan.', 'Setiap klaim memuat batasnya sendiri.'],
+      ['“Belum bisa diverifikasi” adalah putusan yang sah,', 'dan itu bukan tuduhan.'],
+      ['Yang disebut berhak menjawab.', 'Jawabannya dimuat apa adanya, tanpa disunting.'],
+      ['Kesalahan kami boleh dikoreksi.', 'Kodenya terbuka; siapa pun boleh mengirim bukti yang memperkuat atau membantah.'],
+      ['Kami tidak menghukum.', 'Yang kami terbitkan adalah catatan dan pendapat, bukan putusan pengadilan. Praduga tak bersalah berlaku bagi semua orang.'],
+    ],
+    ruling: 'Satu hal saya tegaskan karena ia relevan. Menurut Niaga.asia, Pengadilan Negeri Jakarta Pusat pada 12 Mei 2026 menjatuhkan hukuman 4 tahun penjara kepada Ibrahim Arief dalam perkara pengadaan Chromebook, dan Pengadilan Tinggi DKI Jakarta memperberatnya menjadi 5 tahun pada 31 Agustus 2026. Artikel itu tidak menyatakan apakah putusan sudah berkekuatan tetap, maka saya menyebutnya divonis, bukan terpidana. Saya tidak memakai putusan itu untuk menilai tweet-nya, dan tidak memakai tweet itu untuk menilai putusannya. Prinsip di atas berlaku sama bagi siapa pun. Beliau juga berhak menjawab, dan jawabannya akan dimuat apa adanya.',
+    close: 'Daftar kami berbeda dari daftar hitam dalam satu hal yang menentukan: siapa pun bisa membacanya, membantahnya, dan memperbaikinya, termasuk orang yang ada di dalamnya.',
+    sign: 'Rahmat Wibowo, penggagas Kawal Kepakaran',
+    sourcesH: 'Sumber', xLabel: 'Utas @ibamarief di X, 1 Oktober 2023', niagaLabel: 'Niaga.asia, 31 Agustus 2026',
+    reply: 'Setiap pakar yang disebut berhak menjawab lewat', replyLabel: 'hak jawab', method: 'Baca metode kami',
+  },
+  en: {
+    title: 'Not a Blacklist: manifesto',
+    h1: 'Not a Blacklist', crumb: 'Manifesto', kicker: 'Statement by the founder of Kawal Kepakaran',
+    description: 'The founder\'s statement on Kawal Kepakaran: accountability should be open, sourced and answerable, not a list kept in secret.',
+    intro: [
+      'On 1 October 2023, Ibrahim Arief wrote on X about a personal “never-hire list”, kept as a reminder of profiles never to be considered for hiring. According to the thread, the list stays private on legal advice, and leaders are encouraged to keep their own versions as a duty to the organisations they lead. The thread was viewed hundreds of thousands of times.',
+      'I am not writing this to dispute anyone\'s right to choose whom to hire. That is every leader\'s right. I am writing because the thread shows clearly what I do not want to build.',
+      'A hidden list holds power without responsibility. The people on it do not know why, cannot reply, cannot ask for a correction, and no one can check whether the list is right. If every leader keeps a list of their own, small injustices become thousands, invisible and unanswerable.',
+      'Kawal Kepakaran takes the opposite road. We test the claims of people who offer their expertise to the public, and everything is open:',
+    ],
+    principles: [
+      ['We check claims, not people.', 'What is tested is what is said in public.'],
+      ['Every verdict names its source.', 'No evidence, no verdict.'],
+      ['We write what is not proven.', 'Every claim carries its own limits.'],
+      ['“Cannot yet be verified” is a legitimate verdict,', 'and it is not an accusation.'],
+      ['Those named have the right to reply.', 'The reply is published as received, unedited.'],
+      ['Our mistakes can be corrected.', 'The code is open; anyone may send evidence that supports or disputes a claim.'],
+      ['We do not punish.', 'What we publish is notes and opinion, not a court ruling. The presumption of innocence applies to everyone.'],
+    ],
+    ruling: 'One thing I state because it is relevant. According to Niaga.asia, the Central Jakarta District Court sentenced Ibrahim Arief to 4 years in prison on May 12, 2026 in the Chromebook procurement case, and the Jakarta High Court increased the sentence to 5 years on August 31, 2026. The article does not say whether the ruling is final, so I write “sentenced”, not “terpidana” (the Indonesian term for someone whose conviction is final). I do not use the ruling to judge the thread, and I do not use the thread to judge the ruling. The principles above apply the same to anyone. The person named also has the right to reply, and any reply will be published as received.',
+    close: 'Our list differs from a blacklist in one decisive way: anyone can read it, dispute it and correct it, including the people on it.',
+    sign: 'Rahmat Wibowo, founder of Kawal Kepakaran',
+    sourcesH: 'Sources', xLabel: 'Thread by @ibamarief on X, 1 October 2023', niagaLabel: 'Niaga.asia, 31 August 2026',
+    reply: 'Every expert named has the right to reply through the', replyLabel: 'right of reply', method: 'Read our method',
+  },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <p class="eyebrow">{T.kicker} · <time datetime="2026-10-09">{formatDateLocale('2026-10-09', locale)}</time></p>
+    <h1>{T.h1}</h1>
+    {T.intro.slice(0, 3).map((p) => <p>{p}</p>)}
+    <p>{T.intro[3]}</p>
+    <ol class="stack">
+      {T.principles.map(([head, rest]) => <li><strong>{head}</strong> {rest}</li>)}
+    </ol>
+    <p>{T.ruling}</p>
+    <p class="lead">{T.close}</p>
+    <p><strong>{T.sign}</strong></p>
+
+    <section aria-labelledby="sumber-h">
+      <h2 id="sumber-h">{T.sourcesH}</h2>
+      <ul>
+        <li><a href={X_THREAD} rel="noopener nofollow" target="_blank">{T.xLabel}</a></li>
+        <li><a href={NIAGA} rel="noopener nofollow" target="_blank">{T.niagaLabel}</a></li>
+      </ul>
+    </section>
+    <p class="notice">{T.reply} <a href={routePath('reply', locale)}>{T.replyLabel}</a>. <a href={routePath('method', locale)}>{T.method}</a>.</p>
+  </article>
+</BaseLayout>
