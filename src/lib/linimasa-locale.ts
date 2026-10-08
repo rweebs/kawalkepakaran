@@ -17,10 +17,10 @@ export interface LocalizedEvent {
   related: TimelineRelated[];
 }
 
-/** Article URL in the given language: '/artikel/x' -> '/en/articles/x'. Other local links go through the route table. */
+/** Article URL in the given language: '/kasus/abil-sudarman/artikel/x' -> '/en/cases/abil-sudarman/articles/x'. Other local links go through the route table. */
 export function localizeLocalHref(href: string, locale: Locale): string {
   if (locale === 'id') return href;
-  if (href.startsWith('/artikel/')) return localizedPath('articles', 'en', href.slice('/artikel/'.length));
+  if (href.startsWith('/kasus/abil-sudarman/artikel/')) return localizedPath('articles', 'en', href.slice('/kasus/abil-sudarman/artikel/'.length));
   return localizeHref(href, 'en');
 }
 

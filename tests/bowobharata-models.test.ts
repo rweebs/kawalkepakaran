@@ -23,7 +23,7 @@ describe('model manifest', () => {
     }
   });
   it('credits every model that requires attribution (CC BY), on the page', () => {
-    const page = read('src/pages/bowobharata.astro');
+    const page = read('src/pages/kasus/abil-sudarman/bowobharata.astro');
     expect(page).toContain('CREDITS');
     for (const m of Object.values(MODELS)) {
       if (m.license === 'CC BY 3.0') {

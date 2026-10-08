@@ -64,8 +64,9 @@ export const UI: Record<Locale, UiStrings> = {
     classification: { 'pendapat': 'Opinion', 'fakta-dengan-bukti': 'Fact with evidence', 'laporan-aduan': 'Report/complaint' },
     ogImageAlt: "Kawal Kepakaran: a wayang guardian weighing experts' claims",
     nav: {
-      '/artikel': 'Articles', '/bukti': 'Evidence', '/linimasa': 'Timeline', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
-      '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
+      '/pakar': 'Experts', '/klaim': 'Claim checks', '/metode': 'Method', Kasus: 'Cases',
+      '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
+      '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/kasus/abil-sudarman/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
       '/pagespeed': 'PageSpeed results', '/disclaimer': 'Disclaimer', '/hak-jawab': 'Right of reply',
     },
     themeSong: {
@@ -77,7 +78,7 @@ export const UI: Record<Locale, UiStrings> = {
   },
 };
 
-/** URL for a menu href in the given language ('/artikel' -> '/en/articles'). */
+/** URL for a menu href in the given language ('/kasus/abil-sudarman/artikel' -> '/en/cases/abil-sudarman/articles'). */
 export function localizeHref(href: string, locale: Locale): string {
   if (locale === 'id') return href;
   const [path, hash] = href.split('#');

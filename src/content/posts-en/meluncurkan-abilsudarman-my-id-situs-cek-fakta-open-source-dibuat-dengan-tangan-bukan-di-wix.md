@@ -46,7 +46,7 @@ You can [re-run the report yourself](https://pagespeed.web.dev/analysis/https-ab
 
 ## A comparison I think is fair
 
-My earlier [investigative report](/en/articles/investigative-report-unpacking-the-credentials-of-abil-sudarman) stated that abilsudarman.com, the personal site Mr. Sudarman uses to promote himself as a "vibe code expert," was built with Wix. That report cited Wappalyzer and domain and IP records as evidence. The two screenshots below are reused from that report.
+My earlier [investigative report](/en/cases/abil-sudarman/articles/investigative-report-unpacking-the-credentials-of-abil-sudarman) stated that abilsudarman.com, the personal site Mr. Sudarman uses to promote himself as a "vibe code expert," was built with Wix. That report cited Wappalyzer and domain and IP records as evidence. The two screenshots below are reused from that report.
 
 ![Wappalyzer on abilsudarman.com, showing Wix as the CMS, blog platform and e-commerce (from the earlier report)](/img/48c649137c5b8c518ceb0694.png)
 

@@ -1,10 +1,10 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
-import { getBukti } from '../lib/content';
-import { groupBukti, sourceLine, sourceLineFor, buktiText, BUKTI_GROUP_LABEL_EN, thumbFor } from '../lib/bukti';
-import { SITE } from '../lib/site';
-import { UI } from '../i18n/ui';
-import { localizedPath, type Locale } from '../i18n';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getBukti } from '../../../lib/content';
+import { groupBukti, sourceLine, sourceLineFor, buktiText, BUKTI_GROUP_LABEL_EN, thumbFor } from '../../../lib/bukti';
+import { SITE } from '../../../lib/site';
+import { UI } from '../../../i18n/ui';
+import { localizedPath, type Locale } from '../../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const groups = groupBukti(await getBukti());
 const DISCLAIMER = UI[locale].disclaimer;

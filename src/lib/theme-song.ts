@@ -28,12 +28,12 @@ export const BOWOBHARATA_SONG: Song = {
 export function songFor(rawPath: string): Song {
   const path = toIndonesianPath(rawPath);
   if (path === '/tentang') return TENTANG_SONG;
-  if (path === '/bowobharata') return BOWOBHARATA_SONG;
+  if (path === '/kasus/abil-sudarman/bowobharata') return BOWOBHARATA_SONG;
   return THEME_SONG;
 }
 
 /** Pages whose song starts by itself on the visitor's first tap, click or key press (browsers block sound at page load). */
-export const AUTOPLAY_PATHS: readonly string[] = ['/', '/tentang', '/bowobharata'];
+export const AUTOPLAY_PATHS: readonly string[] = ['/', '/tentang', '/kasus/abil-sudarman/bowobharata'];
 export const shouldAutoplay = (path: string) => AUTOPLAY_PATHS.includes(toIndonesianPath(path));
 
 /** Privacy-enhanced embed that autoplays (after a click) and loops the single video. */

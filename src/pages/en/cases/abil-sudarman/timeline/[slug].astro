@@ -1,7 +1,7 @@
 ---
-import Page from '../../linimasa/[slug].astro';
-import { EVENTS } from '../../../lib/linimasa';
-import { EVENTS_EN } from '../../../lib/linimasa-en';
+import Page from '../../../../kasus/abil-sudarman/linimasa/[slug].astro';
+import { EVENTS } from '../../../../../lib/linimasa';
+import { EVENTS_EN } from '../../../../../lib/linimasa-en';
 
 export function getStaticPaths() {
   return EVENTS.map((event) => ({ params: { slug: EVENTS_EN[event.slug].slug }, props: { idSlug: event.slug } }));

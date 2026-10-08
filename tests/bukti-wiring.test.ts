@@ -4,11 +4,11 @@ import { NAV, PAGE_LASTMOD } from '../src/lib/site';
 
 describe('bukti wiring', () => {
   it('has Bukti in the menu', () => {
-    expect(NAV.filter((n) => n.href === '/bukti')).toHaveLength(1);
-    expect(NAV.find((n) => n.href === '/bukti')?.label).toBe('Bukti');
+    expect(NAV.filter((n) => n.href === '/kasus/abil-sudarman/bukti')).toHaveLength(1);
+    expect(NAV.find((n) => n.href === '/kasus/abil-sudarman/bukti')?.label).toBe('Bukti');
   });
   it('has a YYYY-MM-DD lastmod for the sitemap', () => {
-    expect((PAGE_LASTMOD as Record<string, string>)['/bukti']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((PAGE_LASTMOD as Record<string, string>)['/kasus/abil-sudarman/bukti']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
   describe('uniform card dimensions', () => {
     const css = readFileSync('src/styles/global.css', 'utf8');
@@ -29,7 +29,7 @@ describe('bukti wiring', () => {
     });
   });
   it('the page is a real route and lists /bukti in the sitemap source', () => {
-    expect(readFileSync('src/pages/bukti.astro', 'utf8')).toContain('groupBukti');
-    expect(readFileSync('src/pages/sitemap.xml.ts', 'utf8')).toContain("path: '/bukti'");
+    expect(readFileSync('src/pages/kasus/abil-sudarman/bukti.astro', 'utf8')).toContain('groupBukti');
+    expect(readFileSync('src/pages/sitemap.xml.ts', 'utf8')).toContain("path: '/kasus/abil-sudarman/bukti'");
   });
 });

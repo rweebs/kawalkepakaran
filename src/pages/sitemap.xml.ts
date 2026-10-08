@@ -17,21 +17,25 @@ export const GET: APIRoute = async () => {
 
   const entries: SitemapEntry[] = [
     { path: '/', lastmod: latest },
-    { path: '/artikel', lastmod: latest },
-    { path: '/bukti', lastmod: PAGE_LASTMOD['/bukti'], images: bukti.flatMap((e) => e.data.images.map((i) => i.src)) },
+    { path: '/pakar', lastmod: PAGE_LASTMOD['/pakar'] },
+    { path: '/klaim', lastmod: PAGE_LASTMOD['/klaim'] },
+    { path: '/metode', lastmod: PAGE_LASTMOD['/metode'] },
+    { path: '/kasus/abil-sudarman', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman'] },
+    { path: '/kasus/abil-sudarman/artikel', lastmod: latest },
+    { path: '/kasus/abil-sudarman/bukti', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bukti'], images: bukti.flatMap((e) => e.data.images.map((i) => i.src)) },
     { path: '/videos', lastmod: PAGE_LASTMOD['/videos'] },
     { path: '/tiktok', lastmod: PAGE_LASTMOD['/tiktok'] },
     { path: '/buku', lastmod: PAGE_LASTMOD['/buku'] },
     { path: '/pagespeed', lastmod: PAGE_LASTMOD['/pagespeed'] },
     { path: '/tentang', lastmod: PAGE_LASTMOD['/tentang'] },
-    { path: '/linimasa', lastmod: PAGE_LASTMOD['/linimasa'] },
-    { path: '/bowobharata', lastmod: PAGE_LASTMOD['/bowobharata'] },
+    { path: '/kasus/abil-sudarman/linimasa', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/linimasa'] },
+    { path: '/kasus/abil-sudarman/bowobharata', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata'] },
     ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date })),
     { path: '/hak-jawab', lastmod: PAGE_LASTMOD['/hak-jawab'] },
     { path: '/disclaimer', lastmod: PAGE_LASTMOD['/disclaimer'] },
     ...posts.map((p) => {
       const header = firstImage(p.body ?? '');
-      return { path: `/artikel/${p.id}`, lastmod: iso(p.data.translationDate), images: header ? [header.src] : [] };
+      return { path: `/kasus/abil-sudarman/artikel/${p.id}`, lastmod: iso(p.data.translationDate), images: header ? [header.src] : [] };
     }),
   ];
 
@@ -45,7 +49,7 @@ export const GET: APIRoute = async () => {
     ...localizedEvents('en').map((e) => ({ path: eventPath(e, 'en'), lastmod: e.date })),
     ...postsEn.map((p) => {
       const header = firstImage(p.body ?? '');
-      return { path: `/en/articles/${p.id}`, lastmod: iso(p.data.publishedDate), images: header ? [header.src] : [] };
+      return { path: `/en/cases/abil-sudarman/articles/${p.id}`, lastmod: iso(p.data.publishedDate), images: header ? [header.src] : [] };
     }),
   ];
   entries.push(...english);

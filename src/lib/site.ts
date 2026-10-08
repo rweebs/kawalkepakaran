@@ -22,16 +22,22 @@ export const CLASSIFICATION_LABEL = {
 } as const;
 
 // Date each static page's content last changed (used for sitemap lastmod; update when the text changes).
-export const PAGE_LASTMOD = { '/hak-jawab': '2026-10-04', '/disclaimer': '2026-10-04', '/bukti': '2026-10-04', '/videos': '2026-10-04', '/buku': '2026-10-04', '/tiktok': '2026-10-05', '/pagespeed': '2026-10-05', '/tentang': '2026-10-05', '/linimasa': '2026-10-05', '/bowobharata': '2026-10-05' } as const;
+export const PAGE_LASTMOD = { '/pakar': '2026-10-09', '/klaim': '2026-10-09', '/metode': '2026-10-09', '/kasus/abil-sudarman': '2026-10-09', '/hak-jawab': '2026-10-04', '/disclaimer': '2026-10-04', '/kasus/abil-sudarman/bukti': '2026-10-04', '/videos': '2026-10-04', '/buku': '2026-10-04', '/tiktok': '2026-10-05', '/pagespeed': '2026-10-05', '/tentang': '2026-10-05', '/kasus/abil-sudarman/linimasa': '2026-10-05', '/kasus/abil-sudarman/bowobharata': '2026-10-05' } as const;
 
 export interface NavLink { href: string; label: string }
 export type NavEntry = NavLink | { label: string; items: readonly NavLink[] };
 
-// Grouped by what a visitor wants to do: read, check, follow the chronology, watch or download, learn about the project, reply.
+// Grouped by what a visitor wants to do: find an expert, check a claim, learn the method, read a case, watch or download, learn about the project, reply.
 export const NAV_GROUPS: readonly NavEntry[] = [
-  { href: '/artikel', label: 'Artikel' },
-  { href: '/bukti', label: 'Bukti' },
-  { href: '/linimasa', label: 'Linimasa' },
+  { href: '/pakar', label: 'Pakar' },
+  { href: '/klaim', label: 'Cek klaim' },
+  { href: '/metode', label: 'Metode' },
+  { label: 'Kasus', items: [
+    { href: '/kasus/abil-sudarman/artikel', label: 'Artikel' },
+    { href: '/kasus/abil-sudarman/bukti', label: 'Bukti' },
+    { href: '/kasus/abil-sudarman/linimasa', label: 'Linimasa' },
+    { href: '/kasus/abil-sudarman/bowobharata', label: 'Bowobharata' },
+  ] },
   { label: 'Media', items: [
     { href: '/videos', label: 'Videos' },
     { href: '/tiktok', label: 'TikTok' },
@@ -39,7 +45,6 @@ export const NAV_GROUPS: readonly NavEntry[] = [
   ] },
   { label: 'Tentang', items: [
     { href: '/tentang', label: 'Tentang penggagas' },
-    { href: '/bowobharata', label: 'Bowobharata' },
     { href: '/#kontribusi', label: 'Kontribusi' },
     { href: '/pagespeed', label: 'Hasil PageSpeed' },
     { href: '/disclaimer', label: 'Disclaimer' },

@@ -1,0 +1,40 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { localizedPath, routePath, type Locale } from '../../../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('caseHome', locale);
+const T = {
+  id: { title: 'Kasus 001: Abil Sudarman', h1: 'Kasus 001: Abil Sudarman', crumb: 'Kasus 001',
+    description: 'Kasus pertama Kawal Kepakaran: klaim kredensial dan jabatan Abil Sudarman diperiksa terhadap bukti, lengkap dengan linimasa dan hak jawab.' },
+  en: { title: 'Case 001: Abil Sudarman', h1: 'Case 001: Abil Sudarman', crumb: 'Case 001',
+    description: "Kawal Kepakaran's first case: Abil Sudarman's claimed credentials and roles checked against the evidence, with a timeline and the right of reply." },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    {locale === 'id' ? (
+      <>
+        <p>Kasus 001 memeriksa klaim kredensial dan jabatan Abil Sudarman terhadap bukti yang tersedia. Semua isi adalah pendapat dan catatan penulis, bukan putusan.</p>
+        <ul>
+          <li><a href={routePath('articles', locale)}>Artikel</a></li>
+          <li><a href={routePath('evidence', locale)}>Bukti</a></li>
+          <li><a href={routePath('timeline', locale)}>Linimasa</a></li>
+          <li><a href={routePath('bowobharata', locale)}>Bowobharata</a></li>
+          <li><a href={routePath('reply', locale)}>Hak jawab</a></li>
+        </ul>
+      </>
+    ) : (
+      <>
+        <p>Case 001 checks Abil Sudarman's claimed credentials and roles against the available evidence. Everything here is the author's opinion and notes, not a ruling.</p>
+        <ul>
+          <li><a href={routePath('articles', locale)}>Articles</a></li>
+          <li><a href={routePath('evidence', locale)}>Evidence</a></li>
+          <li><a href={routePath('timeline', locale)}>Timeline</a></li>
+          <li><a href={routePath('bowobharata', locale)}>Bowobharata</a></li>
+          <li><a href={routePath('reply', locale)}>Right of reply</a></li>
+        </ul>
+      </>
+    )}
+  </article>
+</BaseLayout>

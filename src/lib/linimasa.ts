@@ -16,7 +16,7 @@ export interface TimelineEvent {
 
 const LI = 'https://www.linkedin.com/feed/update/urn:li:activity:';
 const PULSE = 'https://www.linkedin.com/pulse/';
-const A = '/artikel/';
+const A = '/kasus/abil-sudarman/artikel/';
 
 export const EVENTS: TimelineEvent[] = [
   {
@@ -45,7 +45,7 @@ export const EVENTS: TimelineEvent[] = [
       { label: 'Unggahan 2', url: LI + '7456232246212071425/' },
       { label: 'Unggahan 3', url: LI + '7456213219469332480/' },
     ],
-    related: [{ label: 'Halaman Bukti', href: '/bukti' }],
+    related: [{ label: 'Halaman Bukti', href: '/kasus/abil-sudarman/bukti' }],
   },
   {
     slug: 'somasi-pertama',
@@ -95,7 +95,7 @@ export const EVENTS: TimelineEvent[] = [
       'Saya menyelidiki riwayat pendidikan Abil Sudarman dan secara terbuka mempertanyakan klaim lulusan University of London jurusan AI/ML Computer Science, dengan alasan belum adanya bukti verifikasi dan adanya catatan pendaftaran sebelumnya di program Manajemen BINUS Online. Ini keraguan dan penilaian saya berdasarkan bukti yang saya miliki, bukan putusan.',
     ],
     sources: [{ label: 'Unggahan di LinkedIn', url: LI + '7465237756336582656/' }],
-    related: [{ label: 'Halaman Bukti', href: '/bukti' }],
+    related: [{ label: 'Halaman Bukti', href: '/kasus/abil-sudarman/bukti' }],
   },
   {
     slug: 'merek-korika-dan-gelar-direktur-eksekutif',
@@ -344,7 +344,7 @@ export const EVENTS: TimelineEvent[] = [
     ],
     sources: [],
     related: [
-      { label: 'Semua artikel', href: '/artikel' },
+      { label: 'Semua artikel', href: '/kasus/abil-sudarman/artikel' },
       { label: 'Laporan investigasi', href: A + 'investigative-report-unpacking-the-credentials-of-abil-sudarman' },
       { label: 'Laporan riset mendalam', href: A + 'deep-research-report-rahmat-wibowo-infraloka-vs-abil-sudarman-assai-a-confidence-scored-credential-verification' },
     ],
@@ -366,7 +366,7 @@ export const EVENTS: TimelineEvent[] = [
   },
 ];
 
-export const eventUrl = (e: TimelineEvent) => `/linimasa/${e.slug}`;
+export const eventUrl = (e: TimelineEvent) => `/kasus/abil-sudarman/linimasa/${e.slug}`;
 export const getEvent = (slug: string) => EVENTS.find((e) => e.slug === slug);
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];

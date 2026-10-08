@@ -5,15 +5,18 @@ import { NAV, NAV_GROUPS, isActive } from '../src/lib/site';
 const read = (p: string) => readFileSync(p, 'utf8');
 
 describe('menu structure', () => {
-  it('has six top-level entries in reading order, with Hak jawab always visible', () => {
-    expect(NAV_GROUPS.map((e) => e.label)).toEqual(['Artikel', 'Bukti', 'Linimasa', 'Media', 'Tentang', 'Hak jawab']);
+  it('has seven top-level entries in reading order, with Hak jawab always visible', () => {
+    expect(NAV_GROUPS.map((e) => e.label)).toEqual(['Pakar', 'Cek klaim', 'Metode', 'Kasus', 'Media', 'Tentang', 'Hak jawab']);
     const hakJawab = NAV_GROUPS.find((e) => e.label === 'Hak jawab');
     expect(hakJawab && 'href' in hakJawab ? hakJawab.href : null).toBe('/hak-jawab');
   });
   it('groups media and about links, none empty', () => {
     const group = (label: string) => NAV_GROUPS.find((e) => e.label === label) as { items: { href: string }[] };
     expect(group('Media').items.map((i) => i.href)).toEqual(['/videos', '/tiktok', '/buku']);
-    expect(group('Tentang').items.map((i) => i.href)).toEqual(['/tentang', '/bowobharata', '/#kontribusi', '/pagespeed', '/disclaimer']);
+    expect(group('Kasus').items.map((i) => i.href)).toEqual([
+      '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/kasus/abil-sudarman/linimasa', '/kasus/abil-sudarman/bowobharata',
+    ]);
+    expect(group('Tentang').items.map((i) => i.href)).toEqual(['/tentang', '/#kontribusi', '/pagespeed', '/disclaimer']);
     for (const e of NAV_GROUPS) if ('items' in e) expect(e.items.length, e.label).toBeGreaterThan(0);
   });
   it('lists each page exactly once and every link points at a real page or anchor', () => {

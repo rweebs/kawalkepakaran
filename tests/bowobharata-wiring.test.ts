@@ -3,14 +3,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { NAV, PAGE_LASTMOD } from '../src/lib/site';
 
 const read = (p: string) => readFileSync(p, 'utf8');
-const page = () => read('src/pages/bowobharata.astro');
+const page = () => read('src/pages/kasus/abil-sudarman/bowobharata.astro');
 
 describe('bowobharata page', () => {
   it('exists, is in the menu, and has a lastmod for the sitemap', () => {
-    expect(existsSync('src/pages/bowobharata.astro')).toBe(true);
-    expect(NAV.map((n) => n.href)).toContain('/bowobharata');
-    expect(PAGE_LASTMOD['/bowobharata' as keyof typeof PAGE_LASTMOD]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/bowobharata'");
+    expect(existsSync('src/pages/kasus/abil-sudarman/bowobharata.astro')).toBe(true);
+    expect(NAV.map((n) => n.href)).toContain('/kasus/abil-sudarman/bowobharata');
+    expect(PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata' as keyof typeof PAGE_LASTMOD]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/kasus/abil-sudarman/bowobharata'");
   });
   it('shows the framing note before the posters, with links to the facts and the right of reply', () => {
     const p = page();
@@ -43,7 +43,7 @@ describe('bowobharata page', () => {
 
 describe('the page makes no heavy imports', () => {
   it('does not import three or motion anywhere in the page or the stage component', () => {
-    for (const f of ['src/pages/bowobharata.astro', 'src/components/BowobharataStage.astro']) {
+    for (const f of ['src/pages/kasus/abil-sudarman/bowobharata.astro', 'src/components/BowobharataStage.astro']) {
       expect(read(f), f).not.toMatch(/from 'three'|from 'motion'|KurukshetraScene/);
     }
   });

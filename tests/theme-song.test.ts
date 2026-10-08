@@ -27,13 +27,13 @@ describe('song per page and autoplay', () => {
     expect(songFor('/tentang')).toBe(TENTANG_SONG);
     expect(BOWOBHARATA_SONG.videoId).toBe('OgKCAkjlHDI');
     expect(musicUrl(BOWOBHARATA_SONG.videoId)).toBe('https://music.youtube.com/watch?v=OgKCAkjlHDI');
-    expect(songFor('/bowobharata')).toBe(BOWOBHARATA_SONG);
-    for (const p of ['/', '/artikel', '/linimasa', '/tentang/x']) expect(songFor(p), p).toBe(THEME_SONG);
+    expect(songFor('/kasus/abil-sudarman/bowobharata')).toBe(BOWOBHARATA_SONG);
+    for (const p of ['/', '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/linimasa', '/tentang/x']) expect(songFor(p), p).toBe(THEME_SONG);
   });
   it('autoplays only on the home page, /tentang and /bowobharata', () => {
-    expect([...AUTOPLAY_PATHS]).toEqual(['/', '/tentang', '/bowobharata']);
-    for (const p of ['/', '/tentang', '/bowobharata']) expect(shouldAutoplay(p), p).toBe(true);
-    for (const p of ['/artikel', '/bukti', '/linimasa', '/videos']) expect(shouldAutoplay(p), p).toBe(false);
+    expect([...AUTOPLAY_PATHS]).toEqual(['/', '/tentang', '/kasus/abil-sudarman/bowobharata']);
+    for (const p of ['/', '/tentang', '/kasus/abil-sudarman/bowobharata']) expect(shouldAutoplay(p), p).toBe(true);
+    for (const p of ['/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/kasus/abil-sudarman/linimasa', '/videos']) expect(shouldAutoplay(p), p).toBe(false);
   });
 });
 

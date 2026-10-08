@@ -46,7 +46,7 @@ Anda dapat [menjalankan ulang laporannya sendiri](https://pagespeed.web.dev/anal
 
 ## Perbandingan yang menurut saya adil
 
-[Laporan investigasi](/artikel/investigative-report-unpacking-the-credentials-of-abil-sudarman) saya sebelumnya menyatakan bahwa abilsudarman.com, situs pribadi yang digunakan Bapak Sudarman untuk mempromosikan dirinya sebagai "pakar vibe code," dibangun dengan Wix. Laporan itu mengutip Wappalyzer serta catatan domain dan IP sebagai buktinya. Kedua tangkapan layar di bawah ini dipakai ulang dari laporan tersebut.
+[Laporan investigasi](/kasus/abil-sudarman/artikel/investigative-report-unpacking-the-credentials-of-abil-sudarman) saya sebelumnya menyatakan bahwa abilsudarman.com, situs pribadi yang digunakan Bapak Sudarman untuk mempromosikan dirinya sebagai "pakar vibe code," dibangun dengan Wix. Laporan itu mengutip Wappalyzer serta catatan domain dan IP sebagai buktinya. Kedua tangkapan layar di bawah ini dipakai ulang dari laporan tersebut.
 
 ![Wappalyzer pada abilsudarman.com, menampilkan Wix sebagai CMS, platform blog, dan e-commerce (dari laporan sebelumnya)](/img/48c649137c5b8c518ceb0694.png)
 

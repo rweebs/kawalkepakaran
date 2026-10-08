@@ -36,8 +36,8 @@ describe('linimasa events', () => {
     for (const e of EVENTS) {
       for (const s of e.sources) expect(s.url, e.slug).toMatch(/^https:\/\//);
       for (const r of e.related) {
-        if (r.href.startsWith('/artikel/')) expect(existsSync(`src/content/posts/${r.href.slice('/artikel/'.length)}.md`), r.href).toBe(true);
-        else expect(['/artikel', '/bukti', '/hak-jawab', '/pagespeed'], r.href).toContain(r.href);
+        if (r.href.startsWith('/kasus/abil-sudarman/artikel/')) expect(existsSync(`src/content/posts/${r.href.slice('/kasus/abil-sudarman/artikel/'.length)}.md`), r.href).toBe(true);
+        else expect(['/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/hak-jawab', '/pagespeed'], r.href).toContain(r.href);
       }
     }
   });
@@ -56,24 +56,24 @@ describe('linimasa helpers', () => {
   it('finds previous and next entries', () => {
     expect(neighbours(EVENTS[0].slug)).toEqual({ prev: undefined, next: EVENTS[1] });
     expect(neighbours(EVENTS[EVENTS.length - 1].slug).next).toBeUndefined();
-    expect(eventUrl(EVENTS[0])).toBe(`/linimasa/${EVENTS[0].slug}`);
+    expect(eventUrl(EVENTS[0])).toBe(`/kasus/abil-sudarman/linimasa/${EVENTS[0].slug}`);
   });
 });
 
 describe('linimasa wiring', () => {
   it('has Linimasa in the menu', () => {
-    expect(NAV.filter((n) => n.href === '/linimasa')).toHaveLength(1);
-    expect(NAV.find((n) => n.href === '/linimasa')?.label).toBe('Linimasa');
+    expect(NAV.filter((n) => n.href === '/kasus/abil-sudarman/linimasa')).toHaveLength(1);
+    expect(NAV.find((n) => n.href === '/kasus/abil-sudarman/linimasa')?.label).toBe('Linimasa');
   });
   it('has a lastmod and lists the index and every entry in the sitemap', () => {
-    expect((PAGE_LASTMOD as Record<string, string>)['/linimasa']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((PAGE_LASTMOD as Record<string, string>)['/kasus/abil-sudarman/linimasa']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const sitemap = read('src/pages/sitemap.xml.ts');
-    expect(sitemap).toContain("path: '/linimasa'");
+    expect(sitemap).toContain("path: '/kasus/abil-sudarman/linimasa'");
     expect(sitemap).toContain('EVENTS.map');
   });
   it('has an index page and a per-entry page that offers right of reply', () => {
-    expect(read('src/pages/linimasa.astro')).toContain('groupByMonth');
-    const detail = read('src/pages/linimasa/[slug].astro');
+    expect(read('src/pages/kasus/abil-sudarman/linimasa.astro')).toContain('groupByMonth');
+    const detail = read('src/pages/kasus/abil-sudarman/linimasa/[slug].astro');
     expect(detail).toContain('getStaticPaths');
     expect(detail).toContain("localizedPath('reply'");
     expect(detail).not.toMatch(/tuduh/i);

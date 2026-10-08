@@ -1,12 +1,12 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import ClassificationBadge from '../../components/ClassificationBadge.astro';
-import PostThumb from '../../components/PostThumb.astro';
-import TiltCard from '../../components/motion/TiltCard.tsx';
-import { firstImage } from '../../lib/header-image';
-import { getPosts } from '../../lib/content';
-import { localizedPath, type Locale } from '../../i18n';
-import { SITE } from '../../lib/site';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import ClassificationBadge from '../../../../components/ClassificationBadge.astro';
+import PostThumb from '../../../../components/PostThumb.astro';
+import TiltCard from '../../../../components/motion/TiltCard.tsx';
+import { firstImage } from '../../../../lib/header-image';
+import { getPosts } from '../../../../lib/content';
+import { localizedPath, type Locale } from '../../../../i18n';
+import { SITE } from '../../../../lib/site';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const posts = await getPosts();
 const T = {

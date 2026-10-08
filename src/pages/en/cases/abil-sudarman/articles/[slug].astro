@@ -1,6 +1,6 @@
 ---
-import Page from '../../artikel/[slug].astro';
-import { getPostsEn } from '../../../lib/content';
+import Page from '../../../../kasus/abil-sudarman/artikel/[slug].astro';
+import { getPostsEn } from '../../../../../lib/content';
 
 export async function getStaticPaths() {
   return (await getPostsEn()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));

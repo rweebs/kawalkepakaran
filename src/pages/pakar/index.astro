@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { localizedPath, routePath, type Locale } from '../../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('experts', locale);
+const T = {
+  id: { title: 'Daftar pakar yang diperiksa', h1: 'Pakar', crumb: 'Pakar',
+    description: 'Profil para pakar yang klaimnya diperiksa Kawal Kepakaran: kredensial yang diverifikasi, klaim yang dicek, dan tanggapan mereka.' },
+  en: { title: 'Experts we have checked', h1: 'Experts', crumb: 'Experts',
+    description: "Profiles of the experts whose claims Kawal Kepakaran has checked: verified credentials, claims checked, and the experts' replies." },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    {locale === 'id' ? (
+      <>
+        <p>Profil pakar akan dimuat di sini.</p>
+      </>
+    ) : (
+      <>
+        <p>Expert profiles will be listed here.</p>
+      </>
+    )}
+  </article>
+</BaseLayout>

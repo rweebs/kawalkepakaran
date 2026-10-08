@@ -1,15 +1,15 @@
 ---
 import { render } from 'astro:content';
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import ClassificationBadge from '../../components/ClassificationBadge.astro';
-import TranslationNotice from '../../components/TranslationNotice.astro';
-import PostHeader from '../../components/PostHeader.astro';
-import { firstImage } from '../../lib/header-image';
-import { getPosts, getPostsEn } from '../../lib/content';
-import { SITE, CLASSIFICATION_LABEL } from '../../lib/site';
-import { descriptionFromMarkdown } from '../../lib/seo';
-import { UI } from '../../i18n/ui';
-import { localizedPath, type Locale } from '../../i18n';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import ClassificationBadge from '../../../../components/ClassificationBadge.astro';
+import TranslationNotice from '../../../../components/TranslationNotice.astro';
+import PostHeader from '../../../../components/PostHeader.astro';
+import { firstImage } from '../../../../lib/header-image';
+import { getPosts, getPostsEn } from '../../../../lib/content';
+import { SITE, CLASSIFICATION_LABEL } from '../../../../lib/site';
+import { descriptionFromMarkdown } from '../../../../lib/seo';
+import { UI } from '../../../../i18n/ui';
+import { localizedPath, type Locale } from '../../../../i18n';
 
 export async function getStaticPaths() {
   return (await getPosts()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
