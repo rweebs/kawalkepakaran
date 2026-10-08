@@ -30,7 +30,7 @@ Everything on the site is the author's **opinion and notes, not a court ruling**
 | Method (`/metode`, `/en/method`) | How credentials and claims are judged |
 | Right of reply (`/hak-jawab`, `/en/right-of-reply`) | How any expert named can respond; replies are published as received |
 | Case 001 (`/kasus/abil-sudarman`, `/en/cases/abil-sudarman`) | Articles, evidence, timeline and the Bowobharata 3D allegory for the first case |
-| About, videos, TikTok, books, PageSpeed, disclaimer | Supporting pages |
+| About, videos, TikTok, books, disclaimer | Supporting pages |
 
 ## Add an expert or a claim
 

@@ -31,7 +31,6 @@ export const GET: APIRoute = async () => {
     { path: '/videos', lastmod: PAGE_LASTMOD['/videos'] },
     { path: '/tiktok', lastmod: PAGE_LASTMOD['/tiktok'] },
     { path: '/buku', lastmod: PAGE_LASTMOD['/buku'] },
-    { path: '/pagespeed', lastmod: PAGE_LASTMOD['/pagespeed'] },
     { path: '/tentang', lastmod: PAGE_LASTMOD['/tentang'] },
     { path: '/kasus/abil-sudarman/linimasa', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/linimasa'] },
     { path: '/kasus/abil-sudarman/bowobharata', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata'] },

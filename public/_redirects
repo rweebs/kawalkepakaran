@@ -5,6 +5,10 @@
 /sitemap-index.xml /sitemap.xml 301
 /sitemap-0.xml /sitemap.xml 301
 # BEGIN legacy
+/en/pagespeed /en 301
+/en/pagespeed/* /en 301
+/pagespeed / 301
+/pagespeed/* / 301
 /en/articles /en/cases/abil-sudarman/articles 301
 /en/articles/* /en/cases/abil-sudarman/articles/:splat 301
 /en/evidence /en/cases/abil-sudarman/evidence 301

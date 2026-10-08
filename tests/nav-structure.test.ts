@@ -16,7 +16,7 @@ describe('menu structure', () => {
     expect(group('Kasus').items.map((i) => i.href)).toEqual([
       '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/kasus/abil-sudarman/linimasa', '/kasus/abil-sudarman/bowobharata',
     ]);
-    expect(group('Tentang').items.map((i) => i.href)).toEqual(['/tentang', '/#kontribusi', '/pagespeed', '/disclaimer']);
+    expect(group('Tentang').items.map((i) => i.href)).toEqual(['/tentang', '/#kontribusi', '/disclaimer']);
     for (const e of NAV_GROUPS) if ('items' in e) expect(e.items.length, e.label).toBeGreaterThan(0);
   });
   it('lists each page exactly once and every link points at a real page or anchor', () => {

@@ -246,7 +246,7 @@ export const EVENTS: TimelineEvent[] = [
       { label: 'Tulisan di LinkedIn', url: PULSE + 'five-sites-one-question-did-anyone-engineer-just-vibe-rahmat-wibowo-lzewc/' },
       { label: 'Unggahan pengantar', url: LI + '7473992256207605760/' },
     ],
-    related: [{ label: 'Hasil PageSpeed situs ini', href: '/pagespeed' }],
+    related: [],
   },
   {
     slug: 'unggahan-22-juni',
@@ -361,7 +361,6 @@ export const EVENTS: TimelineEvent[] = [
     sources: [],
     related: [
       { label: 'Meluncurkan abilsudarman.my.id', href: A + 'meluncurkan-abilsudarman-my-id-situs-cek-fakta-open-source-dibuat-dengan-tangan-bukan-di-wix' },
-      { label: 'Hasil PageSpeed', href: '/pagespeed' },
     ],
   },
 ];

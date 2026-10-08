@@ -30,7 +30,7 @@ Semua isi situs adalah **pendapat dan catatan penulis, bukan putusan pengadilan*
 | Metode (`/metode`, `/en/method`) | Cara kredensial dan klaim dinilai |
 | Hak jawab (`/hak-jawab`, `/en/right-of-reply`) | Cara setiap pakar yang disebut menanggapi; tanggapan dimuat apa adanya |
 | Kasus 001 (`/kasus/abil-sudarman`, `/en/cases/abil-sudarman`) | Artikel, bukti, linimasa, dan kiasan 3D Bowobharata untuk kasus pertama |
-| Tentang, video, TikTok, buku, PageSpeed, disclaimer | Halaman pendukung |
+| Tentang, video, TikTok, buku, disclaimer | Halaman pendukung |
 
 ## Menambah pakar atau klaim
 

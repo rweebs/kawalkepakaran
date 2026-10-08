@@ -175,7 +175,7 @@ export const EVENTS_EN: Record<string, TimelineEn> = {
       'To be clear: the comparison also put my own InfraLoka site next to the others. That is my interest, and readers are entitled to weigh it.',
     ],
     src: ['Article on LinkedIn', 'Introductory post'],
-    rel: ['This site\'s PageSpeed results'],
+    rel: [],
   },
   'unggahan-22-juni': {
     slug: 'mocking-post-june-22',
@@ -254,6 +254,6 @@ export const EVENTS_EN: Record<string, TimelineEn> = {
       'The article notes its limits: the finding about Wix comes from my earlier report and I have not re-verified it, and PageSpeed scores can vary.',
     ],
     src: [],
-    rel: ['Launching abilsudarman.my.id', 'PageSpeed results'],
+    rel: ['Launching abilsudarman.my.id'],
   },
 };

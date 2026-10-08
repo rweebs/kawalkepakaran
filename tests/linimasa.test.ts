@@ -37,7 +37,7 @@ describe('linimasa events', () => {
       for (const s of e.sources) expect(s.url, e.slug).toMatch(/^https:\/\//);
       for (const r of e.related) {
         if (r.href.startsWith('/kasus/abil-sudarman/artikel/')) expect(existsSync(`src/content/posts/${r.href.slice('/kasus/abil-sudarman/artikel/'.length)}.md`), r.href).toBe(true);
-        else expect(['/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/hak-jawab', '/pagespeed'], r.href).toContain(r.href);
+        else expect(['/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/hak-jawab'], r.href).toContain(r.href);
       }
     }
   });
