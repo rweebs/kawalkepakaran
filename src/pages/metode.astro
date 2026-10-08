@@ -15,11 +15,59 @@ const T = {
     <h1>{T.h1}</h1>
     {locale === 'id' ? (
       <>
-        <p>Penjelasan metode akan dimuat di sini.</p>
+        <p class="lead">Kami menilai klaim kepakaran dengan bukti yang bisa dilacak, bukan dengan reputasi. Setiap hasil memuat putusan, tingkat keyakinan, dan batas apa yang tidak dibuktikan.</p>
+
+        <h2>Lima langkah</h2>
+        <ol>
+          <li><strong>Catat klaim.</strong> Kutip klaimnya, di mana dan kapan disampaikan.</li>
+          <li><strong>Periksa kredensial.</strong> Tanyakan ke penerbit kredensial (kampus, lembaga) dan cek basis data resmi yang tersedia.</li>
+          <li><strong>Kumpulkan bukti.</strong> Setiap bukti ditulis dengan apa yang ditunjukkannya dan apa yang tidak dibuktikannya.</li>
+          <li><strong>Beri putusan.</strong> Salah satu dari empat putusan di bawah, dengan tingkat keyakinan.</li>
+          <li><strong>Buka hak jawab.</strong> Pakar yang disebut dapat menanggapi; tanggapan dimuat apa adanya.</li>
+        </ol>
+
+        <h2>Empat putusan</h2>
+        <ul>
+          <li><strong>Dikonfirmasi</strong>: penerbit kredensial atau sumber primer menguatkan klaim.</li>
+          <li><strong>Sebagian</strong>: sebagian klaim terkuatkan, sebagian lain tidak atau berbeda dari yang dinyatakan.</li>
+          <li><strong>Tidak terbukti</strong>: sumber yang semestinya ada sudah dicari dan tidak menguatkan klaim. Ini bukan pernyataan bahwa klaim itu pasti salah.</li>
+          <li><strong>Belum bisa diverifikasi</strong>: belum ada sumber yang bisa dihubungi atau ditemukan; kami menunggu konfirmasi.</li>
+        </ul>
+
+        <h2>Tingkat keyakinan</h2>
+        <p><strong>Rendah</strong>: sedikit sumber atau hanya sumber tidak langsung. <strong>Sedang</strong>: beberapa sumber yang saling sejalan. <strong>Tinggi</strong>: sumber primer dan konfirmasi langsung.</p>
+
+        <h2>Batas</h2>
+        <p>Isi situs ini adalah pendapat dan catatan penulis, bukan putusan pengadilan. Setiap orang berhak atas praduga tak bersalah dan <a href={routePath('reply', locale)}>hak jawab</a>.</p>
+        <p><a href={routePath('claims', locale)}>Lihat klaim yang sudah diperiksa →</a></p>
       </>
     ) : (
       <>
-        <p>The method will be explained here.</p>
+        <p class="lead">We judge claims of expertise by evidence that can be traced, not by reputation. Every result carries a verdict, a confidence level, and the limits of what it does not prove.</p>
+
+        <h2>Five steps</h2>
+        <ol>
+          <li><strong>Record the claim.</strong> Quote it, and where and when it was made.</li>
+          <li><strong>Check the credentials.</strong> Ask the issuer (university, institution) and check the official databases available.</li>
+          <li><strong>Gather evidence.</strong> Each item is written up with what it shows and what it does not prove.</li>
+          <li><strong>Give a verdict.</strong> One of the four below, with a confidence level.</li>
+          <li><strong>Open the right of reply.</strong> The expert named can respond; replies are published as received.</li>
+        </ol>
+
+        <h2>The four verdicts</h2>
+        <ul>
+          <li><strong>Confirmed</strong>: the credential issuer or a primary source supports the claim.</li>
+          <li><strong>Partly</strong>: part of the claim is supported, part is not or differs from what was stated.</li>
+          <li><strong>Not supported</strong>: the sources that should exist were sought and do not support the claim. This is not a statement that the claim is certainly false.</li>
+          <li><strong>Cannot yet be verified</strong>: no source could yet be reached or found; we are waiting for confirmation.</li>
+        </ul>
+
+        <h2>Confidence</h2>
+        <p><strong>Low</strong>: few sources or only indirect ones. <strong>Medium</strong>: several sources that agree. <strong>High</strong>: primary sources and direct confirmation.</p>
+
+        <h2>Limits</h2>
+        <p>What this site publishes is the author's opinion and notes, not a court ruling. Everyone has the presumption of innocence and the <a href={routePath('reply', locale)}>right of reply</a>.</p>
+        <p><a href={routePath('claims', locale)}>See the claims already checked →</a></p>
       </>
     )}
   </article>

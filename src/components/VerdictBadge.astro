@@ -1,0 +1,7 @@
+---
+import { verdictLabel } from '../lib/verdict';
+import type { Verdict } from '../lib/schemas';
+import type { Locale } from '../i18n';
+const { verdict, locale = 'id' } = Astro.props as { verdict: Verdict; locale?: Locale };
+---
+<span class="badge badge--blue verdict" data-verdict={verdict}>{verdictLabel(verdict, locale)}</span>

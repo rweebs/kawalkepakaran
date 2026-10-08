@@ -1,6 +1,7 @@
 import { EVENTS, eventUrl } from '../lib/linimasa';
 import type { APIRoute } from 'astro';
 import { getBukti, getPosts, getPostsEn } from '../lib/content';
+import { getKlaim, getPakar } from '../lib/pakar';
 import { ROUTES } from '../i18n';
 import { localizedEvents, eventPath } from '../lib/linimasa-locale';
 import { firstImage } from '../lib/header-image';
@@ -13,6 +14,8 @@ export const GET: APIRoute = async () => {
   const posts = await getPosts();
   const bukti = await getBukti();
   const postsEn = await getPostsEn();
+  const pakar = await getPakar();
+  const klaim = await getKlaim();
   const latest = posts.length ? iso(new Date(Math.max(...posts.map((p) => p.data.translationDate.getTime())))) : undefined;
 
   const entries: SitemapEntry[] = [
@@ -21,6 +24,8 @@ export const GET: APIRoute = async () => {
     { path: '/klaim', lastmod: PAGE_LASTMOD['/klaim'] },
     { path: '/metode', lastmod: PAGE_LASTMOD['/metode'] },
     { path: '/kasus/abil-sudarman', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman'] },
+    ...pakar.map((p) => ({ path: `/pakar/${p.id}`, lastmod: PAGE_LASTMOD['/pakar'] })),
+    ...klaim.map((k) => ({ path: `/klaim/${k.id}`, lastmod: PAGE_LASTMOD['/klaim'] })),
     { path: '/kasus/abil-sudarman/artikel', lastmod: latest },
     { path: '/kasus/abil-sudarman/bukti', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bukti'], images: bukti.flatMap((e) => e.data.images.map((i) => i.src)) },
     { path: '/videos', lastmod: PAGE_LASTMOD['/videos'] },
@@ -46,6 +51,8 @@ export const GET: APIRoute = async () => {
   });
   const english: SitemapEntry[] = [
     ...paired,
+    ...pakar.map((p) => ({ path: `/en/experts/${p.id}`, lastmod: PAGE_LASTMOD['/pakar'] })),
+    ...klaim.map((k) => ({ path: `/en/claims/${k.id}`, lastmod: PAGE_LASTMOD['/klaim'] })),
     ...localizedEvents('en').map((e) => ({ path: eventPath(e, 'en'), lastmod: e.date })),
     ...postsEn.map((p) => {
       const header = firstImage(p.body ?? '');

@@ -1,0 +1,10 @@
+---
+import Page from '../../klaim/[slug].astro';
+import { getKlaim } from '../../../lib/pakar';
+
+export async function getStaticPaths() {
+  return (await getKlaim()).map((k) => ({ params: { slug: k.id }, props: { id: k.id } }));
+}
+const { id } = Astro.props;
+---
+<Page id={id} locale="en" />

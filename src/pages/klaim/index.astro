@@ -1,26 +1,42 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import VerdictBadge from '../../components/VerdictBadge.astro';
+import { getKlaim, getPakar } from '../../lib/pakar';
+import { confidenceLabel } from '../../lib/verdict';
 import { localizedPath, routePath, type Locale } from '../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('claims', locale);
+const claims = await getKlaim();
+const pakar = await getPakar();
+const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
 const T = {
   id: { title: 'Cek klaim para pakar', h1: 'Cek klaim', crumb: 'Cek klaim',
-    description: 'Klaim para pakar yang telah diperiksa, masing-masing dengan putusan pemeriksaan, tingkat keyakinan, bukti, dan batas apa yang tidak dibuktikan.' },
+    description: 'Klaim para pakar yang telah diperiksa, masing-masing dengan putusan pemeriksaan, tingkat keyakinan, bukti, dan batas apa yang tidak dibuktikan.',
+    lead: 'Setiap klaim diberi putusan pemeriksaan dan tingkat keyakinan, dengan bukti dan batas apa yang tidak dibuktikan.',
+    empty: 'Belum ada klaim yang dimuat.', confidence: 'Keyakinan', method: 'Bagaimana putusan ditentukan' },
   en: { title: 'Expert claim checks', h1: 'Claim checks', crumb: 'Claim checks',
-    description: 'Expert claims we have checked, each with a verdict, a confidence level, the evidence, and the limits of what the evidence does not prove.' },
+    description: 'Expert claims we have checked, each with a verdict, a confidence level, the evidence, and the limits of what the evidence does not prove.',
+    lead: 'Each claim gets a verdict and a confidence level, with the evidence and the limits of what it does not prove.',
+    empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided' },
 }[locale];
 ---
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
-    {locale === 'id' ? (
-      <>
-        <p>Daftar klaim akan dimuat di sini.</p>
-      </>
+    <p class="lead">{T.lead}</p>
+    {claims.length === 0 ? (
+      <p class="muted">{T.empty}</p>
     ) : (
-      <>
-        <p>Claim checks will be listed here.</p>
-      </>
+      <ul class="stack">
+        {claims.map((k) => (
+          <li>
+            <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
+            {' '}<VerdictBadge verdict={k.data.verdict} locale={locale} />
+            <span class="muted"> · {nameOf(k.data.pakar)} · {T.confidence}: {confidenceLabel(k.data.confidence, locale)}</span>
+          </li>
+        ))}
+      </ul>
     )}
+    <p><a href={routePath('method', locale)}>{T.method} →</a></p>
   </article>
 </BaseLayout>

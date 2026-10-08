@@ -1,0 +1,72 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import VerdictBadge from '../../components/VerdictBadge.astro';
+import { getKlaim, getPakar } from '../../lib/pakar';
+import { getBukti } from '../../lib/content';
+import { truncateAtWord } from '../../lib/seo';
+import { confidenceLabel, replyStatusLabel, verdictLabel } from '../../lib/verdict';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
+
+export async function getStaticPaths() {
+  return (await getKlaim()).map((k) => ({ params: { slug: k.id }, props: { id: k.id } }));
+}
+// Indonesian page. The English page (src/pages/en/claims/[slug].astro) passes locale="en".
+const { id, locale = 'id' } = Astro.props as { id: string; locale?: Locale };
+const klaim = (await getKlaim()).find((k) => k.id === id)!;
+const pakar = (await getPakar()).find((p) => p.id === klaim.data.pakar)!;
+const evidence = (await getBukti()).filter((b) => klaim.data.evidence.includes(b.id)).sort((a, b) => a.data.order - b.data.order);
+const claim = locale === 'id' ? klaim.data.claim : klaim.data.claimEn;
+const limits = locale === 'id' ? klaim.data.limits : klaim.data.limitsEn;
+const path = localizedPath('claims', locale, id);
+const alternates = { id: localizedPath('claims', 'id', id), en: localizedPath('claims', 'en', id) };
+const description = truncateAtWord(`${verdictLabel(klaim.data.verdict, locale)}: ${claim} ${pakar.data.name}. ${limits}`, 160);
+const T = {
+  id: { crumb: 'Cek klaim', by: 'Pakar', venue: 'Disampaikan di', madeAt: 'Tanggal', verdict: 'Putusan pemeriksaan', confidence: 'Tingkat keyakinan',
+    evidence: 'Bukti', noEvidence: 'Belum ada bukti yang ditautkan.', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
+  en: { crumb: 'Claim checks', by: 'Expert', venue: 'Made at', madeAt: 'Date', verdict: 'Verdict', confidence: 'Confidence',
+    evidence: 'Evidence', noEvidence: 'No evidence linked yet.', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
+}[locale];
+---
+<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates}
+  breadcrumbs={[{ name: T.crumb, path: routePath('claims', locale) }, { name: claim, path }]}>
+  <article class="reading">
+    <h1>{claim}</h1>
+    <p>
+      <strong>{T.by}:</strong> <a href={localizedPath('experts', locale, pakar.id)}>{pakar.data.name}</a><br />
+      <strong>{T.venue}:</strong> {klaim.data.venue}
+      {klaim.data.madeAt && <><br /><strong>{T.madeAt}:</strong> {formatDateLocale(klaim.data.madeAt, locale)}</>}
+    </p>
+
+    <section aria-labelledby="putusan-h">
+      <h2 id="putusan-h">{T.verdict}</h2>
+      <p><VerdictBadge verdict={klaim.data.verdict} locale={locale} /> · {T.confidence}: {confidenceLabel(klaim.data.confidence, locale)}</p>
+    </section>
+
+    <section aria-labelledby="bukti-h">
+      <h2 id="bukti-h">{T.evidence}</h2>
+      {evidence.length === 0 ? (
+        <p class="muted">{T.noEvidence}</p>
+      ) : (
+        <ul class="stack">
+          {evidence.map((b) => {
+            const x = locale === 'en' && b.data.en ? b.data.en : b.data;
+            return (
+              <li>
+                <a href={b.data.images[0].src} target="_blank" rel="noopener">{x.title}</a>
+                <span class="muted"> · {x.shows}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p><a href={routePath('evidence', locale)}>{T.evidence} →</a></p>
+    </section>
+
+    <section aria-labelledby="batas-h">
+      <h2 id="batas-h">{T.limits}</h2>
+      <p>{limits}</p>
+    </section>
+
+    <p class="notice">{T.reply}: {replyStatusLabel(klaim.data.replyStatus, locale)}. <a href={routePath('reply', locale)}>{T.replyLink}</a>.</p>
+  </article>
+</BaseLayout>

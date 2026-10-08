@@ -1,0 +1,59 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import CredentialList from '../../components/CredentialList.astro';
+import VerdictBadge from '../../components/VerdictBadge.astro';
+import { getPakar, klaimForPakar } from '../../lib/pakar';
+import { truncateAtWord } from '../../lib/seo';
+import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
+import { localizedPath, routePath, type Locale } from '../../i18n';
+
+export async function getStaticPaths() {
+  return (await getPakar()).map((p) => ({ params: { slug: p.id }, props: { id: p.id } }));
+}
+// Indonesian page. The English page (src/pages/en/experts/[slug].astro) passes locale="en".
+const { id, locale = 'id' } = Astro.props as { id: string; locale?: Locale };
+const pakar = (await getPakar()).find((p) => p.id === id)!;
+const claims = await klaimForPakar(id);
+const path = localizedPath('experts', locale, id);
+const alternates = { id: localizedPath('experts', 'id', id), en: localizedPath('experts', 'en', id) };
+const summary = locale === 'id' ? pakar.data.summary : pakar.data.summaryEn;
+const description = truncateAtWord(`${pakar.data.name}: ${summary}`, 160);
+const T = {
+  id: { crumb: 'Pakar', creds: 'Kredensial', claims: 'Klaim yang diperiksa', none: 'Belum ada klaim yang diperiksa.',
+    confidence: 'Keyakinan', reply: 'Hak jawab', replyNote: 'berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman ini lewat', replyLabel: 'hak jawab' },
+  en: { crumb: 'Experts', creds: 'Credentials', claims: 'Claims checked', none: 'No claims have been checked yet.',
+    confidence: 'Confidence', reply: 'Right of reply', replyNote: 'has the right to respond, correct or add context to any of these pages through the', replyLabel: 'right of reply' },
+}[locale];
+---
+<BaseLayout title={pakar.data.name} description={description} path={path} locale={locale} alternates={alternates}
+  breadcrumbs={[{ name: T.crumb, path: routePath('experts', locale) }, { name: pakar.data.name, path }]}>
+  <article class="reading">
+    <h1>{pakar.data.name}</h1>
+    <p class="lead">{pakar.data.field}</p>
+    <p>{summary}</p>
+
+    <section aria-labelledby="kredensial-h">
+      <h2 id="kredensial-h">{T.creds}</h2>
+      <CredentialList credentials={pakar.data.credentials} locale={locale} />
+    </section>
+
+    <section aria-labelledby="klaim-h">
+      <h2 id="klaim-h">{T.claims}</h2>
+      {claims.length === 0 ? (
+        <p class="muted">{T.none}</p>
+      ) : (
+        <ul class="stack">
+          {claims.map((k) => (
+            <li>
+              <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
+              {' '}<VerdictBadge verdict={k.data.verdict} locale={locale} />
+              <span class="muted"> · {T.confidence}: {confidenceLabel(k.data.confidence, locale)} · {replyStatusLabel(k.data.replyStatus, locale)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+
+    <p class="notice">{pakar.data.name} {T.replyNote} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>
+  </article>
+</BaseLayout>

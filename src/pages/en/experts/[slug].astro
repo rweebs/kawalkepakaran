@@ -1,0 +1,10 @@
+---
+import Page from '../../pakar/[slug].astro';
+import { getPakar } from '../../../lib/pakar';
+
+export async function getStaticPaths() {
+  return (await getPakar()).map((p) => ({ params: { slug: p.id }, props: { id: p.id } }));
+}
+const { id } = Astro.props;
+---
+<Page id={id} locale="en" />
