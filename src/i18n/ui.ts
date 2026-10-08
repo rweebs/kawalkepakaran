@@ -65,7 +65,7 @@ export const UI: Record<Locale, UiStrings> = {
     ogImageAlt: "Kawal Kepakaran: a wayang guardian weighing experts' claims",
     nav: {
       '/pakar': 'Experts', '/klaim': 'Claim checks', '/metode': 'Method', Kasus: 'Cases',
-      '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
+      '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', '/kasus/abil-sudarman/linimasa-abil': 'Abil timeline', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
       '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/kasus/abil-sudarman/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
       '/disclaimer': 'Disclaimer', '/hak-jawab': 'Right of reply',
     },

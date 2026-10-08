@@ -1,0 +1,102 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getBukti, getPosts, getPostsEn } from '../../../lib/content';
+import { ABIL_ENTRIES, KIND_LABEL, UNDATED_SORT } from '../../../lib/abil-timeline';
+import { localizedPath, routePath, type Locale } from '../../../i18n';
+
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('abilTimeline', locale);
+const buktiById = new Map((await getBukti()).map((b) => [b.id, b]));
+const postsById = new Map((locale === 'en' ? await getPostsEn() : await getPosts()).map((p) => [p.id, p]));
+
+const T = {
+  id: {
+    title: 'Linimasa Abil Sudarman', h1: 'Linimasa Abil Sudarman', crumb: 'Linimasa Abil',
+    description: 'Kronologi klaim, catatan resmi, dan liputan tentang Abil Sudarman, tokoh utama Kasus 001; tiap entri bersumber dan memuat batasnya.',
+    lead: 'Linimasa ini mengurutkan apa yang diklaim, dicatat, dan diberitakan tentang Abil Sudarman. Isinya hanya yang sudah ada di artikel dan bukti situs ini; tidak ada fakta baru. Linimasa tentang apa yang ditulis dan dilakukan penulis ada di halaman terpisah.',
+    note: 'Setiap entri ditulis sebagai catatan yang dapat diperiksa, lengkap dengan batas apa yang tidak dibuktikannya. Ini pendapat dan catatan penulis, bukan putusan; belum adanya konfirmasi bukan berarti sebuah klaim salah.',
+    dated: 'Bertanggal', undated: 'Tanpa tanggal pasti',
+    undatedLead: 'Entri berikut tidak menyebut tanggal pada sumbernya, sehingga tidak diberi tanggal di sini.',
+    limits: 'Yang tidak dibuktikan', sources: 'Sumber', evidence: 'Bukti', article: 'Artikel',
+    seeAuthor: 'Lihat juga linimasa penulis', replyNote: 'Abil Sudarman berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap entri lewat', replyLabel: 'hak jawab',
+  },
+  en: {
+    title: 'Abil Sudarman timeline', h1: 'Abil Sudarman timeline', crumb: 'Abil timeline',
+    description: 'A chronology of claims, official records and coverage about Abil Sudarman, the central figure of Case 001; every entry is sourced and states its limits.',
+    lead: 'This timeline orders what has been claimed, recorded and reported about Abil Sudarman. It contains only what is already in this site\'s articles and evidence; it adds no new facts. A timeline of what the author wrote and did is on a separate page.',
+    note: 'Each entry is written as a record that can be checked, together with the limits of what it does not prove. This is the author\'s opinion and notes, not a ruling; not yet confirmed does not mean a claim is false.',
+    dated: 'Dated', undated: 'Undated',
+    undatedLead: 'The following entries do not state a date in their source, so none is given here.',
+    limits: 'What this does not prove', sources: 'Sources', evidence: 'Evidence', article: 'Article',
+    seeAuthor: 'See also the author\'s timeline', replyNote: 'Abil Sudarman has the right to respond, correct, or add context to any entry through the', replyLabel: 'right of reply',
+  },
+}[locale];
+
+const entries = ABIL_ENTRIES.map((e) => {
+  const b = e.buktiId ? buktiById.get(e.buktiId) : undefined;
+  const bx = b ? (locale === 'en' && b.data.en ? b.data.en : b.data) : undefined;
+  const links: { href: string; label: string; kind: string }[] = [];
+  for (const s of [...(e.buktiId ? [{ bukti: e.buktiId }] : []), ...e.sources]) {
+    if ('bukti' in s) {
+      const sb = buktiById.get(s.bukti);
+      if (sb) links.push({ href: sb.data.images[0].src, label: (locale === 'en' && sb.data.en ? sb.data.en : sb.data).title, kind: T.evidence });
+    } else if ('artikel' in s) {
+      const post = postsById.get(s.artikel);
+      if (post) links.push({ href: localizedPath('articles', locale, post.id), label: post.data.title, kind: T.article });
+    } else {
+      links.push({ href: s.url, label: s.label[locale], kind: T.sources });
+    }
+  }
+  return {
+    id: e.id, undated: e.when.sort === UNDATED_SORT, when: e.when[locale], kind: KIND_LABEL[e.kind][locale],
+    title: bx ? bx.title : e.title![locale], text: bx ? bx.shows : e.text![locale], limits: bx ? bx.limits : e.limits![locale], links,
+  };
+});
+const dated = entries.filter((e) => !e.undated);
+const undated = entries.filter((e) => e.undated);
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    <p class="lead">{T.lead}</p>
+    <p class="linimasa-note">{T.note}</p>
+    <p><a href={routePath('timeline', locale)}>{T.seeAuthor} →</a></p>
+
+    <section aria-labelledby="bertanggal-h">
+      <h2 id="bertanggal-h">{T.dated}</h2>
+      <ol class="linimasa-list">
+        {dated.map((e) => (
+          <li class="linimasa-item" id={e.id}>
+            <p class="linimasa-meta">{e.when} · {e.kind}</p>
+            <h3>{e.title}</h3>
+            <p>{e.text}</p>
+            <p class="muted"><strong>{T.limits}:</strong> {e.limits}</p>
+            {e.links.length > 0 && (
+              <p class="muted">{T.sources}: {e.links.map((l, i) => <>{i > 0 && '; '}<a href={l.href} rel="noopener">{l.label}</a></>)}</p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <section aria-labelledby="tanpa-tanggal-h">
+      <h2 id="tanpa-tanggal-h">{T.undated}</h2>
+      <p class="muted">{T.undatedLead}</p>
+      <ol class="linimasa-list">
+        {undated.map((e) => (
+          <li class="linimasa-item" id={e.id}>
+            <p class="linimasa-meta">{e.kind}</p>
+            <h3>{e.title}</h3>
+            <p>{e.text}</p>
+            <p class="muted"><strong>{T.limits}:</strong> {e.limits}</p>
+            {e.links.length > 0 && (
+              <p class="muted">{T.sources}: {e.links.map((l, i) => <>{i > 0 && '; '}<a href={l.href} rel="noopener">{l.label}</a></>)}</p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <p class="notice">{T.replyNote} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>
+  </article>
+</BaseLayout>

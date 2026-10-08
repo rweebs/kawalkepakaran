@@ -33,6 +33,7 @@ export const GET: APIRoute = async () => {
     { path: '/buku', lastmod: PAGE_LASTMOD['/buku'] },
     { path: '/tentang', lastmod: PAGE_LASTMOD['/tentang'] },
     { path: '/kasus/abil-sudarman/linimasa', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/linimasa'] },
+    { path: '/kasus/abil-sudarman/linimasa-abil', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/linimasa-abil'] },
     { path: '/kasus/abil-sudarman/bowobharata', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata'] },
     ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date })),
     { path: '/hak-jawab', lastmod: PAGE_LASTMOD['/hak-jawab'] },

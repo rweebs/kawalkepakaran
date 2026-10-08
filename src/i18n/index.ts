@@ -20,6 +20,7 @@ export const ROUTES = {
   articles: { id: '/kasus/abil-sudarman/artikel', en: '/en/cases/abil-sudarman/articles' },
   evidence: { id: '/kasus/abil-sudarman/bukti', en: '/en/cases/abil-sudarman/evidence' },
   timeline: { id: '/kasus/abil-sudarman/linimasa', en: '/en/cases/abil-sudarman/timeline' },
+  abilTimeline: { id: '/kasus/abil-sudarman/linimasa-abil', en: '/en/cases/abil-sudarman/abil-timeline' },
   videos: { id: '/videos', en: '/en/videos' },
   tiktok: { id: '/tiktok', en: '/en/tiktok' },
   books: { id: '/buku', en: '/en/books' },

@@ -4,7 +4,7 @@ import { EVENTS } from '../../../lib/linimasa';
 import { localizedEvents, groupByMonthFor, formatDateFor, eventPath } from '../../../lib/linimasa-locale';
 import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
-import { localizedPath, type Locale } from '../../../i18n';
+import { localizedPath, routePath, type Locale } from '../../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const events = localizedEvents(locale);
@@ -30,6 +30,7 @@ const excerpt = (s: string) => (s.length > 220 ? `${s.slice(0, s.lastIndexOf(' '
   <article class="reading linimasa">
     <h1>{T.h1}</h1>
     <p class="muted">{DISCLAIMER}</p>
+    <p><a href={routePath('abilTimeline', locale)}>{locale === 'id' ? 'Lihat juga linimasa Abil Sudarman' : 'See also the Abil Sudarman timeline'} →</a></p>
     {locale === 'id' ? (
       <>
         <p>Ini catatan saya sendiri, berurutan waktu, tentang apa yang saya tulis, kirim, dan lakukan terkait klaim Abil Sudarman, dari {formatDateFor(first.date, locale)} sampai {formatDateFor(last.date, locale)}. Saya menyusunnya dari kiriman publik saya agar siapa pun dapat menilai urutan dan isinya sendiri.</p>
