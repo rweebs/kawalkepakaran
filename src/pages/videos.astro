@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getVideos } from '../lib/content';
+import { sortVideos, thumbSrc, watchUrl } from '../lib/videos';
+import { thumbFor, thumbSrcset, CARD_THUMB_SIZES } from '../lib/bukti';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const videos = sortVideos(await getVideos());
+const T = {
+  id: { title: 'Video tentang Abil Sudarman', h1: 'Video tentang Abil Sudarman', intro: 'Judul asli video; berisi pendapat penulis, bukan putusan. Pemutar YouTube (pihak ketiga) baru dimuat setelah Anda menekan sebuah video; tanpa itu tidak ada permintaan ke YouTube.', empty: 'Belum ada video yang dipublikasikan.', video: 'Video', close: 'Tutup', note: 'Pemutar YouTube (pihak ketiga, privasi-ditingkatkan) dimuat setelah Anda menekan sebuah video dan dihentikan saat jendela ditutup.', description: 'Daftar video YouTube Rahmat Wibowo tentang klaim Abil Sudarman. Putar langsung di halaman; pemutar YouTube baru dimuat setelah Anda menekan video.' },
+  en: { title: 'YouTube videos on Abil Sudarman', h1: 'Videos', intro: 'Original video titles (in Indonesian); they contain the author\'s opinion, not rulings. The YouTube player (third party) only loads after you press a video; until then no request is made to YouTube.', empty: 'No videos have been published yet.', video: 'Video', close: 'Close', note: 'The YouTube player (third party, privacy-enhanced) loads after you press a video and is stopped when the window is closed.', description: "Rahmat Wibowo's YouTube videos about Abil Sudarman's claims (in Indonesian). Play them on the page; the YouTube player only loads after you press a video." },
+}[locale];
+const path = localizedPath('videos', locale);
+const DESCRIPTION = T.description;
+const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: DESCRIPTION };
+---
+<BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.h1, path }]}>
+  <section class="container pad-block">
+    <h1>{T.h1}</h1>
+    <p class="muted">{DISCLAIMER}</p>
+    <p class="muted">{T.intro}</p>
+    {videos.length === 0
+      ? <p class="muted">{T.empty}</p>
+      : <ul class="video-grid">{videos.map((v) => (
+          <li class="card">
+            <a class="video-card" href={watchUrl(v.data.youtubeId, v.data.start)} target="_blank" rel="noopener"
+               data-video-id={v.data.youtubeId} data-start={v.data.start} data-title={v.data.title}>
+              <span class="video-thumb">
+                <img src={thumbFor(thumbSrc(v.data.youtubeId))} srcset={thumbSrcset(thumbSrc(v.data.youtubeId))} sizes={CARD_THUMB_SIZES} alt="" width="640" height="360" loading="lazy" decoding="async" />
+                <span class="video-play" aria-hidden="true"></span>
+              </span>
+              <span class="video-title">{v.data.title}</span>
+            </a>
+          </li>))}</ul>}
+  </section>
+  <dialog id="video-dialog" class="video-dialog" aria-labelledby="video-dialog-title">
+    <div class="video-dialog__body">
+      <div class="video-dialog__bar">
+        <h2 id="video-dialog-title">{T.video}</h2>
+        <button type="button" class="btn video-close">{T.close}</button>
+      </div>
+      <div class="video-stage"></div>
+      <p class="muted video-note">{T.note}</p>
+    </div>
+  </dialog>
+  <script>import '../scripts/video-modal';</script>
+</BaseLayout>

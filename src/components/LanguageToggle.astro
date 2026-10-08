@@ -1,0 +1,10 @@
+---
+import { LOCALES, LANGUAGE_NAME, LANGUAGE_SHORT, type Locale } from '../i18n';
+interface Props { locale: Locale; href: string; label: string }
+const { locale, href, label } = Astro.props;
+---
+<div class="lang-toggle" role="group" aria-label={label}>
+  {LOCALES.map((l) => l === locale
+    ? <span class="lang-toggle__opt is-current" aria-current="true" lang={l} title={LANGUAGE_NAME[l]}>{LANGUAGE_SHORT[l]}</span>
+    : <a class="lang-toggle__opt" href={href} hreflang={l} lang={l} title={LANGUAGE_NAME[l]} aria-label={`${label}: ${LANGUAGE_NAME[l]}`}>{LANGUAGE_SHORT[l]}</a>)}
+</div>

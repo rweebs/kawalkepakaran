@@ -1,0 +1,22 @@
+---
+import { localizedPath, type Locale } from '../i18n';
+interface Props { originalTitle: string; originalUrl?: string; author: string; locale?: Locale; slug?: string; original?: boolean }
+const { originalTitle, originalUrl, author, locale = 'id', slug, original = true } = Astro.props;
+---
+<aside class="card notice" data-translation-notice>
+  {locale === 'id' ? (
+    <p class="muted">
+      Ini adalah terjemahan Bahasa Indonesia dari tulisan asli berbahasa Inggris
+      “{originalTitle}” oleh {author}.
+      {originalUrl ? <> Baca <a href={originalUrl} rel="noopener noreferrer" target="_blank">teks aslinya</a>.</> : <> Tautan teks asli akan ditambahkan.</>}
+    </p>
+  ) : (
+    <p class="muted">
+      {original
+        ? <>This is the original English text by {author}.</>
+        : <>This English edition was prepared for this site from the Indonesian text by {author}.</>}
+      {slug && <> An <a href={localizedPath('articles', 'id', slug)} hreflang="id" lang="id">Indonesian translation</a> is also available.</>}
+      {originalUrl && <> <a href={originalUrl} rel="noopener noreferrer" target="_blank">Read the original</a>.</>}
+    </p>
+  )}
+</aside>

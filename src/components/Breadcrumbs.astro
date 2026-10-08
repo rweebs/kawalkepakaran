@@ -1,0 +1,15 @@
+---
+import { UI } from '../i18n/ui';
+import type { Locale } from '../i18n';
+interface Crumb { name: string; path: string }
+const { items, locale = 'id' } = Astro.props as { items: Crumb[]; locale?: Locale };
+---
+<nav class="breadcrumbs container" aria-label={UI[locale].breadcrumbLabel}>
+  <ol>
+    {items.map((c, i) => (
+      <li>{i === items.length - 1
+        ? <span aria-current="page">{c.name}</span>
+        : <a href={c.path}>{c.name}</a>}</li>
+    ))}
+  </ol>
+</nav>

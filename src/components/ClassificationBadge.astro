@@ -1,0 +1,7 @@
+---
+import { UI } from '../i18n/ui';
+import type { Locale } from '../i18n';
+const { value, locale = 'id' } = Astro.props as { value: string; locale?: Locale };
+const labels = UI[locale].classification;
+---
+<span class="badge badge--blue">{labels[value as keyof typeof labels]}</span>

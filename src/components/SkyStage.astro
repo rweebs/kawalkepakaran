@@ -1,0 +1,17 @@
+---
+// The home page's sky: a static SVG sky is in the markup, and the WebGL scene (three.js) is loaded by sky-stage.ts after the
+// first interaction. No framework runtime is shipped for it, which keeps React off the page's loading path.
+interface Props { sectionIds: readonly string[] }
+const { sectionIds } = Astro.props;
+const stars = Array.from({ length: 60 }, (_, i) => ({ cx: (i * 53) % 100, cy: (i * 37) % 70, r: 0.15 + ((i * 7) % 5) * 0.06 }));
+const bird = 'M0 0 L-4 -1.5 L0 0.8 L4 -1.5 Z';
+const birds = [[20, 20], [34, 14], [48, 22], [62, 12], [76, 20]];
+---
+<div class="sky-stage" aria-hidden="true" data-mode="fallback" data-sections={sectionIds.join(',')}>
+  <svg class="sky-stage__svg" viewBox="0 0 100 70" preserveAspectRatio="xMidYMid slice" role="presentation">
+    {stars.map((s) => <circle cx={s.cx} cy={s.cy} r={s.r} fill="#cfd8ff" opacity="0.8" />)}
+    {birds.map(([x, y]) => <path d={bird} transform={`translate(${x} ${y})`} fill="#efe8d6" />)}
+  </svg>
+  <canvas class="sky-stage__canvas sky-stage__canvas--hidden"></canvas>
+</div>
+<script>import '../scripts/sky-stage';</script>

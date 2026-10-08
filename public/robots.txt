@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://abilsudarman.my.id/sitemap.xml

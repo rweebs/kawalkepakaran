@@ -1,0 +1,23 @@
+{
+  "title": "Peran administrator program di laporan UNESCO",
+  "group": "catatan-resmi",
+  "images": [
+    {
+      "src": "/img/bukti-unesdoc-acknowledgements.jpg",
+      "alt": "Halaman Acknowledgements dokumen di unesdoc.unesco.org dengan kalimat yang menyebut Abigail A. Sudarman, Putri Sarah Balqis dan Lukman Nasir disorot"
+    }
+  ],
+  "shows": "Halaman 3 sebuah dokumen di unesdoc.unesco.org, bagian “Acknowledgements”. Kalimat yang disorot: “We would also like to express our appreciation to Abigail A. Sudarman, Putri Sarah Balqis and Lukman Nasir for their program administration for the writers and reviewers.” Peran yang disebut hanya administrasi program bagi penulis dan peninjau; ia tidak tercantum sebagai penulis, pakar, atau peninjau laporan. Pada halaman yang sama, “Lead Expert” disebut Professor Hammam Riza, sedangkan Abil tidak termasuk di antara para pakar yang dicantumkan.",
+  "limits": "Bandingkan dengan klaim yang dipublikasikan (entri 3, 4, 5 dan 16): “memimpin UNESCO AI Readiness Assessment”, “Project Manager”, “Lead Expert Team”, dan, menurut kutipan artikel pada entri 16, “Consultant — UNESCO” di bio LinkedIn. Ucapan terima kasih ini hanya menyebut administrasi program, tidak menyebut kepemimpinan tim atau peran konsultan; kesenjangan itu dapat dinilai pembaca. Gambar hanya satu halaman: tidak menunjukkan judul, tanggal, atau sampul dokumen, tidak memuat daftar peran lengkap, dan tidak menyatakan bahwa nama tersebut adalah orang yang sama dengan yang dibahas di halaman ini. Kesesuaian nama dan ada tidaknya peran lain perlu dikonfirmasi dari sumber lain.",
+  "source": "UNESDOC (UNESCO)",
+  "order": 14,
+  "en": {
+    "title": "Programme administrator role in a UNESCO report",
+    "alts": [
+      "Acknowledgements page of a document on unesdoc.unesco.org with the sentence naming Abigail A. Sudarman, Putri Sarah Balqis and Lukman Nasir highlighted"
+    ],
+    "shows": "Page 3 of a document on unesdoc.unesco.org, the \"Acknowledgements\" section. Highlighted sentence: \"We would also like to express our appreciation to Abigail A. Sudarman, Putri Sarah Balqis and Lukman Nasir for their program administration for the writers and reviewers.\" The role named is only programme administration for the writers and reviewers; he is not listed as an author, expert or reviewer of the report. On the same page the \"Lead Expert\" is named as Professor Hammam Riza, while Abil is not among the experts listed.",
+    "limits": "Compare with the published claims (entries 3, 4, 5 and 16): \"leading the UNESCO AI Readiness Assessment\", \"Project Manager\", \"Lead Expert Team\", and, according to the article excerpt in entry 16, \"Consultant — UNESCO\" in the LinkedIn bio. These acknowledgements only mention programme administration, not team leadership or a consultant role; readers can judge that gap. The image is a single page: it does not show the title, date or cover of the document, does not contain a full list of roles, and does not state that the name is the same person discussed on this page. The match of names and the existence of any other role need to be confirmed from other sources.",
+    "source": "UNESDOC (UNESCO)"
+  }
+}

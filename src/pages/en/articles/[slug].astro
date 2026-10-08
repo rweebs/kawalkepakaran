@@ -1,0 +1,10 @@
+---
+import Page from '../../artikel/[slug].astro';
+import { getPostsEn } from '../../../lib/content';
+
+export async function getStaticPaths() {
+  return (await getPostsEn()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+const { entry } = Astro.props;
+---
+<Page entry={entry} locale="en" />

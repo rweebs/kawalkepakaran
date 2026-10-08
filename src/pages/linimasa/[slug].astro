@@ -1,0 +1,65 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { EVENTS } from '../../lib/linimasa';
+import { localizeEvent, localizedEvents, eventPath, formatDateFor, neighboursFor } from '../../lib/linimasa-locale';
+import { SITE } from '../../lib/site';
+import { UI } from '../../i18n/ui';
+import { localizedPath, type Locale } from '../../i18n';
+
+export function getStaticPaths() {
+  return EVENTS.map((event) => ({ params: { slug: event.slug }, props: { idSlug: event.slug } }));
+}
+// Indonesian page: props carry the event's Indonesian slug. The English page (src/pages/en/timeline/[slug].astro) passes locale="en".
+const { idSlug, locale = 'id' } = Astro.props as { idSlug: string; locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const events = localizedEvents(locale);
+const event = events.find((e) => e.idSlug === idSlug)!;
+const { prev, next } = neighboursFor(events, idSlug);
+const path = eventPath(event, locale);
+const idEvent = localizeEvent(EVENTS.find((e) => e.slug === idSlug)!, 'id');
+const alternates = { id: eventPath(idEvent, 'id'), en: eventPath(localizeEvent(EVENTS.find((e) => e.slug === idSlug)!, 'en'), 'en') };
+const plain = event.paragraphs[0].replace(/["']/g, '');
+const description = plain.length > 155 ? `${plain.slice(0, plain.lastIndexOf(' ', 155))}…` : plain;
+const ld = {
+  '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: event.title.slice(0, 110), description,
+  datePublished: event.date, dateModified: event.date,
+  author: { '@type': 'Person', name: SITE.author }, publisher: { '@type': 'Person', name: SITE.author },
+  mainEntityOfPage: `${SITE.url}${path}`,
+};
+const replyPath = localizedPath('reply', locale);
+const T = {
+  id: { crumb: 'Linimasa', note: 'Abil Sudarman dan pihak lain yang disebut berhak menjawab lewat', replyLabel: 'hak jawab', sources: 'Sumber', sourcesNote: 'Tautan mengarah ke kiriman asli saya. Jika ada yang berubah atau dihapus, beri tahu saya.', related: 'Terkait di situs ini', navLabel: 'Entri berikutnya', all: '← Semua entri linimasa' },
+  en: { crumb: 'Timeline', note: 'Abil Sudarman and any other party named have the right to reply through the', replyLabel: 'right of reply', sources: 'Sources', sourcesNote: 'Links point to my original posts. If anything has changed or been deleted, please tell me.', related: 'Related on this site', navLabel: 'Next entries', all: '← All timeline entries' },
+}[locale];
+const indexPath = localizedPath('timeline', locale);
+---
+<BaseLayout title={event.title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
+  breadcrumbs={[{ name: T.crumb, path: indexPath }, { name: formatDateFor(event.date, locale), path }]}>
+  <article class="reading linimasa-post">
+    <p class="linimasa-meta"><time datetime={event.date}>{formatDateFor(event.date, locale)}</time> · {event.channel}</p>
+    <h1>{event.title}</h1>
+    <p class="muted">{DISCLAIMER}</p>
+    <p class="linimasa-note">{T.note} <a href={replyPath}>{T.replyLabel}</a>.</p>
+    {event.paragraphs.map((p) => <p>{p}</p>)}
+
+    {event.sources.length > 0 && (
+      <section aria-labelledby="sumber-h">
+        <h2 id="sumber-h">{T.sources}</h2>
+        <ul>{event.sources.map((s) => <li><a href={s.url} rel="noopener nofollow" target="_blank">{s.label}</a></li>)}</ul>
+        <p class="muted">{T.sourcesNote}</p>
+      </section>
+    )}
+    {event.related.length > 0 && (
+      <section aria-labelledby="terkait-h">
+        <h2 id="terkait-h">{T.related}</h2>
+        <ul>{event.related.map((r) => <li><a href={r.href}>{r.label}</a></li>)}</ul>
+      </section>
+    )}
+
+    <nav class="linimasa-nav" aria-label={T.navLabel}>
+      {prev ? <a href={eventPath(prev, locale)} rel="prev">← {prev.title}</a> : <span></span>}
+      {next ? <a href={eventPath(next, locale)} rel="next">{next.title} →</a> : <span></span>}
+    </nav>
+    <p><a href={indexPath}>{T.all}</a></p>
+  </article>
+</BaseLayout>

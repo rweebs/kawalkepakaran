@@ -1,0 +1,23 @@
+{
+  "title": "Halaman pakar Stimson Center",
+  "group": "klaim-yang-dipublikasikan",
+  "images": [
+    {
+      "src": "/img/35e5374ab9bc2abf41635d8a.png",
+      "alt": "Halaman Expert Stimson Center atas nama Abigail Aryaputra Sudarman, Responsible AI Fellow, dengan bio yang menyebut kuliah Computer Science di University of London"
+    }
+  ],
+  "shows": "Halaman “Expert” atas nama Abigail Aryaputra Sudarman, Responsible AI Fellow. Bio menyebut Director KORIKA, Project Manager Lead Expert Team UNESCO AI Readiness Assessment, pendiri Secondbase International Ltd, dan “previously studied Computer Science at the University of London”.",
+  "limits": "Kata “studied” tidak menyatakan lulus. Tidak ada konfirmasi dari Stimson Center, UNESCO, atau KORIKA pada gambar. Alamat dan tanggal tidak terlihat.",
+  "source": "Stimson Center",
+  "order": 3,
+  "en": {
+    "title": "Stimson Center expert page",
+    "alts": [
+      "Stimson Center Expert page in the name of Abigail Aryaputra Sudarman, Responsible AI Fellow, with a bio that mentions studying Computer Science at the University of London"
+    ],
+    "shows": "An \"Expert\" page in the name of Abigail Aryaputra Sudarman, Responsible AI Fellow. The bio mentions Director of KORIKA, Project Manager Lead Expert Team of the UNESCO AI Readiness Assessment, founder of Secondbase International Ltd, and \"previously studied Computer Science at the University of London\".",
+    "limits": "The word \"studied\" does not state that he graduated. The image shows no confirmation from the Stimson Center, UNESCO or KORIKA. The address and date are not visible.",
+    "source": "Stimson Center"
+  }
+}

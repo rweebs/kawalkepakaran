@@ -1,0 +1,49 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const path = localizedPath('disclaimer', locale);
+const T = {
+  id: { title: 'Disclaimer dan kebijakan koreksi', h1: 'Disclaimer', crumb: 'Disclaimer',
+    description: 'Catatan hukum situs ini: isi adalah pendapat dan catatan pribadi, klasifikasi artikel, kebijakan koreksi, perlindungan data pribadi, dan praduga tak bersalah.' },
+  en: { title: 'Disclaimer and corrections policy', h1: 'Disclaimer', crumb: 'Disclaimer',
+    description: 'Legal notes for this site: the contents are personal opinion and notes, how articles are classified, the corrections policy, personal-data protection, and the presumption of innocence.' },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    {locale === 'id' ? (
+      <>
+        <h2>Sifat konten</h2><p>{DISCLAIMER}</p>
+        <h2>Klasifikasi</h2>
+        <ul>
+          <li><strong>Pendapat</strong>: penilaian pribadi penulis.</li>
+          <li><strong>Fakta dengan bukti</strong>: pernyataan faktual yang disertai sumber atau bukti yang dapat diperiksa.</li>
+          <li><strong>Laporan/aduan</strong>: laporan atau surat resmi yang disampaikan penulis; bukan temuan lembaga yang menerimanya.</li>
+        </ul>
+        <h2>Terjemahan</h2><p>Artikel adalah terjemahan Bahasa Indonesia dari tulisan asli berbahasa Inggris karya {SITE.author}. Jika terdapat perbedaan makna, teks asli yang dirujuk.</p>
+        <h2>Koreksi</h2><p>Permintaan koreksi atau penghapusan dapat dikirim ke <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a> dengan menyebut halaman dan bagian yang dimaksud.</p>
+        <h2>Data pribadi</h2><p>Situs ini tidak memuat alamat rumah, nomor telepon, atau nomor identitas siapa pun.</p>
+        <h2>Bukan nasihat hukum</h2><p>Situs ini bukan nasihat hukum.</p>
+      </>
+    ) : (
+      <>
+        <h2>Nature of the content</h2><p>{DISCLAIMER}</p>
+        <h2>Classification</h2>
+        <ul>
+          <li><strong>Opinion</strong>: the author's personal assessment.</li>
+          <li><strong>Fact with evidence</strong>: a factual statement accompanied by a source or evidence that can be checked.</li>
+          <li><strong>Report/complaint</strong>: a report or official letter submitted by the author; not a finding of the body that received it.</li>
+        </ul>
+        <h2>Translation</h2><p>The articles are written in English by {SITE.author}; the Indonesian edition of this site carries them in Indonesian translation. If the meaning differs, the English original prevails.</p>
+        <h2>Corrections</h2><p>Requests for correction or removal can be sent to <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>, naming the page and the part concerned.</p>
+        <h2>Personal data</h2><p>This site does not contain anyone's home address, phone number or identity number.</p>
+        <h2>Not legal advice</h2><p>This site is not legal advice.</p>
+      </>
+    )}
+  </article>
+</BaseLayout>

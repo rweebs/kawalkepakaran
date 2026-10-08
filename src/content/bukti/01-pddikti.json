@@ -1,0 +1,21 @@
+{
+  "title": "Biodata mahasiswa PDDikti",
+  "group": "catatan-resmi",
+  "images": [
+    {
+      "src": "/img/bukti-pddikti.png",
+      "alt": "Kartu data mahasiswa atas nama Abigail Aryaputra Sudarman, Universitas Bina Nusantara, Sarjana PJJ Manajemen; status terakhir mengajukan pengunduran diri 2022/2023 Ganjil; NIM ditutup"
+    }
+  ],
+  "shows": "Kartu data mahasiswa atas nama Abigail Aryaputra Sudarman, Universitas Bina Nusantara, laki-laki, tanggal masuk 16 September 2019, Sarjana PJJ Manajemen, status awal “Peserta didik baru”, status terakhir “Mengajukan pengunduran diri-2022/2023 Ganjil”. NIM ditutup.",
+  "limits": "Pendidikan di tempat lain, termasuk di luar negeri. Gambar tidak menampilkan logo atau alamat PDDikti; atribusi ke PDDikti berasal dari penulis situs ini. Tanggal tangkapan layar tidak terlihat.",
+  "order": 1,
+  "en": {
+    "title": "PDDikti student record",
+    "alts": [
+      "Student data card in the name of Abigail Aryaputra Sudarman, Bina Nusantara University, Bachelor of Management (distance learning); latest status: applied to resign, 2022/2023 odd semester; student ID masked"
+    ],
+    "shows": "Student data card in the name of Abigail Aryaputra Sudarman, Bina Nusantara University, male, entry date 16 September 2019, Bachelor of Management (distance learning), initial status \"New student\", latest status \"Applied to resign-2022/2023 Odd\". Student ID masked.",
+    "limits": "Education elsewhere, including abroad. The image does not show a PDDikti logo or address; the attribution to PDDikti comes from the author of this site. The screenshot date is not visible."
+  }
+}

@@ -1,0 +1,371 @@
+/* Full-bleed breakout from the 820px article column. The page wrapper clips horizontal overflow. */
+.al-bleed {
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    margin-left: -50vw;
+    margin-block: 0;
+}
+
+.al-root {
+    --al-gutter: clamp(16px, 4vw, 48px);
+    --al-gold: #e8c67c;
+    --al-mars: #ff7b5e;
+    --al-ink: #ece8f6;
+    --al-muted: #9aa2cc;
+    position: relative;
+    color: var(--al-ink);
+    /* No background of its own: the page-wide night sky shows through, so there is no seam.
+       The mask softens the canvas glow where the chapter starts and ends. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16vh, #000 calc(100% - 16vh), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 16vh, #000 calc(100% - 16vh), transparent 100%);
+}
+
+.al-stage {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100svh;
+    z-index: 0;
+}
+.al-canvas,
+.al-fallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.al-fallback {
+    opacity: 0.55;
+}
+
+.al-content {
+    position: relative;
+    z-index: 1;
+    margin-top: -100vh;
+    margin-top: -100svh;
+    padding: 0 var(--al-gutter) 5rem;
+    pointer-events: none; /* empty areas let the canvas receive drag */
+}
+.al-section {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-block: 4rem;
+    max-width: 1280px;
+    margin-inline: auto;
+}
+.al-section--center {
+    justify-content: center;
+}
+
+.al-panel {
+    pointer-events: auto;
+    width: min(560px, 100%);
+    background: rgba(8, 12, 36, 0.74);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(232, 198, 124, 0.18);
+    border-radius: 1rem;
+    padding: 1.5rem 1.75rem;
+}
+.al-panel--wide {
+    width: min(1040px, 100%);
+}
+
+.al-root h2,
+.al-root h3,
+.al-root h4 {
+    color: #fff;
+    margin: 0 0 0.6rem;
+}
+.al-root p {
+    color: rgba(236, 232, 246, 0.9);
+    line-height: 1.7;
+    margin: 0 0 0.85rem;
+}
+.al-eyebrow {
+    color: var(--al-gold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+.al-kicker {
+    color: var(--al-muted);
+    font-size: 0.95rem;
+}
+.al-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+.al-badge {
+    border: 1px solid rgba(232, 198, 124, 0.45);
+    color: var(--al-gold);
+    border-radius: 999px;
+    padding: 0.2rem 0.75rem;
+    font-size: 0.85rem;
+}
+.al-note {
+    border-left: 2px solid var(--al-gold);
+    padding-left: 1rem;
+    font-style: italic;
+}
+.al-mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.8rem;
+    color: var(--al-muted);
+}
+
+.al-markers,
+.al-notes,
+.al-callouts {
+    display: grid;
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+.al-card {
+    border: 1px solid rgba(154, 162, 204, 0.25);
+    border-radius: 0.75rem;
+    padding: 0.9rem 1rem;
+    background: rgba(17, 24, 64, 0.55);
+}
+.al-card h4 {
+    font-size: 1rem;
+}
+.al-card p {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+}
+.al-card .al-glyph {
+    font-size: 1.4rem;
+    color: var(--al-gold);
+    margin-right: 0.4rem;
+    font-family: "Noto Sans Symbols", "Segoe UI Symbol", sans-serif;
+}
+.al-label {
+    color: var(--al-gold);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.al-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-top: 0.5rem;
+}
+
+.al-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin-top: 1rem;
+}
+.al-table caption {
+    text-align: left;
+    color: var(--al-muted);
+    padding-bottom: 0.4rem;
+}
+.al-table th,
+.al-table td {
+    text-align: left;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid rgba(154, 162, 204, 0.18);
+    color: var(--al-ink);
+    font-weight: 400;
+}
+.al-table tr.al-hl td,
+.al-table tr.al-hl th {
+    color: var(--al-mars);
+    font-weight: 600;
+}
+.al-table .al-g {
+    font-family: "Noto Sans Symbols", "Segoe UI Symbol", sans-serif;
+    width: 2rem;
+}
+
+.al-days {
+    display: grid;
+    gap: 0.85rem;
+    margin: 1rem 0;
+}
+.al-day {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 0.9rem;
+    align-items: start;
+}
+.al-day svg {
+    width: 44px;
+    height: 44px;
+}
+.al-star {
+    color: var(--al-gold);
+}
+
+.al-traits,
+.al-lists,
+.al-traditions {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+    margin: 1.25rem 0;
+}
+@media (min-width: 720px) {
+    .al-traits,
+    .al-traditions {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .al-lists {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+.al-dots {
+    display: inline-flex;
+    gap: 4px;
+    float: right;
+}
+.al-dots i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--al-gold);
+}
+.al-dots i.on {
+    background: var(--al-gold);
+}
+.al-evidence {
+    margin: 0.6rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.82rem;
+    color: var(--al-muted);
+}
+.al-evidence b {
+    color: var(--al-ink);
+    font-weight: 600;
+}
+.al-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: rgba(236, 232, 246, 0.9);
+    font-size: 0.92rem;
+}
+.al-list li {
+    margin-bottom: 0.5rem;
+}
+.al-strip {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+}
+.al-strip > div {
+    border: 1px solid rgba(154, 162, 204, 0.25);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.88rem;
+}
+.al-strip > div.on {
+    border-color: var(--al-gold);
+    background: rgba(232, 198, 124, 0.1);
+}
+.al-pillars {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+    margin: 0.75rem 0;
+    text-align: center;
+}
+.al-pillars div {
+    border: 1px solid rgba(154, 162, 204, 0.25);
+    border-radius: 0.5rem;
+    padding: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--al-muted);
+}
+.al-pillars b {
+    display: block;
+    font-size: 1.2rem;
+    color: var(--al-ink);
+    font-weight: 500;
+}
+.al-sources a {
+    color: var(--al-gold);
+}
+
+.al-tilt {
+    transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: transform 0.15s ease-out;
+    will-change: transform;
+}
+
+@media (max-width: 768px) {
+    .al-section,
+    .al-section--center {
+        justify-content: center;
+        padding-block: 3rem;
+    }
+    .al-panel {
+        width: 100%;
+        background: rgba(8, 12, 36, 0.82);
+        padding: 1.25rem;
+    }
+    .al-pillars {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .al-tilt {
+        transform: none !important;
+        transition: none;
+    }
+}
+
+/* Portrait from the source page: photo inside an orbit ring */
+.al-portrait {
+    position: relative;
+    width: 200px;
+    aspect-ratio: 1;
+    margin: 0 0 1.25rem;
+}
+.al-portrait svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+.al-portrait img {
+    position: absolute;
+    inset: 28px;
+    width: calc(100% - 56px);
+    height: calc(100% - 56px);
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #39437a;
+}
+.al-orbit {
+    transform-box: view-box;
+    transform-origin: 120px 120px;
+    animation: al-spin 16s linear infinite;
+}
+.al-orbit--slow {
+    animation-duration: 44s;
+    animation-direction: reverse;
+}
+@keyframes al-spin {
+    to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .al-orbit {
+        animation: none;
+    }
+}

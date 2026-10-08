@@ -1,0 +1,13 @@
+node_modules
+dist
+.astro
+.DS_Store
+.env
+.superpowers
+.agents
+.claude
+tmp/
+docs/superpowers/specs/
+docs/superpowers/plans/
+.wrangler
+public/thumb/

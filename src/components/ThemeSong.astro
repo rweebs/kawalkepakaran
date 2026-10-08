@@ -1,0 +1,25 @@
+---
+import { musicUrl, shouldAutoplay, songFor } from '../lib/theme-song';
+import { UI } from '../i18n/ui';
+import type { Locale } from '../i18n';
+interface Props { path: string; locale?: Locale }
+const { path, locale = 'id' } = Astro.props;
+const song = songFor(path);
+const t = UI[locale].themeSong;
+---
+<div class="theme-song" data-theme-song data-video-id={song.videoId} data-title={`${song.title} · ${song.artist}`} data-autoplay={shouldAutoplay(path) ? 'true' : 'false'} data-label-idle={t.label} data-label-playing={t.playing}>
+  <section id="theme-song-panel" class="theme-song__panel" aria-label={t.aria} data-open="false">
+    <p class="theme-song__title">{t.song}: {song.title} · {song.artist}</p>
+    <div class="theme-song__stage"></div>
+    <div class="theme-song__actions">
+      <button type="button" class="btn theme-song__stop">{t.stop}</button>
+      <a class="btn" href={musicUrl(song.videoId)} target="_blank" rel="noopener noreferrer">{t.openMusic}</a>
+    </div>
+    <p class="muted theme-song__note">{shouldAutoplay(path) ? t.autoplayNote : t.manualNote}</p>
+  </section>
+  <button type="button" class="theme-song__toggle" aria-expanded="false" aria-controls="theme-song-panel">
+    <span class="theme-song__icon" aria-hidden="true">♪</span>
+    <span class="theme-song__label">{t.label}</span>
+  </button>
+</div>
+<script>import '../scripts/theme-song';</script>

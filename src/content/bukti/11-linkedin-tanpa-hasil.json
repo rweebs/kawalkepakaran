@@ -1,0 +1,23 @@
+{
+  "title": "Pencarian LinkedIn tanpa hasil",
+  "group": "upaya-verifikasi",
+  "images": [
+    {
+      "src": "/img/b3328e218e888cd155e1fd6f.png",
+      "alt": "Pencarian orang di LinkedIn dengan nama Abil S. dan filter University of London menampilkan No results found"
+    }
+  ],
+  "shows": "Pencarian People dengan nama “Abil S.” dan filter University of London menampilkan “No results found”.",
+  "limits": "Bahwa seseorang tidak pernah belajar di sana. Hasil pencarian LinkedIn bergantung pada jaringan penelusur dan pengaturan profil. Tanggal tidak terlihat.",
+  "source": "LinkedIn",
+  "order": 11,
+  "en": {
+    "title": "LinkedIn search with no results",
+    "alts": [
+      "LinkedIn people search with the name \"Abil S.\" and a University of London filter showing \"No results found\""
+    ],
+    "shows": "A People search with the name \"Abil S.\" and the University of London filter shows \"No results found\".",
+    "limits": "That someone never studied there. LinkedIn search results depend on the searcher's network and on profile settings. The date is not visible.",
+    "source": "LinkedIn"
+  }
+}

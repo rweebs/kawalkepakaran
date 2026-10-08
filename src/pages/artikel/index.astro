@@ -1,0 +1,38 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ClassificationBadge from '../../components/ClassificationBadge.astro';
+import PostThumb from '../../components/PostThumb.astro';
+import TiltCard from '../../components/motion/TiltCard.tsx';
+import { firstImage } from '../../lib/header-image';
+import { getPosts } from '../../lib/content';
+import { localizedPath, type Locale } from '../../i18n';
+import { SITE } from '../../lib/site';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const posts = await getPosts();
+const T = {
+  id: {
+    title: 'Artikel tentang Abil Sudarman', h1: 'Artikel tentang Abil Sudarman', empty: 'Belum ada artikel yang dipublikasikan.', from: 'Terjemahan dari:', crumb: 'Artikel',
+    description: 'Terjemahan Bahasa Indonesia dari artikel Rahmat Wibowo tentang klaim dan kredensial Abil Sudarman, dengan klasifikasi pendapat, fakta berbukti, dan aduan.',
+  },
+  en: {
+    title: 'Articles on Abil Sudarman', h1: 'Articles', empty: 'No articles have been published yet.', from: 'Indonesian title:', crumb: 'Articles',
+    description: "Rahmat Wibowo's articles on Abil Sudarman's claims and credentials, in English, each labelled as opinion, fact with evidence, or report/complaint.",
+  },
+}[locale];
+const path = localizedPath('articles', locale);
+const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: new URL(path, SITE.url).toString(), inLanguage: locale, description: T.description };
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
+  <section class="container pad-block">
+    <h1>{T.h1}</h1>
+    {posts.length === 0
+      ? <p class="muted">{T.empty}</p>
+      : <div class="grid">{posts.map((p) => (
+          <TiltCard client:visible href={localizedPath('articles', locale, p.id)}>
+            <PostThumb title={p.data.title} slug={p.id} image={firstImage(p.body ?? '')} />
+            <ClassificationBadge value={p.data.classification} locale={locale} />
+            <h2 class="card-title">{locale === 'en' ? p.data.originalTitle : p.data.title}</h2>
+            <p class="muted">{locale === 'en' ? `${T.from} ${p.data.title}` : `${T.from} ${p.data.originalTitle}`}</p>
+          </TiltCard>))}</div>}
+  </section>
+</BaseLayout>

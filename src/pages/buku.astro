@@ -1,0 +1,45 @@
+---
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getBuku } from '../lib/content';
+import { formatBytes, formatBytesFor, bukuText, sortBuku } from '../lib/buku';
+import { thumbFor } from '../lib/bukti';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const dateFmt = new Intl.DateTimeFormat(locale === 'id' ? 'id-ID' : 'en-US', { dateStyle: 'long', timeZone: 'UTC' });
+const books = sortBuku(await getBuku()).map((b) => ({ ...b, size: formatBytesFor(statSync(join('public', b.data.file)).size, locale), text: bukuText(b.data, locale) }));
+const T = {
+  id: { title: 'Buku kritik atas Abil Sudarman', h1: 'Buku kritik atas Abil Sudarman', crumb: 'Buku', intro: 'Dokumen berikut adalah pendapat dan analisis penulis. Setiap kartu memuat catatan tentang batas cakupan dan apa yang dinyatakan dokumennya sendiri.', empty: 'Belum ada dokumen yang dipublikasikan.', cover: 'Sampul', version: 'versi', pages: 'halaman', note: 'Catatan:', read: 'Baca', download: 'Unduh PDF', description: 'Kumpulan laporan dan dokumen kritik Rahmat Wibowo tentang klaim Abil Sudarman dan ASSAI, dapat dibaca dan diunduh dalam format PDF.' },
+  en: { title: 'Books and critical reports on Abil Sudarman', h1: 'Books', crumb: 'Books', intro: "The documents below are the author's opinion and analysis. Each card carries a note on the limits of its scope and on what the document itself states. The PDFs are in Indonesian.", empty: 'No documents have been published yet.', cover: 'Cover of', version: 'version', pages: 'pages', note: 'Note:', read: 'Read', download: 'Download PDF', description: 'Reports and critical documents by Rahmat Wibowo about the claims of Abil Sudarman and ASSAI, available to read and download as PDF (in Indonesian).' },
+}[locale];
+const path = localizedPath('books', locale);
+const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
+const DESCRIPTION = T.description;
+---
+<BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
+  <section class="container pad-block">
+    <h1>{T.h1}</h1>
+    <p class="muted">{DISCLAIMER}</p>
+    <p class="muted">{T.intro}</p>
+    {books.length === 0
+      ? <p class="muted">{T.empty}</p>
+      : <ul class="buku-grid">{books.map((b) => (
+          <li class="card buku-item">
+            <a class="buku-cover" href={b.data.file} target="_blank" rel="noopener">
+              <img src={thumbFor(b.data.cover)} alt={`${T.cover} ${b.text.title}`} width="640" height="905" loading="lazy" decoding="async" />
+            </a>
+            <h2>{b.text.title}</h2>
+            <p class="buku-meta">{[b.data.author, b.data.date && dateFmt.format(b.data.date), b.data.version && `${T.version} ${b.data.version}`, `${b.data.pages} ${T.pages}`, `PDF ${b.size}`].filter(Boolean).join(' · ')}</p>
+            <p>{b.text.description}</p>
+            <p class="buku-note"><strong>{T.note}</strong> {b.text.note}</p>
+            <div class="buku-actions">
+              <a class="btn" href={b.data.file} target="_blank" rel="noopener">{T.read}</a>
+              <a class="btn" href={b.data.file} download>{T.download} ({b.size})</a>
+            </div>
+          </li>))}</ul>}
+  </section>
+</BaseLayout>

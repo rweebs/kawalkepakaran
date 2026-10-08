@@ -1,0 +1,10 @@
+---
+import { hueFromSlug } from '../lib/header-image';
+import ParallaxHeader from './motion/ParallaxHeader.tsx';
+const { title, slug, image } = Astro.props as { title: string; slug: string; image: { src: string; alt: string } | null };
+const hueClass = `hue-${Math.floor(hueFromSlug(slug) / 30)}`;
+const alt = image && image.alt && !['Isi artikel', 'Article content'].includes(image.alt) ? image.alt : title;
+---
+{image
+  ? <ParallaxHeader client:visible src={image.src} alt={alt} />
+  : <figure class="post-header" data-post-header><div class={`post-header__fallback ${hueClass}`} role="img" aria-label={title}></div></figure>}

@@ -1,0 +1,8 @@
+---
+// Bowobharata's backdrop: a CSS gradient (blue camp left, dark camp right) is the static first paint. The WebGL diorama
+// (three.js) is loaded by bowobharata-stage.ts after the first interaction. No framework runtime is shipped for it.
+---
+<div class="bb-stage" aria-hidden="true" data-mode="fallback">
+  <canvas class="bb-stage__canvas bb-stage__canvas--hidden"></canvas>
+</div>
+<script>import '../scripts/bowobharata-stage';</script>

@@ -1,0 +1,111 @@
+---
+import '../styles/global.css';
+import DisclaimerBanner from '../components/DisclaimerBanner.astro';
+import Breadcrumbs from '../components/Breadcrumbs.astro';
+import LanguageToggle from '../components/LanguageToggle.astro';
+import { SITE, isActive } from '../lib/site';
+import { LOCALES, LANGUAGE_NAME, LANGUAGE_SHORT, OG_LOCALE, alternatesForPath, otherLocale, pathLocale, routePath, type Locale } from '../i18n';
+import { UI, navFor } from '../i18n/ui';
+import ThemeSong from '../components/ThemeSong.astro';
+import { serializeJsonLd } from '../lib/jsonld';
+import { buildTitle, truncateAtWord, breadcrumbLd } from '../lib/seo';
+
+interface Crumb { name: string; path: string }
+const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrumbs, author, locale: localeProp, alternates: alternatesProp } = Astro.props as {
+  title: string; description: string; path: string; jsonLd?: object | object[]; noindex?: boolean;
+  ogType?: 'website' | 'article'; breadcrumbs?: Crumb[]; author?: string;
+  locale?: Locale; alternates?: Partial<Record<Locale, string>>;
+};
+const locale: Locale = localeProp ?? pathLocale(path);
+const ui = UI[locale];
+// Both language versions of this page, for hreflang and the language switch. Dynamic pages pass them in.
+const alternates = alternatesProp ?? alternatesForPath(path);
+const hreflangs = alternates && LOCALES.every((l) => alternates[l]) ? alternates : undefined;
+const switchTo = otherLocale(locale);
+const switchHref = alternates?.[switchTo] ?? routePath('home', switchTo);
+const nav = navFor(locale);
+const canonical = new URL(path, SITE.url).toString();
+const ogImage = new URL('/og/kawal-og.png', SITE.url).toString();
+const abs = (p: string) => new URL(p, SITE.url).toString();
+const fullTitle = buildTitle(title, SITE.name, 'Kawal');
+const desc = truncateAtWord(description, 160);
+const crumbs = breadcrumbs ? [{ name: ui.home, path: routePath('home', locale) }, ...breadcrumbs] : [];
+const lds = [
+  ...(jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : []),
+  ...(crumbs.length > 1 ? [breadcrumbLd(crumbs.map((c) => ({ name: c.name, url: new URL(c.path, SITE.url).toString() })))] : []),
+];
+---
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={desc} />
+    {noindex
+      ? <meta name="robots" content="noindex" />
+      : <><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1" /><link rel="canonical" href={canonical} /></>}
+    {hreflangs && !noindex && (
+      <>
+        {LOCALES.map((l) => <link rel="alternate" hreflang={l} href={abs(hreflangs[l])} />)}
+        <link rel="alternate" hreflang="x-default" href={abs(hreflangs.id)} />
+      </>
+    )}
+    {SITE.googleVerification && <meta name="google-site-verification" content={SITE.googleVerification} />}
+    <meta name="author" content={author ?? SITE.author} />
+    <meta name="theme-color" content="#0a0e1a" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+    <meta http-equiv="content-language" content={locale} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:locale" content={OG_LOCALE[locale]} />
+    {hreflangs && !noindex && <meta property="og:locale:alternate" content={OG_LOCALE[switchTo]} />}
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={desc} />
+    {!noindex && <meta property="og:url" content={canonical} />}
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ui.ogImageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={desc} />
+    <meta name="twitter:image" content={ogImage} />
+    {lds.map((ld) => <script type="application/ld+json" set:html={serializeJsonLd(ld)} />)}
+  </head>
+  <body>
+    <DisclaimerBanner locale={locale} />
+    <header class="nav">
+      <div class="container">
+        <a href={routePath('home', locale)} class="brand"><img src="/logo-kawal.svg" alt="" width="32" height="32" />{SITE.name}</a>
+        <div class="nav__lang-bar"><LanguageToggle locale={locale} href={switchHref} label={ui.language} /></div>
+        <details class="nav__menu" open>
+          <summary aria-label={ui.menu}><span class="nav__burger" aria-hidden="true"></span></summary>
+          <ul class="nav__links">
+            {nav.map((e) => 'items' in e ? (
+              <li class="nav__group-item">
+                <details class="nav__group">
+                  <summary class:list={{ 'is-active': e.items.some((i) => isActive(path, i.href)) }}>{e.label}</summary>
+                  <ul>{e.items.map((i) => <li><a href={i.href} aria-current={isActive(path, i.href) ? 'page' : undefined}>{i.label}</a></li>)}</ul>
+                </details>
+              </li>
+            ) : (
+              <li><a href={e.href} aria-current={isActive(path, e.href) ? 'page' : undefined}>{e.label}</a></li>
+            ))}
+            <li class="nav__lang"><LanguageToggle locale={locale} href={switchHref} label={ui.language} /></li>
+          </ul>
+        </details>
+      </div>
+    </header>
+    {crumbs.length > 1 && <Breadcrumbs items={crumbs} locale={locale} />}
+    <main><slot /></main>
+    <ThemeSong path={path} locale={locale} />
+    <script>import '../scripts/nav-menu';</script>
+    <footer class="footer"><div class="container">
+      <p>{ui.footer(SITE.author)} {ui.corrections}: <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. {locale === 'en' ? 'A project of' : 'Proyek'} <a href="https://www.infraloka.co.id" rel="noopener">InfraLoka</a>.</p>
+    </div></footer>
+  </body>
+</html>

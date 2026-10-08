@@ -1,0 +1,7 @@
+---
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const t = UI[locale];
+---
+<div class="banner" data-disclaimer role="note"><div class="container"><strong>{t.note}</strong> {t.disclaimer} <a href={localizedPath('disclaimer', locale)}>{t.readMore}</a></div></div>

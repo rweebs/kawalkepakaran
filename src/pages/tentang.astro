@@ -1,0 +1,94 @@
+---
+import { Image } from 'astro:assets';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import portrait from '../assets/home/rahmat-wibowo.jpg';
+import AnakLangitChapter from '../components/anak-langit/AnakLangitChapter.tsx';
+import { HERO as HERO_ID, chapters as chaptersId, STATS as STATS_ID, MESSAGE as MESSAGE_ID, SOURCE_URL, LINKEDIN_URL } from '../lib/tentang';
+import { HERO_EN, chaptersEn, STATS_EN, MESSAGE_EN } from '../lib/tentang-en';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const en = locale === 'en';
+const HERO = en ? HERO_EN : HERO_ID;
+const chapters = en ? chaptersEn : chaptersId;
+const STATS = en ? STATS_EN : STATS_ID;
+const MESSAGE = en ? MESSAGE_EN : MESSAGE_ID;
+const path = localizedPath('about', locale);
+const T = {
+  id: { title: 'Rahmat Wibowo, penggagas Operasi Ababil', crumb: 'Tentang', reply: 'Hak jawab',
+    description: 'Tentang Rahmat Wibowo, penggagas gerakan Operasi Ababil dan pendiri InfraLoka: kisah hidup, perjalanan karier, dan pesan untuk Abil Sudarman serta masyarakat Indonesia.' },
+  en: { title: 'About the author, Rahmat Wibowo', crumb: 'About', reply: 'Right of reply',
+    description: 'About Rahmat Wibowo, initiator of the Operation Ababil movement and founder of InfraLoka: his life story, career path, and a message to Abil Sudarman and the people of Indonesia.' },
+}[locale];
+const DESCRIPTION = T.description;
+// Chapter 02 (Anak Langit) is the interactive sky between 'nama' and 'itb'.
+const split = chapters.findIndex((c) => c.id === 'nama') + 1;
+const before = chapters.slice(0, split);
+const after = chapters.slice(split);
+const ld = { '@context': 'https://schema.org', '@type': 'AboutPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: DESCRIPTION };
+---
+<BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
+  <div class="tentang-stars" aria-hidden="true"></div>
+  <article class="reading tentang">
+    <header class="tentang-hero">
+      <div>
+        <p class="eyebrow">{HERO.kicker}</p>
+        <h1>{HERO.title}</h1>
+        <p class="tentang-badges">{HERO.badges.map((b) => <span class="badge">{b}</span>)}</p>
+        <p>{HERO.lead}</p>
+      </div>
+      <Image src={portrait} alt={HERO.photoAlt} widths={[240, 360]} sizes="(max-width: 640px) 240px, 220px" quality={60} loading="eager" fetchpriority="high" />
+    </header>
+    <p class="muted">{DISCLAIMER}</p>
+    {en
+      ? <p class="muted">The <a href={SOURCE_URL} rel="noopener">original story at infraloka.co.id/story</a>, written by the initiator of this site. This story contains personal history and the author's statements about himself; its source is that original page.</p>
+      : <p class="muted">Terjemahan bahasa Indonesia dari <a href={SOURCE_URL} rel="noopener">kisah asli di infraloka.co.id/story</a>, ditulis oleh penggagas situs ini. Kisah ini memuat riwayat pribadi dan pernyataan penulis tentang dirinya sendiri; sumbernya adalah halaman asli tersebut.</p>}
+
+    {before.map((c) => (
+        <section id={c.id} class="tentang-chapter" aria-labelledby={`${c.id}-h`}>
+          <p class="eyebrow">{c.eyebrow}</p>
+          <h2 id={`${c.id}-h`}>{c.title}</h2>
+          {c.body.map((p) => <p>{p}</p>)}
+          {c.tags && <ul class="tentang-tags">{c.tags.map((t) => <li>{t}</li>)}</ul>}
+          {c.id === 'angka' && (
+            <dl class="tentang-stats">{STATS.map((s) => <div><dd>{s.value}</dd><dt>{s.label}</dt></div>)}</dl>
+          )}
+          {c.pullQuote && <blockquote>{c.pullQuote}</blockquote>}
+        </section>
+    ))}
+  </article>
+
+  <AnakLangitChapter client:visible />
+
+  <article class="reading tentang">
+    {after.map((c) => (
+        <section id={c.id} class="tentang-chapter" aria-labelledby={`${c.id}-h`}>
+          <p class="eyebrow">{c.eyebrow}</p>
+          <h2 id={`${c.id}-h`}>{c.title}</h2>
+          {c.body.map((p) => <p>{p}</p>)}
+          {c.tags && <ul class="tentang-tags">{c.tags.map((t) => <li>{t}</li>)}</ul>}
+          {c.id === 'angka' && (
+            <dl class="tentang-stats">{STATS.map((s) => <div><dd>{s.value}</dd><dt>{s.label}</dt></div>)}</dl>
+          )}
+          {c.pullQuote && <blockquote>{c.pullQuote}</blockquote>}
+        </section>
+    ))}
+
+    <section id="pesan" class="tentang-message callout" aria-labelledby="pesan-h">
+      <h2 id="pesan-h">{MESSAGE.title}</h2>
+      {MESSAGE.paragraphs.map((p) => <p>{p}</p>)}
+      <h3>{MESSAGE.toAbil.title}</h3>
+      {MESSAGE.toAbil.paragraphs.map((p) => <p>{p}</p>)}
+      <h3>{MESSAGE.toPublic.title}</h3>
+      {MESSAGE.toPublic.paragraphs.map((p) => <p>{p}</p>)}
+      {MESSAGE.closing.map((p) => <p>{p}</p>)}
+      <p class="tentang-signature"><em>{MESSAGE.signature}</em></p>
+    </section>
+
+    {en
+      ? <p class="muted tentang-foot">Rahmat Wibowo is the founder of InfraLoka. Replies or corrections: <a href={localizedPath('reply', locale)}>{T.reply}</a> or <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. Connect on <a href={LINKEDIN_URL} rel="noopener nofollow">LinkedIn</a>.</p>
+      : <p class="muted tentang-foot">Rahmat Wibowo adalah pendiri InfraLoka. Tanggapan atau koreksi: <a href={localizedPath('reply', locale)}>{T.reply}</a> atau <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. Terhubung di <a href={LINKEDIN_URL} rel="noopener nofollow">LinkedIn</a>.</p>}
+  </article>
+</BaseLayout>

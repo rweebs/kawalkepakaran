@@ -1,0 +1,32 @@
+{
+  "name": "situs-abil-sudarman",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "INCLUDE_DRAFTS=1 astro dev",
+    "build": "node scripts/make-thumbs.mjs && astro build && node scripts/prune-images.mjs && node scripts/check-dist.mjs",
+    "build:preview": "node scripts/make-thumbs.mjs && INCLUDE_DRAFTS=1 astro build",
+    "check": "node scripts/check-dist.mjs",
+    "test": "vitest run",
+    "og": "node scripts/make-og.mjs"
+  },
+  "dependencies": {
+    "@astrojs/react": "^7.0.0",
+    "astro": "^7.3.5",
+    "motion": "^14.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "sharp": "^0.35.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.147.0"
+  }
+}

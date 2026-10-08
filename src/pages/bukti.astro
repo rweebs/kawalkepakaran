@@ -1,0 +1,51 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getBukti } from '../lib/content';
+import { groupBukti, sourceLine, sourceLineFor, buktiText, BUKTI_GROUP_LABEL_EN, thumbFor } from '../lib/bukti';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const groups = groupBukti(await getBukti());
+const DISCLAIMER = UI[locale].disclaimer;
+const T = {
+  id: { title: 'Bukti klaim Abil Sudarman', h1: 'Bukti klaim Abil Sudarman', crumb: 'Bukti', intro: 'Gambar di bawah menunjukkan klaim sebagaimana dipublikasikan dan catatan yang dapat diperiksa. Gambar bukan putusan. Nomor identitas ditutup.', empty: 'Belum ada bukti yang dipublikasikan.', shows: 'Menunjukkan:', link: 'Tautan sumber', image: 'Gambar', description: 'Tangkapan layar yang relevan dengan klaim Abil Sudarman, masing-masing dengan keterangan apa yang terlihat.' },
+  en: { title: 'Evidence and screenshots on Abil Sudarman', h1: 'Evidence', crumb: 'Evidence', intro: 'The images below show claims as published and records that can be checked. Images are not rulings. Identity numbers are masked.', empty: 'No evidence has been published yet.', shows: 'Shows:', link: 'Source link', image: 'Image', description: "Screenshots relevant to Abil Sudarman's claims, each with a note on what is visible and what it does not prove." },
+}[locale];
+const path = localizedPath('evidence', locale);
+const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
+const DESCRIPTION = T.description;
+---
+<BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
+  <section class="container pad-block">
+    <h1>{T.h1}</h1>
+    <p class="muted">{DISCLAIMER}</p>
+    <p class="muted">{T.intro}</p>
+    {groups.length === 0
+      ? <p class="muted">{T.empty}</p>
+      : groups.map((g) => (
+        <section class="bukti-group" aria-labelledby={`grup-${g.id}`}>
+          <h2 id={`grup-${g.id}`}>{locale === 'en' ? BUKTI_GROUP_LABEL_EN[g.id] : g.label}</h2>
+          <div class="grid bukti-grid">
+            {g.items.map((e) => {
+              const x = buktiText(e.data, locale);
+              return (
+              <article class="card bukti-item">
+                <a class="bukti-thumb" href={e.data.images[0].src} target="_blank" rel="noopener">
+                  <img src={thumbFor(e.data.images[0].src)} alt={x.alt(0)} width="640" loading="lazy" decoding="async" />
+                </a>
+                <h3>{x.title}</h3>
+                <p><strong>{T.shows}</strong> {x.shows}</p>
+                <p class="bukti-source">{sourceLineFor({ ...e.data, source: x.source }, locale)}{e.data.sourceUrl && <> <a href={e.data.sourceUrl} rel="noopener nofollow">{T.link}</a></>}</p>
+                {e.data.images.length > 1 && (
+                  <p class="bukti-more">{e.data.images.slice(1).map((im, i) => (
+                    <a href={im.src} target="_blank" rel="noopener" aria-label={x.alt(i + 1)}>{T.image} {i + 2}</a>
+                  ))}</p>
+                )}
+              </article>
+            );})}
+          </div>
+        </section>
+      ))}
+  </section>
+</BaseLayout>

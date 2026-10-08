@@ -1,0 +1,10 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const t = UI[locale].notFound;
+---
+<BaseLayout title={t.title} description={`${t.title}.`} path={locale === 'en' ? '/en/404' : '/404'} locale={locale} noindex>
+  <section class="reading"><h1>{t.title}</h1><p><a href={localizedPath('home', locale)}>{t.back}</a></p></section>
+</BaseLayout>

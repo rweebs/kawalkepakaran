@@ -1,0 +1,11 @@
+---
+import { hueFromSlug } from '../lib/header-image';
+import { thumbFor, thumbSrcset, CARD_THUMB_SIZES } from '../lib/bukti';
+const { slug, image } = Astro.props as { title: string; slug: string; image: { src: string; alt: string } | null };
+const hueClass = `hue-${Math.floor(hueFromSlug(slug) / 30)}`;
+---
+<div class="thumb">
+  {image
+    ? <img src={thumbFor(image.src)} srcset={thumbSrcset(image.src)} sizes={CARD_THUMB_SIZES} alt="" width="640" height="360" loading="lazy" decoding="async" />
+    : <div class={`thumb__fallback ${hueClass}`} aria-hidden="true"></div>}
+</div>

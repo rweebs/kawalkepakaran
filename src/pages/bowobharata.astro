@@ -1,0 +1,87 @@
+---
+import { Image } from 'astro:assets';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import BowobharataStage from '../components/BowobharataStage.astro';
+import wide from '../assets/bowobharata/poster-wide.jpg';
+import krishna from '../assets/bowobharata/krishna.jpg';
+import sengkuni from '../assets/bowobharata/sengkuni.jpg';
+import { FRAMING as FRAMING_ID, PAGE as PAGE_ID, PARVAS as PARVAS_ID, POSTERS as POSTERS_ID, parvaEvents } from '../lib/bowobharata';
+import { PAGE_EN, FRAMING_EN, POSTERS_EN, PARVAS_EN, BOWO_UI } from '../lib/bowobharata-en';
+import { CREDITS as CREDITS_ID, CREDITS_EN } from '../lib/bowobharata/model-credits';
+import { eventUrl } from '../lib/linimasa';
+import { localizeEvent, eventPath, formatDateFor } from '../lib/linimasa-locale';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const en = locale === 'en';
+const PAGE = en ? { ...PAGE_EN } : { ...PAGE_ID, heading: `${PAGE_ID.title}: Kebenaran vs Pembenaran` };
+const FRAMING = en ? FRAMING_EN : FRAMING_ID;
+const POSTERS = en ? POSTERS_EN : POSTERS_ID;
+const CREDITS = en ? CREDITS_EN : CREDITS_ID;
+const PARVAS = PARVAS_ID.map((p) => (en ? { ...p, ...PARVAS_EN[p.id] } : p));
+const U = BOWO_UI[locale];
+const path = localizedPath('bowobharata', locale);
+const ld = { '@context': 'https://schema.org', '@type': 'WebPage', name: PAGE.title, url: `${SITE.url}${path}`, inLanguage: locale, description: PAGE.description };
+---
+<BaseLayout title={PAGE.title} description={PAGE.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: 'Bowobharata', path }]}>
+  <BowobharataStage />
+  <div class="bb-main">
+    <header>
+      <p class="eyebrow">{PAGE.kicker}</p>
+      <h1>{PAGE.heading}</h1>
+      <p>{PAGE.lead}</p>
+    </header>
+    <p class="muted">{DISCLAIMER}</p>
+
+    <section class="bb-note callout" aria-label={U.notesLabel}>
+      {FRAMING.map((t) => <p>{t}</p>)}
+      <ul class="bb-links">
+        <li><a href={localizedPath('evidence', locale)}>{U.links.evidence}</a></li>
+        <li><a href={localizedPath('timeline', locale)}>{U.links.timeline}</a></li>
+        <li><a href={localizedPath('reply', locale)}>{U.links.reply}</a></li>
+      </ul>
+    </section>
+
+    <figure class="bb-hero bb-reveal">
+      <Image src={wide} alt={POSTERS.wide.alt} widths={[480, 720, 1088]} sizes="(max-width: 1120px) calc(100vw - 2rem), 1088px" quality={55} format="webp" loading="eager" fetchpriority="high" />
+    </figure>
+
+    <div class="bb-duo">
+      <figure class="bb-reveal">
+        <Image src={krishna} alt={POSTERS.krishna.alt} widths={[400, 640]} sizes="(max-width: 700px) 100vw, 540px" quality={60} format="webp" />
+      </figure>
+      <figure class="bb-reveal">
+        <Image src={sengkuni} alt={POSTERS.sengkuni.alt} widths={[400, 640]} sizes="(max-width: 700px) 100vw, 540px" quality={60} format="webp" />
+      </figure>
+    </div>
+
+    <div id="parvas" class="bb-parvas">
+      {PARVAS.map((p) => (
+        <section id={p.id} class="bb-parva" aria-labelledby={`${p.id}-h`}>
+          <div class="glass bb-reveal">
+            <p class="eyebrow">{U.parva} {p.number}</p>
+            <h2 id={`${p.id}-h`}>{p.title}</h2>
+            <p class="bb-episode">{p.episode}</p>
+            {p.paragraphs.map((t) => <p>{t}</p>)}
+            <ul class="bb-events">
+              {parvaEvents(p).map((e) => (
+                <li><time datetime={e.date}>{formatDateFor(e.date, locale)}</time><a href={locale === 'id' ? eventUrl(e) : eventPath(localizeEvent(e, locale), locale)}>{en ? localizeEvent(e, locale).title : e.title}</a></li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ))}
+    </div>
+
+    <section class="bb-credits muted" aria-label={U.creditsLabel}>
+      <h2 class="bb-credits__title">{U.credits}</h2>
+      <ul>
+        {CREDITS.map((c) => <li>{c.text} <a href={c.source} rel="noopener">{U.source}</a></li>)}
+      </ul>
+    </section>
+
+    <p class="muted">{U.foot} <a href={localizedPath('reply', locale)}>{U.footReply}</a> {U.or} <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>.</p>
+  </div>
+</BaseLayout>

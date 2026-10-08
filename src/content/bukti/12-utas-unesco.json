@@ -1,0 +1,23 @@
+{
+  "title": "Utas komentar LinkedIn soal UNESCO",
+  "group": "upaya-verifikasi",
+  "images": [
+    {
+      "src": "/img/bukti-utas-unesco.png",
+      "alt": "Utas komentar LinkedIn: komentar Rahmat Wibowo yang meneruskan pernyataan UNESCO Jakarta, dan komentar akun Abil S., Founder of ASSAI"
+    }
+  ],
+  "shows": "Komentar Rahmat Wibowo (ditandai 43m) yang meneruskan pernyataan yang disebut berasal dari UNESCO Jakarta (tidak ada kontrak kerja atau konsultansi dengan UNESCO Jakarta; peran di KORIKA perlu dikonfirmasi ke KORIKA), dan, pada utas yang sama, komentar akun “Abil S. — Founder of ASSAI” (ditandai 44m): “my biggest achievement is low resting heart rate”.",
+  "limits": "Gambar tidak menunjukkan bahwa komentar Abil S. menjawab pernyataan UNESCO: komentarnya ditandai lebih lama (44m) daripada komentar Rahmat (43m). Pernyataan UNESCO disampaikan tidak langsung oleh penulis; surat atau dokumen dari UNESCO tidak ditampilkan. Tanggal tidak terlihat.",
+  "source": "LinkedIn",
+  "order": 12,
+  "en": {
+    "title": "LinkedIn comment thread about UNESCO",
+    "alts": [
+      "LinkedIn comment thread: a comment by Rahmat Wibowo relaying a statement from UNESCO Jakarta, and a comment from the account \"Abil S., Founder of ASSAI\""
+    ],
+    "shows": "A comment by Rahmat Wibowo (marked 43m) relaying a statement said to come from UNESCO Jakarta (no employment or consultancy contract with UNESCO Jakarta; the role at KORIKA needs to be confirmed with KORIKA), and, in the same thread, a comment from the account \"Abil S. — Founder of ASSAI\" (marked 44m): \"my biggest achievement is low resting heart rate\".",
+    "limits": "The image does not show that Abil S.'s comment answers the UNESCO statement: his comment is marked older (44m) than Rahmat's (43m). The UNESCO statement is relayed indirectly by the author; no letter or document from UNESCO is shown. The date is not visible.",
+    "source": "LinkedIn"
+  }
+}

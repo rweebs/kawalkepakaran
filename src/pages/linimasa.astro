@@ -1,0 +1,62 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { EVENTS } from '../lib/linimasa';
+import { localizedEvents, groupByMonthFor, formatDateFor, eventPath } from '../lib/linimasa-locale';
+import { SITE } from '../lib/site';
+import { UI } from '../i18n/ui';
+import { localizedPath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const DISCLAIMER = UI[locale].disclaimer;
+const events = localizedEvents(locale);
+const groups = groupByMonthFor(events, locale);
+const first = events[0];
+const last = events[events.length - 1];
+const path = localizedPath('timeline', locale);
+const replyPath = localizedPath('reply', locale);
+const T = {
+  id: {
+    title: 'Linimasa kasus Abil Sudarman', h1: 'Linimasa kasus Abil Sudarman', monthId: 'bulan',
+    description: 'Catatan berurutan waktu tentang apa yang ditulis, dikirim, dan dilakukan Rahmat Wibowo terkait klaim Abil Sudarman, termasuk unggahan yang keras bahasanya. Setiap entri punya halaman sendiri dan tautan sumber.',
+  },
+  en: {
+    title: 'Timeline of the Abil Sudarman case', h1: 'Timeline', monthId: 'month',
+    description: "A chronological record of what Rahmat Wibowo wrote, sent and did regarding Abil Sudarman's claims, including harshly worded posts. Every entry has its own page and source links.",
+  },
+}[locale];
+const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
+const excerpt = (s: string) => (s.length > 220 ? `${s.slice(0, s.lastIndexOf(' ', 220))}…` : s);
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.h1, path }]}>
+  <article class="reading linimasa">
+    <h1>{T.h1}</h1>
+    <p class="muted">{DISCLAIMER}</p>
+    {locale === 'id' ? (
+      <>
+        <p>Ini catatan saya sendiri, berurutan waktu, tentang apa yang saya tulis, kirim, dan lakukan terkait klaim Abil Sudarman, dari {formatDateFor(first.date, locale)} sampai {formatDateFor(last.date, locale)}. Saya menyusunnya dari kiriman publik saya agar siapa pun dapat menilai urutan dan isinya sendiri.</p>
+        <p>Saya menuliskannya apa adanya, termasuk unggahan yang bahasanya keras, ancaman jalur hukum, dan balasan berulang di Threads yang bisa terasa mengganggu. Saya tidak berniat merundung; tujuan saya adalah memeriksa klaim secara terbuka. Tetapi niat tidak menghapus dampak, karena itu saya mencatat semuanya agar bisa dikritik. Isinya adalah pendapat saya, bukan putusan. Abil Sudarman berhak menjawab, dan jawabannya akan saya muat apa adanya lewat <a href={replyPath}>hak jawab</a>.</p>
+        <p class="muted">Catatan ini tidak memuat setiap kiriman: kiriman yang sama yang muncul beberapa kali digabung, dan kiriman yang tidak menyebut Abil Sudarman tidak dimasukkan. Tautan sumber mengarah ke kiriman asli. Jika ada yang berubah atau dihapus, saya akan memperbarui halamannya.</p>
+      </>
+    ) : (
+      <>
+        <p>This is my own record, in chronological order, of what I wrote, sent and did regarding Abil Sudarman's claims, from {formatDateFor(first.date, locale)} to {formatDateFor(last.date, locale)}. I compiled it from my public posts so that anyone can judge the sequence and the content for themselves.</p>
+        <p>I write it down as it was, including posts in harsh language, threats of legal action, and repeated replies on Threads that can feel like a nuisance. I do not intend to bully; my aim is to examine the claims in the open. But intent does not erase impact, which is why I record everything so that it can be criticised. The content is my opinion, not a ruling. Abil Sudarman has the right to reply, and I will publish his reply as received through the <a href={replyPath}>right of reply</a>.</p>
+        <p class="muted">This record does not include every post: identical posts that appeared several times are merged, and posts that do not mention Abil Sudarman are left out. Source links point to the original posts. If anything is changed or deleted, I will update the page.</p>
+      </>
+    )}
+
+    {groups.map((g) => (
+      <section class="linimasa-month" aria-labelledby={`${T.monthId}-${g.label.replace(/\s+/g, '-').toLowerCase()}`}>
+        <h2 id={`${T.monthId}-${g.label.replace(/\s+/g, '-').toLowerCase()}`}>{g.label}</h2>
+        <ol class="linimasa-list">
+          {g.items.map((e) => (
+            <li class="linimasa-item">
+              <p class="linimasa-meta"><time datetime={e.date}>{formatDateFor(e.date, locale)}</time> · {e.channel}</p>
+              <h3><a href={eventPath(e, locale)}>{e.title}</a></h3>
+              <p>{excerpt(e.paragraphs[0])}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+    ))}
+  </article>
+</BaseLayout>

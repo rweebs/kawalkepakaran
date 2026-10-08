@@ -1,0 +1,57 @@
+---
+import { render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ClassificationBadge from '../../components/ClassificationBadge.astro';
+import TranslationNotice from '../../components/TranslationNotice.astro';
+import PostHeader from '../../components/PostHeader.astro';
+import { firstImage } from '../../lib/header-image';
+import { getPosts, getPostsEn } from '../../lib/content';
+import { SITE, CLASSIFICATION_LABEL } from '../../lib/site';
+import { descriptionFromMarkdown } from '../../lib/seo';
+import { UI } from '../../i18n/ui';
+import { localizedPath, type Locale } from '../../i18n';
+
+export async function getStaticPaths() {
+  return (await getPosts()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+// Indonesian page: `entry` is the translated post. English page (src/pages/en/articles/[slug].astro): `entry` is the English edition.
+const { entry, locale = 'id' } = Astro.props as { entry: any; locale?: Locale };
+const p = entry.data;
+const { Content } = await render(entry);
+const header = firstImage(entry.body ?? '');
+const en = locale === 'en';
+const title: string = p.title;
+const originalTitle: string = en ? p.title : p.originalTitle;
+const description = descriptionFromMarkdown(entry.body ?? '')
+  || (en
+    ? `${p.title}, by ${p.author}. ${UI.en.classification[p.classification as keyof typeof UI.en.classification]}.`
+    : `Terjemahan Bahasa Indonesia dari “${p.originalTitle}” oleh ${p.author}. ${CLASSIFICATION_LABEL[p.classification as keyof typeof CLASSIFICATION_LABEL]}.`);
+const path = localizedPath('articles', locale, entry.id);
+const url = new URL(path, SITE.url).toString();
+const date = (en ? p.publishedDate : p.translationDate).toISOString().slice(0, 10);
+const jsonLd = {
+  '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: title.slice(0, 110),
+  description,
+  datePublished: date,
+  dateModified: date,
+  author: { '@type': 'Person', name: p.author },
+  publisher: { '@type': 'Person', name: p.author },
+  isAccessibleForFree: true,
+  image: [new URL('/og/kawal-og.png', SITE.url).toString()],
+  url,
+  mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+  ...(!en && p.originalUrl ? { translationOfWork: { '@type': 'CreativeWork', name: p.originalTitle, url: p.originalUrl } } : {}),
+  ...(en ? { workTranslation: { '@type': 'Article', inLanguage: 'id', url: new URL(localizedPath('articles', 'id', entry.id), SITE.url).toString() } } : {}),
+};
+const crumbName = en ? 'Articles' : 'Artikel';
+const alternates = { id: localizedPath('articles', 'id', entry.id), en: localizedPath('articles', 'en', entry.id) };
+---
+<BaseLayout title={title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} ogType="article" author={p.author} breadcrumbs={[{ name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
+  <article class="reading has-header">
+    <PostHeader title={title} slug={entry.id} image={header} />
+    <ClassificationBadge value={p.classification} locale={locale} />
+    <h1>{title}</h1>
+    <TranslationNotice originalTitle={originalTitle} originalUrl={p.originalUrl} author={p.author} locale={locale} slug={entry.id} original={en ? p.original : true} />
+    <div class="prose"><Content /></div>
+  </article>
+</BaseLayout>
