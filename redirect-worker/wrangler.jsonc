@@ -1,0 +1,8 @@
+{
+  "name": "abilsudarman-redirect",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [
+    { "pattern": "abilsudarman.my.id/*", "zone_name": "abilsudarman.my.id" }
+  ]
+}

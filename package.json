@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "INCLUDE_DRAFTS=1 astro dev",
-    "build": "node scripts/make-thumbs.mjs && astro build && node scripts/prune-images.mjs && node scripts/check-dist.mjs",
-    "build:preview": "node scripts/make-thumbs.mjs && INCLUDE_DRAFTS=1 astro build",
+    "redirects": "node scripts/make-redirects.mjs",
+    "build": "node scripts/make-redirects.mjs && node scripts/make-thumbs.mjs && astro build && node scripts/prune-images.mjs && node scripts/check-dist.mjs",
+    "build:preview": "node scripts/make-redirects.mjs && node scripts/make-thumbs.mjs && INCLUDE_DRAFTS=1 astro build",
     "check": "node scripts/check-dist.mjs",
     "test": "vitest run",
     "og": "node scripts/make-og.mjs"
