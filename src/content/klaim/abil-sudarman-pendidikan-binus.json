@@ -1,0 +1,14 @@
+{
+  "pakar": "abil-sudarman",
+  "claim": "Riwayat pendidikan tinggi di Indonesia.",
+  "claimEn": "Higher-education history in Indonesia.",
+  "venue": "Profil publik dan basis data PDDikti",
+  "verdict": "belum-terverifikasi",
+  "confidence": "rendah",
+  "evidence": [
+    "01-pddikti"
+  ],
+  "limits": "Catatan PDDikti tidak menyangkut pendidikan di luar Indonesia dan tidak menunjukkan klaim gelar yang lain.",
+  "limitsEn": "The PDDikti record does not cover education outside Indonesia and says nothing about any other degree claim.",
+  "replyStatus": "belum-ada"
+}

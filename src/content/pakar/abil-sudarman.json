@@ -1,0 +1,26 @@
+{
+  "name": "Abil Sudarman",
+  "field": "Kecerdasan buatan dan teknologi pendidikan",
+  "summary": "Tokoh yang dikenal di bidang AI dan teknologi pendidikan. Kasus 001: kredensial dan jabatan yang ia klaim diperiksa terhadap bukti yang tersedia. Semua hasil adalah catatan penulis, bukan putusan.",
+  "summaryEn": "A figure known in AI and education technology. Case 001: the credentials and roles he claims are checked against the available evidence. All results are the author's notes, not rulings.",
+  "credentials": [
+    {
+      "title": "Computer Science (gelar)",
+      "issuer": "University of London",
+      "status": "belum-diperiksa",
+      "checkedAt": "2026-10-09"
+    },
+    {
+      "title": "Executive Director",
+      "issuer": "KORIKA",
+      "status": "belum-diperiksa",
+      "checkedAt": "2026-10-09"
+    },
+    {
+      "title": "Project Manager, AI Readiness Assessment",
+      "issuer": "UNESCO",
+      "status": "belum-diperiksa",
+      "checkedAt": "2026-10-09"
+    }
+  ]
+}

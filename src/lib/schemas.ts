@@ -85,3 +85,40 @@ export const videoSchema = z.object({
   start: z.number().int().min(0).optional(),
   order: z.number().int(),
 });
+
+export const verdict = z.enum(['dikonfirmasi', 'sebagian', 'tidak-terbukti', 'belum-terverifikasi']);
+export const credentialStatus = z.enum(['terverifikasi', 'tidak-ditemukan', 'bertentangan', 'belum-diperiksa']);
+
+export const pakarSchema = z.object({
+  name: z.string().min(1),
+  field: z.string().min(1),
+  summary: z.string().min(1),
+  summaryEn: z.string().min(1),
+  credentials: z.array(z.object({
+    title: z.string().min(1),
+    issuer: z.string().min(1),
+    status: credentialStatus,
+    source: z.string().url().optional(),
+    checkedAt: z.coerce.date(),
+  })).default([]),
+  draft: z.boolean().default(false),
+});
+
+export const klaimSchema = z.object({
+  pakar: z.string().min(1),
+  claim: z.string().min(1),
+  claimEn: z.string().min(1),
+  /** Unknown for some claims; left out rather than guessed. */
+  madeAt: z.coerce.date().optional(),
+  venue: z.string().min(1),
+  verdict,
+  confidence: z.enum(['rendah', 'sedang', 'tinggi']),
+  evidence: z.array(z.string()).default([]),
+  limits: z.string().min(1),
+  limitsEn: z.string().min(1),
+  replyStatus: z.enum(['belum-ada', 'diterima', 'dipublikasikan']),
+  draft: z.boolean().default(false),
+});
+
+export type Verdict = z.infer<typeof verdict>;
+export type CredentialStatus = z.infer<typeof credentialStatus>;

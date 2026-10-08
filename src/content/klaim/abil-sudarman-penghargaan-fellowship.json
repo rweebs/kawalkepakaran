@@ -1,0 +1,15 @@
+{
+  "pakar": "abil-sudarman",
+  "claim": "“AI Innovator of the Year” dan Responsible AI Fellow (Stimson Center / Microsoft).",
+  "claimEn": "\"AI Innovator of the Year\" and Responsible AI Fellow (Stimson Center / Microsoft).",
+  "venue": "Situs pribadi dan profil publik",
+  "verdict": "belum-terverifikasi",
+  "confidence": "rendah",
+  "evidence": [
+    "04-situs-experiences",
+    "05-tunaya-cto"
+  ],
+  "limits": "Tidak disebutnya pemberi dan tahun tidak membuktikan bahwa penghargaan itu tidak ada.",
+  "limitsEn": "The missing issuer and year do not prove the award does not exist.",
+  "replyStatus": "belum-ada"
+}

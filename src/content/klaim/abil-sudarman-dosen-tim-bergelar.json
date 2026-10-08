@@ -1,0 +1,15 @@
+{
+  "pakar": "abil-sudarman",
+  "claim": "Berstatus dosen, dan memimpin tim bergelar Doktor/PhD.",
+  "claimEn": "Holds a lecturer status and leads a team with doctoral (PhD) degrees.",
+  "venue": "Profil publik dan liputan pihak ketiga",
+  "verdict": "belum-terverifikasi",
+  "confidence": "rendah",
+  "evidence": [
+    "06-kartu-instructor",
+    "09-liputan-sentrasoft"
+  ],
+  "limits": "Belum terlihatnya penugasan resmi tidak membuktikan bahwa penugasan itu tidak ada; liputan pihak ketiga bukan verifikasi.",
+  "limitsEn": "Not yet seeing an official assignment does not prove none exists; third-party coverage is not verification.",
+  "replyStatus": "belum-ada"
+}

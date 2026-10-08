@@ -1,0 +1,17 @@
+{
+  "pakar": "abil-sudarman",
+  "claim": "Gelar Computer Science dari University of London.",
+  "claimEn": "A Computer Science degree from the University of London.",
+  "venue": "Profil LinkedIn dan bio Stimson Center",
+  "verdict": "belum-terverifikasi",
+  "confidence": "rendah",
+  "evidence": [
+    "02-linkedin-pendidikan",
+    "03-stimson",
+    "10-email-verifikasi",
+    "11-linkedin-tanpa-hasil"
+  ],
+  "limits": "Belum adanya konfirmasi tidak membuktikan bahwa gelar itu tidak ada; ia hanya berarti belum ada sumber yang menguatkannya.",
+  "limitsEn": "The absence of confirmation does not prove the degree does not exist; it only means no source supports it yet.",
+  "replyStatus": "belum-ada"
+}
