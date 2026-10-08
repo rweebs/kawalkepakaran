@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { siteRoot } from './site-root.mjs';
 
-const DEFAULT_SITE = 'https://abilsudarman.my.id';
+const DEFAULT_SITE = 'https://kawalkepakaran.org';
 
 function htmlFiles(dir) {
   const out = [];

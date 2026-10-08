@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildSitemap } from '../src/lib/sitemap';
 
-const SITE = 'https://abilsudarman.my.id';
+const SITE = 'https://kawalkepakaran.org';
 
 describe('buildSitemap', () => {
   it('writes the XML header, urlset and image namespace', () => {

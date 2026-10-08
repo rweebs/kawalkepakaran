@@ -2,9 +2,9 @@ name: CI/CD
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  SITE_URL: https://abilsudarman.my.id
+  SITE_URL: https://kawalkepakaran.org
 
 jobs:
   verify:
@@ -51,7 +51,7 @@ jobs:
   deploy:
     name: Deploy to Cloudflare
     needs: verify
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:

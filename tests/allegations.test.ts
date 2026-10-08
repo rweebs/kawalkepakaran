@@ -18,7 +18,7 @@ describe('allegations summary', () => {
     expect(text).not.toMatch(/terbukti|penipu|palsu|bohong|pembohong|menipu|ijazah|tidak pernah ada/i);
   });
   it('repo url is the public GitHub repo, and CONTRIBUTING exists', () => {
-    expect(SITE.repo).toBe('https://github.com/rweebs/abilsudarman');
+    expect(SITE.repo).toBe('https://github.com/rweebs/kawalkepakaran');
     expect(existsSync('CONTRIBUTING.md')).toBe(true);
     expect(readFileSync('CONTRIBUTING.md', 'utf8')).toMatch(/src\/content\/bukti/);
   });

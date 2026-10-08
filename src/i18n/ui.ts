@@ -24,8 +24,8 @@ export interface UiStrings {
 
 export const UI: Record<Locale, UiStrings> = {
   id: {
-    siteTagline: 'Operasi Ababil',
-    siteDescription: 'Kawal terbuka atas klaim Abil Sudarman: terjemahan artikel Rahmat Wibowo beserta bukti dan hak jawab.',
+    siteTagline: 'Menguji klaim para pakar',
+    siteDescription: 'Kawal terbuka atas klaim para pakar: kredensial, bukti, dan hak jawab.',
     home: 'Beranda',
     note: 'Catatan:',
     readMore: 'Selengkapnya',
@@ -38,7 +38,7 @@ export const UI: Record<Locale, UiStrings> = {
     footer: (author) => `Konten oleh ${author}. Bukan nasihat hukum.`,
     corrections: 'Permintaan koreksi',
     classification: { 'pendapat': 'Pendapat', 'fakta-dengan-bukti': 'Fakta dengan bukti', 'laporan-aduan': 'Laporan/aduan' },
-    ogImageAlt: 'Operasi Ababil: kawanan burung ababil membawa batu di langit malam',
+    ogImageAlt: 'Kawal Kepakaran: penjaga wayang menimbang klaim para pakar',
     nav: {},
     themeSong: {
       aria: 'Lagu tema', label: 'Lagu tema', playing: 'Memutar', song: 'Lagu', stop: 'Berhenti', openMusic: 'Buka di YouTube Music',
@@ -48,8 +48,8 @@ export const UI: Record<Locale, UiStrings> = {
     notFound: { title: 'Halaman tidak ditemukan', back: 'Kembali ke beranda' },
   },
   en: {
-    siteTagline: 'Operation Ababil',
-    siteDescription: "An open fact-check of Abil Sudarman's claims: Rahmat Wibowo's articles, the evidence, and the right of reply.",
+    siteTagline: 'Checking what experts claim',
+    siteDescription: 'An open fact-check of expert claims: credentials, evidence, and the right of reply.',
     home: 'Home',
     note: 'Note:',
     readMore: 'Read more',
@@ -62,7 +62,7 @@ export const UI: Record<Locale, UiStrings> = {
     footer: (author) => `Content by ${author}. Not legal advice.`,
     corrections: 'Corrections',
     classification: { 'pendapat': 'Opinion', 'fakta-dengan-bukti': 'Fact with evidence', 'laporan-aduan': 'Report/complaint' },
-    ogImageAlt: 'Operation Ababil: a flock of ababil birds carrying stones across the night sky',
+    ogImageAlt: "Kawal Kepakaran: a wayang guardian weighing experts' claims",
     nav: {
       '/artikel': 'Articles', '/bukti': 'Evidence', '/linimasa': 'Timeline', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
       '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',

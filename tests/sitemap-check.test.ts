@@ -5,7 +5,7 @@ import { join } from 'node:path';
 // @ts-ignore plain JS module
 import { findSitemapProblems } from '../scripts/check-dist.mjs';
 
-const SITE = 'https://abilsudarman.my.id';
+const SITE = 'https://kawalkepakaran.org';
 let dir: string;
 const html = (extra = '') => `<html lang="id"><head><title>Judul halaman uji</title>${extra}</head><body></body></html>`;
 const sitemap = (paths: string[], lastmod?: string) =>

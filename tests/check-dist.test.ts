@@ -7,9 +7,9 @@ import { findProblems } from '../scripts/check-dist.mjs';
 
 let dir: string;
 const NAV = '<details class="nav__menu" open></details>';
-const OG = '<meta property="og:image" content="https://abilsudarman.my.id/og/kawal-og.png" />';
+const OG = '<meta property="og:image" content="https://kawalkepakaran.org/og/kawal-og.png" />';
 const DESC = 'Deskripsi uji yang cukup panjang untuk memenuhi batas minimal tujuh puluh karakter pada halaman uji ini.';
-const urlOf = (rel: string) => 'https://abilsudarman.my.id' + (rel === 'index.html' ? '/' : '/' + rel.replace(/\.html$/, ''));
+const urlOf = (rel: string) => 'https://kawalkepakaran.org' + (rel === 'index.html' ? '/' : '/' + rel.replace(/\.html$/, ''));
 const page = (body: string, opts: { banner?: boolean; nav?: string; og?: string; rel?: string; head?: string; h1?: number; lang?: string } = {}) => {
   const rel = opts.rel ?? 'index.html';
   const h1 = '<h1>Judul</h1>'.repeat(opts.h1 ?? 1);
@@ -50,7 +50,7 @@ describe('findProblems', () => {
     expect(findProblems(dir).join('\n')).toContain('/in/sq');
   });
   it('flags a broken own-domain absolute link', () => {
-    writeFileSync(join(dir, 'index.html'), page('<a href="https://abilsudarman.my.id/in/missing">x</a>'));
+    writeFileSync(join(dir, 'index.html'), page('<a href="https://kawalkepakaran.org/in/missing">x</a>'));
     expect(findProblems(dir).join('\n')).toContain('/in/missing');
   });
   it('flags a broken relative link resolved against the page', () => {
@@ -71,16 +71,16 @@ describe('findProblems', () => {
     expect(findProblems(dir).join('\n')).toContain('og:image');
   });
   it('flags an og:image whose file does not exist', () => {
-    writeFileSync(join(dir, 'index.html'), page('ok', { og: '<meta property="og:image" content="https://abilsudarman.my.id/og/missing.png" />' }));
+    writeFileSync(join(dir, 'index.html'), page('ok', { og: '<meta property="og:image" content="https://kawalkepakaran.org/og/missing.png" />' }));
     expect(findProblems(dir).join('\n')).toContain('/og/missing.png');
   });
   it('flags a title that is too long', () => {
-    const head = `<title>${'Judul sangat panjang '.repeat(6)}</title><meta name="description" content="${DESC}" /><link rel="canonical" href="https://abilsudarman.my.id/" />`;
+    const head = `<title>${'Judul sangat panjang '.repeat(6)}</title><meta name="description" content="${DESC}" /><link rel="canonical" href="https://kawalkepakaran.org/" />`;
     writeFileSync(join(dir, 'index.html'), page('ok', { head }));
     expect(findProblems(dir).join('\n')).toContain('title length');
   });
   it('flags a missing or too-short meta description', () => {
-    const head = '<title>Judul halaman uji</title><meta name="description" content="pendek" /><link rel="canonical" href="https://abilsudarman.my.id/" />';
+    const head = '<title>Judul halaman uji</title><meta name="description" content="pendek" /><link rel="canonical" href="https://kawalkepakaran.org/" />';
     writeFileSync(join(dir, 'index.html'), page('ok', { head }));
     expect(findProblems(dir).join('\n')).toContain('meta description');
   });
@@ -91,7 +91,7 @@ describe('findProblems', () => {
     expect(findProblems(dir).join('\n')).toContain('h1');
   });
   it('flags a canonical that does not match the page url', () => {
-    const head = `<title>Judul halaman uji</title><meta name="description" content="${DESC}" /><link rel="canonical" href="https://abilsudarman.my.id/lain" />`;
+    const head = `<title>Judul halaman uji</title><meta name="description" content="${DESC}" /><link rel="canonical" href="https://kawalkepakaran.org/lain" />`;
     writeFileSync(join(dir, 'index.html'), page('ok', { head }));
     expect(findProblems(dir).join('\n')).toContain('canonical');
   });

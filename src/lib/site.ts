@@ -1,8 +1,9 @@
 export const SITE = {
-  name: 'Kawal Abil Sudarman',
-  description: 'Kawal terbuka atas klaim Abil Sudarman: terjemahan artikel Rahmat Wibowo beserta bukti dan hak jawab.',
-  url: 'https://abilsudarman.my.id',
-  repo: 'https://github.com/rweebs/abilsudarman',
+  name: 'Kawal Kepakaran',
+  description: 'Kawal terbuka atas klaim para pakar: kredensial, bukti, dan hak jawab.',
+  url: 'https://kawalkepakaran.org',
+  legacyUrl: 'https://abilsudarman.my.id',
+  repo: 'https://github.com/rweebs/kawalkepakaran',
   author: 'Rahmat Wibowo',
   replyEmail: 'rahmat.wibowo21@gmail.com',
   correctionsEmail: 'rahmat.wibowo21@gmail.com',
