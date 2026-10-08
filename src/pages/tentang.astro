@@ -7,7 +7,7 @@ import { HERO as HERO_ID, chapters as chaptersId, STATS as STATS_ID, MESSAGE as 
 import { HERO_EN, chaptersEn, STATS_EN, MESSAGE_EN } from '../lib/tentang-en';
 import { SITE } from '../lib/site';
 import { UI } from '../i18n/ui';
-import { localizedPath, type Locale } from '../i18n';
+import { localizedPath, routePath, type Locale } from '../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const en = locale === 'en';
@@ -17,10 +17,12 @@ const STATS = en ? STATS_EN : STATS_ID;
 const MESSAGE = en ? MESSAGE_EN : MESSAGE_ID;
 const path = localizedPath('about', locale);
 const T = {
-  id: { title: 'Rahmat Wibowo, penggagas Operasi Ababil', crumb: 'Tentang', reply: 'Hak jawab',
-    description: 'Tentang Rahmat Wibowo, penggagas gerakan Operasi Ababil dan pendiri InfraLoka: kisah hidup, perjalanan karier, dan pesan untuk Abil Sudarman serta masyarakat Indonesia.' },
+  id: { title: 'Rahmat Wibowo, penggagas Kawal Kepakaran', crumb: 'Tentang', reply: 'Hak jawab',
+    purpose: 'Kawal Kepakaran dibuat untuk menguji klaim para pakar dengan bukti yang bisa dilacak, lalu membuka hasilnya beserta hak jawab. Kasus pertamanya adalah Abil Sudarman.', methodLink: 'Baca metode kami',
+    description: 'Tentang Rahmat Wibowo, penggagas Kawal Kepakaran dan pendiri InfraLoka: alasan situs ini dibuat, kisah hidup, perjalanan karier, dan pesan untuk masyarakat Indonesia.' },
   en: { title: 'About the author, Rahmat Wibowo', crumb: 'About', reply: 'Right of reply',
-    description: 'About Rahmat Wibowo, initiator of the Operation Ababil movement and founder of InfraLoka: his life story, career path, and a message to Abil Sudarman and the people of Indonesia.' },
+    purpose: 'Kawal Kepakaran exists to check experts\' claims against evidence that can be traced, then publish the result together with the right of reply. Its first case is Abil Sudarman.', methodLink: 'Read our method',
+    description: 'About Rahmat Wibowo, initiator of Kawal Kepakaran and founder of InfraLoka: why this site exists, a life story, a career path, and a message to the people of Indonesia.' },
 }[locale];
 const DESCRIPTION = T.description;
 // Chapter 02 (Anak Langit) is the interactive sky between 'nama' and 'itb'.
@@ -42,6 +44,7 @@ const ld = { '@context': 'https://schema.org', '@type': 'AboutPage', name: T.tit
       <Image src={portrait} alt={HERO.photoAlt} widths={[240, 360]} sizes="(max-width: 640px) 240px, 220px" quality={60} loading="eager" fetchpriority="high" />
     </header>
     <p class="muted">{DISCLAIMER}</p>
+    <p class="lead">{T.purpose} <a href={routePath('method', locale)}>{T.methodLink} →</a></p>
     {en
       ? <p class="muted">The <a href={SOURCE_URL} rel="noopener">original story at infraloka.co.id/story</a>, written by the initiator of this site. This story contains personal history and the author's statements about himself; its source is that original page.</p>
       : <p class="muted">Terjemahan bahasa Indonesia dari <a href={SOURCE_URL} rel="noopener">kisah asli di infraloka.co.id/story</a>, ditulis oleh penggagas situs ini. Kisah ini memuat riwayat pribadi dan pernyataan penulis tentang dirinya sendiri; sumbernya adalah halaman asli tersebut.</p>}

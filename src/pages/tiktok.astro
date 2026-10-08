@@ -10,11 +10,11 @@ const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const videos = sortTiktok(await getTiktok());
 const T = {
-  id: { title: 'TikTok tentang Abil Sudarman', h1: 'TikTok tentang Abil Sudarman', empty: 'Belum ada video yang dipublikasikan.', video: 'Video', close: 'Tutup', reload: 'Muat ulang', open: 'Buka di TikTok',
+  id: { title: 'TikTok Kasus 001: Abil Sudarman', h1: 'TikTok Kasus 001: Abil Sudarman', empty: 'Belum ada video yang dipublikasikan.', video: 'Video', close: 'Tutup', reload: 'Muat ulang', open: 'Buka di TikTok',
     intro: (caption: string) => `Seri video TikTok @rweebs_ dengan keterangan: “${caption}”. Isinya pendapat penulis, bukan putusan. Pemutar TikTok (pihak ketiga) baru dimuat setelah Anda menekan sebuah video; tanpa itu tidak ada permintaan ke TikTok.`,
     note: 'Pemutar TikTok (pihak ketiga) dimuat setelah Anda menekan sebuah video dan dihentikan saat jendela ditutup. TikTok kadang membatasi pemutarnya sementara (“overload-protect triggered”); jika video tidak muncul, muat ulang atau buka langsung di TikTok.',
     description: 'Daftar video TikTok Rahmat Wibowo tentang klaim Abil Sudarman. Putar langsung di halaman; pemutar TikTok baru dimuat setelah Anda menekan video.' },
-  en: { title: 'TikTok videos on Abil Sudarman', h1: 'TikTok', empty: 'No videos have been published yet.', video: 'Video', close: 'Close', reload: 'Reload', open: 'Open on TikTok',
+  en: { title: 'Case 001 TikTok: Abil Sudarman', h1: 'TikTok (Case 001)', empty: 'No videos have been published yet.', video: 'Video', close: 'Close', reload: 'Reload', open: 'Open on TikTok',
     intro: (caption: string) => `The TikTok video series @rweebs_ with the caption (in Indonesian): “${caption}”. The content is the author's opinion, not rulings. The TikTok player (third party) only loads after you press a video; until then no request is made to TikTok.`,
     note: 'The TikTok player (third party) loads after you press a video and is stopped when the window is closed. TikTok sometimes temporarily limits its player (“overload-protect triggered”); if the video does not appear, reload it or open it directly on TikTok.',
     description: "Rahmat Wibowo's TikTok videos about Abil Sudarman's claims (in Indonesian). Play them on the page; the TikTok player only loads after you press a video." },
