@@ -31,6 +31,10 @@ const T = {
     close: 'Daftar kami berbeda dari daftar hitam dalam satu hal yang menentukan: siapa pun bisa membacanya, membantahnya, dan memperbaikinya, termasuk orang yang ada di dalamnya.',
     sign: 'Rahmat Wibowo, penggagas Kawal Kepakaran',
     sourcesH: 'Sumber', xLabel: 'Utas @ibamarief di X, 1 Oktober 2023', niagaLabel: 'Niaga.asia, 31 Agustus 2026',
+    imgAlt: 'Tangkapan layar dua kiriman Ibrahim Arief (@ibamarief) di X pada 1 Oktober 2023 tentang “never-hire list” pribadi dan alasan daftar itu tidak dibuka.',
+    imgShows: 'Menunjukkan: dua kiriman pertama utas itu, termasuk pernyataan bahwa daftar harus tetap pribadi berdasarkan nasihat hukum dan ajakan agar pemimpin menyimpan daftar masing-masing.',
+    imgLimits: 'Tidak membuktikan: siapa yang dimaksud dengan inisial atau rujukan lain dalam kiriman itu, dan gambar tidak menyebut perkara Chromebook (utas ini terbit pada 2023). Balasan akun lain di bawah utas dipotong dari gambar.',
+    imgLink: 'Lihat utas aslinya di X',
     reply: 'Setiap pakar yang disebut berhak menjawab lewat', replyLabel: 'hak jawab', method: 'Baca metode kami',
   },
   en: {
@@ -56,6 +60,10 @@ const T = {
     close: 'Our list differs from a blacklist in one decisive way: anyone can read it, dispute it and correct it, including the people on it.',
     sign: 'Rahmat Wibowo, founder of Kawal Kepakaran',
     sourcesH: 'Sources', xLabel: 'Thread by @ibamarief on X, 1 October 2023', niagaLabel: 'Niaga.asia, 31 August 2026',
+    imgAlt: 'Screenshot of two posts by Ibrahim Arief (@ibamarief) on X, 1 October 2023, about a personal “never-hire list” and why the list is not shared.',
+    imgShows: 'Shows: the first two posts of the thread, including the statement that the list must stay private on legal advice and the encouragement for leaders to keep their own lists.',
+    imgLimits: 'Does not prove: who the initials or other references in the posts refer to, and the image does not mention the Chromebook case (the thread dates from 2023). A reply from another account below the thread is cropped from the image.',
+    imgLink: 'See the original thread on X',
     reply: 'Every expert named has the right to reply through the', replyLabel: 'right of reply', method: 'Read our method',
   },
 }[locale];
@@ -64,7 +72,15 @@ const T = {
   <article class="reading">
     <p class="eyebrow">{T.kicker} · <time datetime="2026-10-09">{formatDateLocale('2026-10-09', locale)}</time></p>
     <h1>{T.h1}</h1>
-    {T.intro.slice(0, 3).map((p) => <p>{p}</p>)}
+    <p>{T.intro[0]}</p>
+    <figure class="figure-quote manifesto-figure">
+      <img src="/img/manifesto-tweet-ibamarief.png" alt={T.imgAlt} width="1086" height="1090" loading="lazy" decoding="async" />
+      <figcaption>
+        {T.imgShows} {T.imgLimits}
+        (<a href={X_THREAD} rel="noopener nofollow" target="_blank">{T.imgLink}</a>)
+      </figcaption>
+    </figure>
+    {T.intro.slice(1, 3).map((p) => <p>{p}</p>)}
     <p>{T.intro[3]}</p>
     <ol class="stack">
       {T.principles.map(([head, rest]) => <li><strong>{head}</strong> {rest}</li>)}
