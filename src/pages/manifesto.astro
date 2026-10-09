@@ -1,5 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { articleLd } from '../lib/schema-org';
+import { SITE } from '../lib/site';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../i18n';
 
 const { locale = 'id' } = Astro.props as { locale?: Locale };
@@ -67,8 +69,9 @@ const T = {
     reply: 'Every expert named has the right to reply through the', replyLabel: 'right of reply', method: 'Read our method',
   },
 }[locale];
+const ld = articleLd({ url: new URL(path, SITE.url).toString(), headline: T.title, description: T.description, datePublished: '2026-10-09', locale });
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <p class="eyebrow">{T.kicker} · <time datetime="2026-10-09">{formatDateLocale('2026-10-09', locale)}</time></p>
     <h1>{T.h1}</h1>

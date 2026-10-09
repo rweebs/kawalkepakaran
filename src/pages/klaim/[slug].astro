@@ -4,6 +4,8 @@ import VerdictBadge from '../../components/VerdictBadge.astro';
 import { getKlaim, getPakar } from '../../lib/pakar';
 import { getBukti } from '../../lib/content';
 import { truncateAtWord } from '../../lib/seo';
+import { claimReviewLd } from '../../lib/schema-org';
+import { PAGE_LASTMOD, SITE } from '../../lib/site';
 import { confidenceLabel, replyStatusLabel, verdictLabel } from '../../lib/verdict';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
 
@@ -19,6 +21,10 @@ const claim = locale === 'id' ? klaim.data.claim : klaim.data.claimEn;
 const limits = locale === 'id' ? klaim.data.limits : klaim.data.limitsEn;
 const path = localizedPath('claims', locale, id);
 const alternates = { id: localizedPath('claims', 'id', id), en: localizedPath('claims', 'en', id) };
+const ld = claimReviewLd({
+  url: new URL(path, SITE.url).toString(), claim, pakarName: pakar.data.name, verdictLabel: verdictLabel(klaim.data.verdict, locale),
+  limits, datePublished: PAGE_LASTMOD['/klaim'], locale, claimMadeAt: klaim.data.madeAt?.toISOString().slice(0, 10),
+});
 const description = truncateAtWord(`${verdictLabel(klaim.data.verdict, locale)}: ${claim} ${pakar.data.name}. ${limits}`, 160);
 const T = {
   id: { crumb: 'Cek klaim', by: 'Pakar', venue: 'Disampaikan di', madeAt: 'Tanggal', verdict: 'Putusan pemeriksaan', confidence: 'Tingkat keyakinan',
@@ -27,7 +33,7 @@ const T = {
     evidence: 'Evidence', noEvidence: 'No evidence linked yet.', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
 }[locale];
 ---
-<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates}
+<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
   breadcrumbs={[{ name: T.crumb, path: routePath('claims', locale) }, { name: claim, path }]}>
   <article class="reading">
     <h1>{claim}</h1>

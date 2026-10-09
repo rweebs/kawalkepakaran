@@ -4,6 +4,8 @@ import CredentialList from '../../components/CredentialList.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
 import { getPakar, klaimForPakar } from '../../lib/pakar';
 import { truncateAtWord } from '../../lib/seo';
+import { personLd } from '../../lib/schema-org';
+import { SITE } from '../../lib/site';
 import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
 import { localizedPath, routePath, type Locale } from '../../i18n';
 
@@ -18,6 +20,7 @@ const path = localizedPath('experts', locale, id);
 const alternates = { id: localizedPath('experts', 'id', id), en: localizedPath('experts', 'en', id) };
 const summary = locale === 'id' ? pakar.data.summary : pakar.data.summaryEn;
 const description = truncateAtWord(`${pakar.data.name}: ${summary}`, 160);
+const ld = personLd({ url: new URL(path, SITE.url).toString(), name: pakar.data.name, field: pakar.data.field, description, locale });
 const T = {
   id: { crumb: 'Pakar', creds: 'Kredensial', claims: 'Klaim yang diperiksa', none: 'Belum ada klaim yang diperiksa.',
     confidence: 'Keyakinan', reply: 'Hak jawab', replyNote: 'berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman ini lewat', replyLabel: 'hak jawab' },
@@ -25,7 +28,7 @@ const T = {
     confidence: 'Confidence', reply: 'Right of reply', replyNote: 'has the right to respond, correct or add context to any of these pages through the', replyLabel: 'right of reply' },
 }[locale];
 ---
-<BaseLayout title={pakar.data.name} description={description} path={path} locale={locale} alternates={alternates}
+<BaseLayout title={pakar.data.name} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
   breadcrumbs={[{ name: T.crumb, path: routePath('experts', locale) }, { name: pakar.data.name, path }]}>
   <article class="reading">
     <h1>{pakar.data.name}</h1>
