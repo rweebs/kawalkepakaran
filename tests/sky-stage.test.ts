@@ -34,13 +34,14 @@ describe('home sky without a framework runtime', () => {
 });
 
 describe('home image delivery', () => {
-  it('prioritises the hero emblem and reserves its space so the layout does not shift', () => {
+  it('inlines the hero emblem so it needs no request, labels it per language and reserves its space', () => {
     const home = read('src/pages/index.astro');
-    const hero = home.slice(home.indexOf('src="/logo-kawal.svg"'), home.indexOf('</figure>'));
-    expect(hero).toContain('fetchpriority="high"');
-    expect(hero).toContain('loading="eager"');
-    expect(hero).toMatch(/width="\d+"/);
-    expect(hero).toMatch(/height="\d+"/);
+    const hero = home.slice(home.indexOf('<figure class="home-hero__art"'), home.indexOf('</figure>'));
+    expect(hero).not.toMatch(/<img[^>]*logo-kawal/);
+    expect(hero).toContain('set:html=');
+    expect(home).toContain("readFileSync('public/logo-kawal.svg'");
+    expect(home).toMatch(/aria-label="\$\{T\.emblemAlt\}"/);
+    expect(home).toMatch(/width="320" height="320"/);
   });
   it('gives static assets a long cache lifetime', () => {
     const headers = read('public/_headers');

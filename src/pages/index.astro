@@ -1,4 +1,5 @@
 ---
+import { readFileSync } from 'node:fs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SkyStage from '../components/SkyStage.astro';
 import VerdictBadge from '../components/VerdictBadge.astro';
@@ -68,6 +69,10 @@ const T = {
     alt: { name: SITE.name, alternateName: 'Expert Watch' },
   },
 }[locale];
+// The emblem is inlined: as an <img> its request was only discovered after the inline CSS, which delayed the LCP by hundreds of ms.
+const emblem = readFileSync('public/logo-kawal.svg', 'utf8')
+  .replace(/aria-label="[^"]*"/, `aria-label="${T.emblemAlt}"`)
+  .replace('<svg ', '<svg width="320" height="320" ');
 const websiteLd = {
   '@context': 'https://schema.org', '@type': 'WebSite', name: T.alt.name, alternateName: T.alt.alternateName,
   '@id': `${SITE.url}/#website`, url: new URL(localizedPath('home', locale), SITE.url).toString(), sameAs: [SITE.url, SITE.repo],
@@ -93,7 +98,7 @@ const websiteLd = {
           </div>
         </div>
         <figure class="home-hero__art">
-          <img src="/logo-kawal.svg" alt={T.emblemAlt} width="320" height="320" loading="eager" fetchpriority="high" decoding="async" />
+          <Fragment set:html={emblem} />
         </figure>
       </div>
     </section>

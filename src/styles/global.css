@@ -139,7 +139,7 @@ a.lang-toggle__opt:hover { background: var(--bg-glass-border); }
 #operasi .glass { max-width: 44rem; }
 .home-hero { display: grid; gap: 1.25rem; width: 100%; align-items: center; }
 .home-hero__art { margin: 0; justify-self: center; width: min(34rem, 100%); }
-.home-hero__art img { display: block; width: 100%; height: auto; border-radius: var(--radius-lg); border: 1px solid var(--bg-glass-border); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
+.home-hero__art img, .home-hero__art svg { display: block; width: 100%; height: auto; border-radius: var(--radius-lg); border: 1px solid var(--bg-glass-border); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
 @media (min-width: 900px) { .home-hero { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } .home-hero__art { justify-self: end; } }
 .home-pair { display: grid; gap: 1rem; align-items: stretch; }
 @media (min-width: 900px) { .home-pair { grid-template-columns: 1fr 1fr; } }
