@@ -7,6 +7,8 @@ subjects: ["Kawal Kepakaran"]
 status: final
 original: true
 ---
+![Illustration: golden scales inside a wayang gunungan, a claim card on one pan and a stone of evidence on the other, with ababil birds flying in the night sky.](/img/peluncuran-kawal-kepakaran-001.png)
+
 *On 9 October 2026 I launched [kawalkepakaran.org](https://kawalkepakaran.org). The site grew out of "Kawal Abil Sudarman" and now tests the claims of experts in general: credentials are checked, evidence is opened, and every expert named has the right to reply. What it publishes is my notes and opinion, not a court ruling.*
 
 ## Why the name changed
@@ -14,6 +16,8 @@ original: true
 My first site was built around one person. That is the wrong shape for the long run: what deserves testing is a **claim**, not a person. So the name became Kawal Kepakaran, and the Abil Sudarman matter became **Case 001**, the first of those that may follow. The articles, evidence, timeline and the Bowobharata page from the early days are still there.
 
 ## What is on the site
+
+![Diagram of the four verdicts of Kawal Kepakaran: confirmed, partly, not supported and cannot yet be verified, each with a short definition.](/img/peluncuran-kawal-kepakaran-002-en.png)
 
 - **[Experts](/en/experts).** One profile per expert: credentials checked, claims tested, and their reply.
 - **[Claim checks](/en/claims).** Every claim gets one of four verdicts (confirmed, partly, not supported, cannot yet be verified), a confidence level, the evidence, and one mandatory section: **what this does not prove**.

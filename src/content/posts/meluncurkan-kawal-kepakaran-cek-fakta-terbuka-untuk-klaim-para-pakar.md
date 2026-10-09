@@ -7,6 +7,8 @@ classification: pendapat
 subjects: ["Kawal Kepakaran"]
 translationStatus: final
 ---
+![Ilustrasi: timbangan emas di dalam gunungan wayang, kartu klaim di satu sisi dan batu bukti di sisi lain, dengan burung-burung ababil terbang di langit malam.](/img/peluncuran-kawal-kepakaran-001.png)
+
 *Pada 9 Oktober 2026 saya meluncurkan [kawalkepakaran.org](https://kawalkepakaran.org). Situs ini tumbuh dari "Kawal Abil Sudarman", dan kini menguji klaim para pakar secara umum: kredensial diperiksa, bukti dibuka, dan setiap pakar yang disebut berhak menjawab. Isinya adalah catatan dan pendapat saya, bukan putusan pengadilan.*
 
 ## Mengapa berganti nama
@@ -14,6 +16,8 @@ translationStatus: final
 Situs pertama saya berpusat pada satu orang. Itu keliru sebagai bentuk jangka panjang: yang layak diuji adalah **klaim**, bukan seseorang. Maka namanya menjadi Kawal Kepakaran, dan kasus Abil Sudarman menjadi **Kasus 001**, kasus pertama dari yang mungkin menyusul. Artikel, bukti, linimasa, dan halaman Bowobharata dari masa awal tetap ada di sana.
 
 ## Apa yang ada di situs
+
+![Diagram empat putusan Kawal Kepakaran: dikonfirmasi, sebagian, tidak terbukti, dan belum bisa diverifikasi, masing-masing dengan arti singkatnya.](/img/peluncuran-kawal-kepakaran-002-id.png)
 
 - **[Pakar](/pakar).** Satu profil per pakar: kredensial yang diperiksa, klaim yang diuji, dan tanggapannya.
 - **[Cek klaim](/klaim).** Setiap klaim diberi salah satu dari empat putusan (dikonfirmasi, sebagian, tidak terbukti, belum bisa diverifikasi), tingkat keyakinan, bukti, dan satu bagian wajib: **yang tidak dibuktikan**.
