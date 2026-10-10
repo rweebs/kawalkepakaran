@@ -19,6 +19,13 @@ describe('public/_headers', () => {
   const h = read('public/_headers');
   it('sets a CSP with fallback directives', () => {
     for (const d of ["default-src 'self'", "frame-ancestors 'none'", "object-src 'none'", 'upgrade-insecure-requests']) expect(h).toContain(d);
+    // Pages also carry Astro's <meta> CSP, which allows each inline <style> and <script> by hash. Browsers enforce both
+    // policies, so the header must not restrict styles or scripts on its own: a bare default-src 'self' blocked every inline
+    // stylesheet (inlineStylesheets: 'always') and the site rendered unstyled.
+    const csp = h.match(/Content-Security-Policy:([^\n]*)/)?.[1] ?? '';
+    expect(csp).toMatch(/style-src [^;]*'unsafe-inline'/);
+    expect(csp).toMatch(/script-src [^;]*'unsafe-inline'/);
+    expect(read('astro.config.mjs')).toMatch(/security:\s*\{\s*csp:/);
   });
   it('caches the fixed-path files', () => {
     for (const p of ['/klaim.json', '/llms.txt', '/manifest.webmanifest', '/robots.txt', '/.well-known/security.txt']) expect(h).toContain(`\n${p}\n`);
