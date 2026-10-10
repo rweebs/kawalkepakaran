@@ -88,6 +88,49 @@ function pageFileFor(dist, pathname) {
   return null;
 }
 
+/** hreflang pairs must point at each other, and at pages that exist. */
+export function findHreflangProblems(distDir, site = DEFAULT_SITE) {
+  const dist = siteRoot(distDir);
+  const origin = new URL(site).origin;
+  const problems = [];
+  const alts = new Map();
+  for (const file of htmlFiles(dist)) {
+    const html = readFileSync(file, 'utf8');
+    if (/<meta[^>]*name="robots"[^>]*content="[^"]*noindex/.test(html)) continue;
+    const here = new URL(pageUrl(dist, file), origin).toString();
+    const map = {};
+    for (const m of html.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)) map[m[1]] = m[2];
+    if (Object.keys(map).length) alts.set(here, { file, map });
+  }
+  for (const [here, { file, map }] of alts) {
+    if (map.id !== here && map.en !== here) problems.push(`${file}: hreflang does not list the page itself`);
+    for (const l of ['id', 'en']) {
+      const target = map[l];
+      if (!target || target === here) continue;
+      const back = alts.get(target);
+      if (!back) problems.push(`${file}: hreflang ${l} ${target} is missing or noindex`);
+      else if (back.map.id !== here && back.map.en !== here) problems.push(`${file}: ${target} does not link back`);
+    }
+  }
+  return problems;
+}
+
+const BUNDLE_BUDGET = { 'three.module': 700_000, default: 260_000 };
+/** No script chunk may grow past its budget (bytes, uncompressed). */
+export function findBundleProblems(distDir) {
+  const dir = join(siteRoot(distDir), '_astro');
+  if (!existsSync(dir)) return [];
+  const problems = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.js')) continue;
+    const size = statSync(join(dir, name)).size;
+    const key = Object.keys(BUNDLE_BUDGET).find((k) => k !== 'default' && name.startsWith(k));
+    const limit = BUNDLE_BUDGET[key ?? 'default'];
+    if (size > limit) problems.push(`${name}: ${size} bytes exceeds the ${limit} budget`);
+  }
+  return problems;
+}
+
 export function findSitemapProblems(distDir, site = DEFAULT_SITE) {
   const dist = siteRoot(distDir);
   const origin = new URL(site).origin;
@@ -114,6 +157,12 @@ export function findSitemapProblems(distDir, site = DEFAULT_SITE) {
       problems.push(`${file}: noindex page listed ${url.pathname}`);
     }
   }
+  for (const b of blocks) {
+    for (const m of b.matchAll(/<xhtml:link[^>]*href="([^"]+)"/g)) {
+      const href = m[1].replace(/&amp;/g, '&');
+      if (!listed.has(href)) problems.push(`${file}: hreflang target not in sitemap ${href}`);
+    }
+  }
   for (const page of htmlFiles(dist)) {
     const html = readFileSync(page, 'utf8');
     if (/<meta[^>]*name="robots"[^>]*content="[^"]*noindex/.test(html)) continue;
@@ -125,7 +174,7 @@ export function findSitemapProblems(distDir, site = DEFAULT_SITE) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const dist = resolve(process.argv[2] ?? 'dist');
-  const problems = [...findProblems(dist), ...findSitemapProblems(dist)];
+  const problems = [...findProblems(dist), ...findSitemapProblems(dist), ...findHreflangProblems(dist), ...findBundleProblems(dist)];
   if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
   console.log(`dist OK (${htmlFiles(dist).length} pages)`);
 }

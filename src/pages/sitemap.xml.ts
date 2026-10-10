@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { getBukti, getPosts, getPostsEn } from '../lib/content';
 import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
 import { ROUTES } from '../i18n';
-import { localizedEvents, eventPath } from '../lib/linimasa-locale';
+import { localizedEvents, localizeEvent, eventPath } from '../lib/linimasa-locale';
 import { firstImage } from '../lib/header-image';
 import { buildSitemap, type SitemapEntry } from '../lib/sitemap';
 import { PAGE_LASTMOD, SITE } from '../lib/site';
@@ -72,6 +72,21 @@ export const GET: APIRoute = async () => {
     }),
   ];
   entries.push(...english);
+
+  // Tie each page to its other-language twin so the sitemap carries hreflang too.
+  const pair = new Map<string, string>();
+  for (const r of Object.values(ROUTES)) pair.set(r.id, r.en);
+  for (const p of pakar) pair.set(`/pakar/${p.id}`, `/en/experts/${p.id}`);
+  for (const k of klaim) pair.set(`/klaim/${k.id}`, `/en/claims/${k.id}`);
+  for (const e of EVENTS) pair.set(eventUrl(e), eventPath(localizeEvent(e, 'en'), 'en'));
+  for (const p of postsEn) pair.set(`/kasus/abil-sudarman/artikel/${p.id}`, `/en/cases/abil-sudarman/articles/${p.id}`);
+  const reverse = new Map([...pair].map(([id, en]) => [en, id]));
+  for (const e of entries) {
+    const en = pair.get(e.path);
+    const id = reverse.get(e.path);
+    if (en) e.alternates = { id: e.path, en };
+    else if (id) e.alternates = { id, en: e.path };
+  }
 
   return new Response(buildSitemap(entries, SITE.url), { headers: { 'Content-Type': 'application/xml; charset=utf-8' } });
 };

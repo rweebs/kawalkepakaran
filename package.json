@@ -5,8 +5,13 @@
   "description": "Kawal Kepakaran: an open fact-check of expert claims",
   "license": "MIT",
   "homepage": "https://kawalkepakaran.org",
-  "repository": { "type": "git", "url": "git+https://github.com/rweebs/kawalkepakaran.git" },
-  "bugs": { "url": "https://github.com/rweebs/kawalkepakaran/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rweebs/kawalkepakaran.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rweebs/kawalkepakaran/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "INCLUDE_DRAFTS=1 astro dev",
@@ -15,7 +20,10 @@
     "build:preview": "node scripts/make-redirects.mjs && node scripts/make-thumbs.mjs && INCLUDE_DRAFTS=1 astro build",
     "check": "node scripts/check-dist.mjs",
     "test": "vitest run",
-    "og": "node scripts/make-og.mjs"
+    "og": "node scripts/make-og.mjs",
+    "scan": "node scripts/scan-secrets.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",
@@ -34,5 +42,8 @@
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
     "wrangler": "^4.147.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

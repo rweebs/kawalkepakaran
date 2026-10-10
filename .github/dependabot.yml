@@ -3,9 +3,15 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     groups:
       astro: { patterns: ["astro", "@astrojs/*"] }
+      cloudflare: { patterns: ["wrangler"] }
+      types: { patterns: ["@types/*"] }
+    ignore:
+      # astro check does not support TypeScript 7 yet; the typecheck script uses tsc.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: monthly }
+    schedule: { interval: weekly }

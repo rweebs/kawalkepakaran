@@ -1,0 +1,14 @@
+# Kawal Kepakaran
+
+> Kawal terbuka atas klaim para pakar: kredensial, bukti, dan hak jawab. Isi situs adalah pendapat dan catatan penulis, bukan putusan pengadilan; setiap orang berhak atas praduga tak bersalah dan hak jawab.
+
+## Pokok
+- [Metode](https://kawalkepakaran.org/metode): cara menilai klaim, empat putusan, tingkat keyakinan
+- [Cek klaim](https://kawalkepakaran.org/klaim): klaim yang sudah diperiksa (juga sebagai JSON: https://kawalkepakaran.org/klaim.json)
+- [Kebijakan](https://kawalkepakaran.org/kebijakan): independensi, data, koreksi dan penghapusan
+- [Hak jawab](https://kawalkepakaran.org/hak-jawab)
+- [Disclaimer](https://kawalkepakaran.org/disclaimer)
+
+## Opsional
+- [Sitemap](https://kawalkepakaran.org/sitemap.xml)
+- [RSS](https://kawalkepakaran.org/rss.xml)

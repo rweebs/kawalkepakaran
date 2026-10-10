@@ -1,4 +1,4 @@
-export interface SitemapEntry { path: string; lastmod?: string; images?: string[] }
+export interface SitemapEntry { path: string; lastmod?: string; images?: string[]; /** Both language versions of the page, as paths; emitted as hreflang links. */ alternates?: { id: string; en: string } }
 
 const escapeXml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -17,12 +17,16 @@ export function buildSitemap(entries: SitemapEntry[], site: string): string {
     const images = (e.images ?? [])
       .map((img) => `<image:image><image:loc>${escapeXml(new URL(img, site).toString())}</image:loc></image:image>`)
       .join('');
-    return `  <url><loc>${loc}</loc>${lastmod}${images}</url>`;
+    const alt = e.alternates
+      ? [['id', e.alternates.id], ['en', e.alternates.en], ['x-default', e.alternates.id]]
+          .map(([l, p]) => `<xhtml:link rel="alternate" hreflang="${l}" href="${escapeXml(new URL(p, site).toString())}"/>`).join('')
+      : '';
+    return `  <url><loc>${loc}</loc>${lastmod}${alt}${images}</url>`;
   });
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
     ...urls,
     '</urlset>',
     '',

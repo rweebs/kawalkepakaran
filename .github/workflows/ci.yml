@@ -32,6 +32,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Secret and personal-data scan
+        run: npm run scan
+
+      - name: Type check
+        run: npm run typecheck
+
       - name: Unit tests
         run: npm test
 
@@ -51,7 +57,8 @@ jobs:
   deploy:
     name: Deploy to Cloudflare
     needs: verify
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # Skipped when the repo has no Cloudflare token: the site is then deployed by Cloudflare's own Git integration.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_DEPLOY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -82,13 +89,16 @@ jobs:
 
   smoke:
     name: Post-deploy smoke test
-    needs: deploy
+    # Runs after a push to main whichever way the site is deployed (Cloudflare's Git integration or the job above).
+    needs: verify
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - name: Check both language versions and the sitemap
         run: |
           set -euo pipefail
+          sleep 90
           for path in / /en /artikel /en/articles /pakar /klaim /arsip /metode /hak-jawab /sitemap.xml /robots.txt; do
             for attempt in 1 2 3 4 5; do
               code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL$path" || true)

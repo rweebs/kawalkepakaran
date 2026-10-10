@@ -13,7 +13,7 @@ const t = UI[locale].themeSong;
     <div class="theme-song__stage"></div>
     <div class="theme-song__actions">
       <button type="button" class="btn theme-song__stop">{t.stop}</button>
-      <a class="btn" href={musicUrl(song.videoId)} target="_blank" rel="noopener noreferrer">{t.openMusic}</a>
+      <a class="btn" href={musicUrl(song.videoId)} target="_blank" rel="noopener noreferrer nofollow">{t.openMusic}</a>
     </div>
     <p class="muted theme-song__note">{shouldAutoplay(path) ? t.autoplayNote : t.manualNote}</p>
   </section>

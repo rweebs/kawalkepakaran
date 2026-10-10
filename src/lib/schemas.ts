@@ -9,6 +9,8 @@ export const postSchema = z.object({
   author: z.string().min(1),
   originalDate: z.coerce.date().optional(),
   translationDate: z.coerce.date(),
+  /** Set when the post is revised after publication; becomes dateModified. */
+  updatedDate: z.coerce.date().optional(),
   classification,
   subjects: z.array(z.string()).default([]),
   translationStatus: z.enum(['draft', 'final']).default('draft'),
@@ -22,6 +24,7 @@ export const postEnSchema = z.object({
   author: z.string().min(1),
   originalDate: z.coerce.date().optional(),
   publishedDate: z.coerce.date(),
+  updatedDate: z.coerce.date().optional(),
   classification,
   subjects: z.array(z.string()).default([]),
   status: z.enum(['draft', 'final']).default('draft'),

@@ -73,8 +73,8 @@ describe('launch article', () => {
     const pageLinks = (s: string) => [...body(s).matchAll(/\]\((\/[^)#]*)\)/g)].map((m) => m[1]).filter((l) => !l.startsWith('/img/'));
     const idLinks = pageLinks(read(ID));
     const enLinks = pageLinks(read(EN));
-    const idPaths = new Set(Object.values(ROUTES).map((r) => r.id));
-    const enPaths = new Set(Object.values(ROUTES).map((r) => r.en));
+    const idPaths = new Set<string>(Object.values(ROUTES).map((r) => r.id));
+    const enPaths = new Set<string>(Object.values(ROUTES).map((r) => r.en));
     for (const l of idLinks) expect(idPaths.has(l), `ID link ${l}`).toBe(true);
     for (const l of enLinks) expect(enPaths.has(l), `EN link ${l}`).toBe(true);
     expect(idLinks.length).toBeGreaterThanOrEqual(6);

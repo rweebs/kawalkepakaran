@@ -48,6 +48,7 @@ export async function sizeImages(distDir) {
         }
         if (!/\sdecoding=/.test(tag)) tag = tag.replace(/<img/, '<img decoding="async"');
         if (!wasFirst && !/\sloading=/.test(tag)) tag = tag.replace(/<img/, '<img loading="lazy"');
+        else if (wasFirst && !/\sfetchpriority=/.test(tag) && /\ssrc="\/img\//.test(tag)) tag = tag.replace(/<img/, '<img fetchpriority="high"');
       }
       parts.push(html.slice(last, m.index), tag);
       last = m.index + m[0].length;

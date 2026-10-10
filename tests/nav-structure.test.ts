@@ -11,7 +11,7 @@ describe('menu structure', () => {
     expect(hakJawab && 'href' in hakJawab ? hakJawab.href : null).toBe('/hak-jawab');
   });
   it('groups media and about links, none empty', () => {
-    const group = (label: string) => NAV_GROUPS.find((e) => e.label === label) as { items: { href: string }[] };
+    const group = (label: string) => NAV_GROUPS.find((e) => e.label === label) as unknown as { items: { href: string }[] };
     expect(group('Media').items.map((i) => i.href)).toEqual(['/videos', '/tiktok', '/buku']);
     expect(group('Kasus').items.map((i) => i.href)).toEqual([
       '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/kasus/abil-sudarman/linimasa', '/kasus/abil-sudarman/linimasa-abil', '/arsip', '/kasus/abil-sudarman/bowobharata',

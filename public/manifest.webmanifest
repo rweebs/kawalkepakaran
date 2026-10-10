@@ -1,0 +1,14 @@
+{
+  "name": "Kawal Kepakaran",
+  "short_name": "Kawal",
+  "description": "Kawal terbuka atas klaim para pakar: kredensial, bukti, dan hak jawab.",
+  "start_url": "/",
+  "display": "browser",
+  "lang": "id",
+  "background_color": "#0b1020",
+  "theme_color": "#0a0e1a",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

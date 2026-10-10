@@ -1,0 +1,5 @@
+Contact: mailto:rahmat.wibowo21@gmail.com
+Expires: 2027-10-10T00:00:00.000Z
+Preferred-Languages: id, en
+Canonical: https://kawalkepakaran.org/.well-known/security.txt
+Policy: https://github.com/rweebs/kawalkepakaran/blob/main/SECURITY.md

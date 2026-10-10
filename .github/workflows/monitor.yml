@@ -1,0 +1,30 @@
+name: Live monitor
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Check the live site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pages, sitemap, robots and www redirect
+        run: |
+          set -euo pipefail
+          S=https://kawalkepakaran.org
+          for path in / /en /pakar /klaim /metode /kebijakan /sitemap.xml /rss.xml /robots.txt /manifest.webmanifest; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$S$path")
+            echo "$path -> $code"; [ "$code" = "200" ]
+          done
+          curl -fsS -m 20 "$S/sitemap.xml" | grep -q '<urlset'
+          curl -fsS -m 20 "$S/robots.txt" | grep -q 'Sitemap: https://kawalkepakaran.org/sitemap.xml'
+          ct=$(curl -sI -m 20 "$S/sitemap.xml" | tr -d '\r' | grep -i '^content-type:')
+          echo "$ct" | grep -qi xml
+          wwwcode=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "https://www.kawalkepakaran.org/sitemap.xml")
+          echo "www -> $wwwcode"; [ "$wwwcode" = "301" ] || [ "$wwwcode" = "200" ]

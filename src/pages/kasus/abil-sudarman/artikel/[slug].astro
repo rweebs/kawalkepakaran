@@ -33,11 +33,11 @@ const jsonLd = {
   '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: title.slice(0, 110),
   description,
   datePublished: date,
-  dateModified: date,
+  dateModified: (p.updatedDate ?? (en ? p.publishedDate : p.translationDate)).toISOString().slice(0, 10),
   author: { '@type': 'Person', name: p.author },
-  publisher: { '@type': 'Person', name: p.author },
+  publisher: { '@type': 'Organization', name: SITE.name, url: SITE.url, logo: { '@type': 'ImageObject', url: new URL('/apple-touch-icon.png', SITE.url).toString() } },
   isAccessibleForFree: true,
-  image: [new URL('/og/kawal-og.png', SITE.url).toString()],
+  image: [new URL(header?.src ?? '/og/kawal-og.png', SITE.url).toString()],
   url,
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   ...(!en && p.originalUrl ? { translationOfWork: { '@type': 'CreativeWork', name: p.originalTitle, url: p.originalUrl } } : {}),
@@ -46,7 +46,7 @@ const jsonLd = {
 const crumbName = en ? 'Articles' : 'Artikel';
 const alternates = { id: localizedPath('articles', 'id', entry.id), en: localizedPath('articles', 'en', entry.id) };
 ---
-<BaseLayout title={title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} ogType="article" author={p.author} breadcrumbs={[{ name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
+<BaseLayout title={title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} image={header ?? undefined} ogType="article" author={p.author} breadcrumbs={[{ name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
   <article class="reading has-header">
     <PostHeader title={title} slug={entry.id} image={header} />
     <ClassificationBadge value={p.classification} locale={locale} />

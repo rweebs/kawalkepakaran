@@ -36,4 +36,10 @@ describe('buildSitemap', () => {
     const xml = buildSitemap([{ path: '/a' }, { path: '/a' }], SITE);
     expect((xml.match(/<url>/g) ?? []).length).toBe(1);
   });
+  it('adds hreflang links when a page has a twin', () => {
+    const xml = buildSitemap([{ path: '/tentang', alternates: { id: '/tentang', en: '/en/about' } }], SITE);
+    expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+    expect(xml).toContain(`<xhtml:link rel="alternate" hreflang="en" href="${SITE}/en/about"/>`);
+    expect(xml).toContain(`hreflang="x-default" href="${SITE}/tentang"`);
+  });
 });
