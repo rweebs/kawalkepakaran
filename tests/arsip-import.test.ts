@@ -122,6 +122,15 @@ describe('hold flags', () => {
   });
 });
 
+describe('false positives of the personal-data scan', () => {
+  it('no longer takes image file names or package versions for personal data', () => {
+    expect(holdFlags('![](4ac1234567890123456721e3784.png) firebase@9.6.11').pii).toEqual([]);
+  });
+  it('still holds a post with a stranger address', () => {
+    expect(holdFlags('write to someone@example.com').pii).toEqual(['someone@example.com']);
+  });
+});
+
 describe('trimMentions', () => {
   const text = 'Intro line.\n\nThis period included a clinical diagnosis, which I referenced. The next sentence stays. Another one stays too.\n\nUntouched paragraph.\n';
   it('removes only the sentence that mentions it and keeps the rest of the paragraph', () => {
