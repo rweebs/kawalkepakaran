@@ -22,7 +22,7 @@
     "test": "vitest run",
     "og": "node scripts/make-og.mjs",
     "scan": "node scripts/scan-secrets.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "astro sync && tsc --noEmit -p tsconfig.json",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
