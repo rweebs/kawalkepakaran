@@ -1,12 +1,13 @@
 // Archive importer. Reads the Infraloka blog's Professional Blacklist posts and decides what may be copied.
 // Run: node scripts/import-arsip.mjs --source /path/to/infraloka
 // Mode "report" (the default) writes tmp/arsip-hold-report.md and copies nothing.
-// Mode "--write" also copies what may be copied into src/content/arsip, src/content/pihak and public/img (all git-ignored):
-// posts held back are skipped, a lone diagnosis mention is trimmed, images are compressed to WebP (1600 px wide at most).
+// Mode "--write" also copies into src/content/arsip, src/content/pihak and public/img (all git-ignored). A post held back for medical
+// content is released only by trimming the medical parts (personal data is never trimmed); what was removed is listed in
+// tmp/arsip-trim-review.md for the owner. A lone diagnosis mention is trimmed too. Images are compressed to WebP (1600 px at most).
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, pihakRecord, rewriteImages, statusFor, stripTitle, titleFrom, trimMentions,
+  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, imageName, pihakRecord, releaseByTrimming, rewriteImages, statusFor, stripTitle, titleFrom, trimMentions,
 } from './arsip-lib.mjs';
 
 const args = process.argv.slice(2);
@@ -71,7 +72,18 @@ console.log(`report: tmp/arsip-hold-report.md | hold ${by('hold').length}, trim 
 if (args.includes('--write')) {
   const sharp = (await import('sharp')).default;
   const archivedAt = new Date().toISOString().slice(0, 10);
-  const eligible = rows.filter((r) => ['publish', 'review', 'trim'].includes(r.flags.action));
+
+  // Decide each post. A post held back for medical content is released only by trimming it; personal data is never trimmed.
+  const planned = rows.map((r) => {
+    const text = readFileSync(join(SOURCE, 'src/content/blog', `${r.slug}.md`), 'utf8');
+    if (r.flags.action === 'hold') {
+      const rel = releaseByTrimming(text);
+      return { r, text: rel.text, copy: rel.released, trimmed: true, removed: rel.removed, fromHold: true };
+    }
+    if (r.flags.action === 'trim') return { r, text: trimMentions(text).text, copy: true, trimmed: true, removed: [], fromHold: false };
+    return { r, text, copy: true, trimmed: false, removed: [], fromHold: false };
+  });
+  const eligible = planned.filter((x) => x.copy);
 
   // Start from a clean slate so a re-run never leaves a post that has since been held back.
   for (const [dir, ext] of [['src/content/arsip', '.md'], ['src/content/pihak', '.json']]) {
@@ -79,16 +91,16 @@ if (args.includes('--write')) {
     for (const f of readdirSync(dir)) if (f.endsWith(ext)) rmSync(join(dir, f));
   }
 
+  const available = new Set(existsSync(join(SOURCE, 'public/blog')) ? readdirSync(join(SOURCE, 'public/blog')) : []);
   const images = new Set();
+  const droppedImages = [];
   const partyMap = new Map();
-  let trimmed = 0;
-  for (const r of eligible) {
-    let text = readFileSync(join(SOURCE, 'src/content/blog', `${r.slug}.md`), 'utf8');
-    const wasTrimmed = r.flags.action === 'trim';
-    if (wasTrimmed) { text = trimMentions(text).text; trimmed += 1; }
-    const rewritten = rewriteImages(stripTitle(text));
+  for (const x of eligible) {
+    const { r } = x;
+    const rewritten = rewriteImages(stripTitle(x.text), available);
     for (const img of rewritten.images) images.add(img);
-    const fm = frontmatter({ title: r.title, slug: r.slug, lang: r.lang, kind: r.kind, status: r.status, parties: r.parties.map((p) => p.slug), trimmed: wasTrimmed, archivedAt });
+    for (const d of rewritten.dropped) droppedImages.push(`${r.slug}: ${d}`);
+    const fm = frontmatter({ title: r.title, slug: r.slug, lang: r.lang, kind: r.kind, status: r.status, parties: r.parties.map((p) => p.slug), trimmed: x.trimmed, archivedAt });
     writeFileSync(join('src/content/arsip', `${r.slug}.md`), `${fm}${rewritten.md}`);
     for (const p of r.parties) {
       const entry = partyMap.get(p.slug) ?? { name: p.name, kind: p.kind, articles: [] };
@@ -104,7 +116,7 @@ if (args.includes('--write')) {
   let written = 0;
   let bytes = 0;
   for (const img of images) {
-    const out = join('public/img', `arsip-${img.replace(/\.[^.]+$/, '').toLowerCase()}.webp`);
+    const out = join('public/img', imageName(img));
     const src = join(SOURCE, 'public/blog', img);
     if (!existsSync(src)) { missingImages.push(img); continue; }
     if (existsSync(out)) continue;
@@ -114,6 +126,25 @@ if (args.includes('--write')) {
       bytes += info.size;
     } catch (e) { failed.push(`${img}: ${e.message}`); }
   }
-  console.log(`written: ${eligible.length} posts (${trimmed} trimmed), ${partyMap.size} parties, ${written} new images (${(bytes / 1048576).toFixed(1)} MB), ${images.size} referenced`);
-  console.log(`missing at source: ${missingImages.length}${missingImages.length ? ` (${missingImages.slice(0, 4).join(', ')}...)` : ''}; failed: ${failed.length}${failed.length ? ` ${failed.slice(0, 2).join(' | ')}` : ''}`);
+
+  // The owner reviews what was removed from the posts that were released by trimming.
+  const released = planned.filter((x) => x.fromHold && x.copy);
+  const stillHeld = planned.filter((x) => !x.copy);
+  const review = `# Tinjauan pemangkasan
+
+Artikel yang tadinya tertahan dan kini disalin setelah dipangkas: **${released.length}**. Tetap tertahan: **${stillHeld.length}**.
+Gambar di artikel ini **tidak diperiksa isinya**: hanya gambar yang keterangannya menyebut medis yang dibuang.
+Gambar yang tidak ada di sumber atau tautannya ke folder lain dibuang dari salinan: **${droppedImages.length}**.
+${droppedImages.slice(0, 40).map((d) => `- ${d}`).join('\n')}
+
+${released.map((x) => `## ${x.r.slug}\n\n${x.r.title}\n\n${x.removed.map((d) => `- [${d.kind}] ${d.text.replace(/\n/g, ' ')}`).join('\n') || '_tidak ada yang dibuang_'}\n`).join('\n')}
+## Tetap tertahan
+
+${stillHeld.map((x) => `- \`${x.r.slug}\` (${x.r.flags.pii.length ? 'data pribadi' : 'masih ada kata medis berat setelah dipangkas'})`).join('\n') || '_tidak ada_'}
+`;
+  writeFileSync('tmp/arsip-trim-review.md', review);
+  const removedTotal = released.reduce((n, x) => n + x.removed.length, 0);
+  console.log(`written: ${eligible.length} posts (${eligible.filter((x) => x.trimmed).length} trimmed; ${released.length} released from hold, ${removedTotal} parts removed), ${partyMap.size} parties, ${written} new images (${(bytes / 1048576).toFixed(1)} MB), ${images.size} referenced`);
+  console.log(`still held: ${stillHeld.length}; images dropped (not at the source): ${droppedImages.length}; failed: ${failed.length}${failed.length ? ` ${failed.slice(0, 2).join(' | ')}` : ''}`);
+  console.log('review: tmp/arsip-trim-review.md');
 }

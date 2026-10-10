@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { arsipSchema, pihakSchema } from '../src/lib/schemas';
 import {
-  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, statusFor, slugify, frontmatter, pihakRecord,
+  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, trimMedical, releaseByTrimming, statusFor, slugify, frontmatter, pihakRecord, imageName,
 } from '../scripts/arsip-lib.mjs';
 
 const SLUGS_SRC = `export const professionalBlacklistSlugs = new Set<string>([
@@ -184,5 +184,88 @@ describe('generated records', () => {
     expect(r.interestEn).toMatch(/Rahmat Wibowo/);
     expect(r.limits).toMatch(/bukan pengakuan/);
     expect(r.draft).toBe(true);
+  });
+});
+
+describe('trimMedical', () => {
+  it('removes only the medical sentences of a paragraph, and reports them', () => {
+    const r = trimMedical('Intro.\n\nThe letter shows psychiatric treatment. The contract was signed in May. A medical record exists.\n');
+    expect(r.text).toContain('The contract was signed in May.');
+    expect(r.text).not.toMatch(/psychiatric|medical/);
+    expect(r.removed.map((x: { kind: string }) => x.kind)).toEqual(['sentence', 'sentence']);
+  });
+  it('removes a table row and a list item that mention it, keeps the others, and drops a table left without rows', () => {
+    const t = ['| # | Evidence | Note |', '|---|---|---|', '| 1 | Screenshot | fine |', '| 2 | Surat keterangan medis | psikiatri |', '', '- a normal item', '- an item on mental health', '', '| # | Evidence |', '|---|---|', '| 1 | Rekam medis |', ''].join('\n');
+    const r = trimMedical(t);
+    expect(r.text).toContain('| 1 | Screenshot | fine |');
+    expect(r.text).toContain('- a normal item');
+    expect(r.text).not.toMatch(/medis|psikiatri|mental health|Rekam/);
+    expect(r.text).not.toContain('| # | Evidence |\n|---|---|\n\n');
+    expect(r.removed.some((x: { kind: string }) => x.kind === 'row')).toBe(true);
+    expect(r.removed.some((x: { kind: string }) => x.kind === 'item')).toBe(true);
+  });
+  it('removes a heading with medical wording together with its section, up to the next heading of the same level', () => {
+    const t = '# Title\n\n## Dampak kesehatan mental\n\nParagraph one.\n\n### Sub\n\nSub text.\n\n## Next section\n\nStays.\n';
+    const r = trimMedical(t);
+    expect(r.text).toContain('## Next section');
+    expect(r.text).toContain('Stays.');
+    expect(r.text).not.toMatch(/Dampak|Paragraph one|Sub text/);
+    expect(r.removed[0]).toMatchObject({ kind: 'section' });
+  });
+  it('removes an image whose alt text mentions it', () => {
+    const r = trimMedical('A.\n\n![Surat keterangan medis, exhibit 6](/img/x.webp)\n\n![Exhibit 7](/img/y.webp)\n');
+    expect(r.text).toContain('/img/y.webp');
+    expect(r.text).not.toContain('/img/x.webp');
+  });
+  it('leaves a text with nothing medical exactly as it was', () => {
+    const t = 'Plain text.\n\n- one\n- two\n';
+    expect(trimMedical(t)).toEqual({ text: t, removed: [] });
+  });
+});
+
+describe('releaseByTrimming', () => {
+  it('releases a held post once trimming clears every heavy or mentioning line', () => {
+    const r = releaseByTrimming('A.\n\nPsychiatric care was needed. The notice was sent.\n\n| a | b |\n|---|---|\n| 1 | medical record |\n');
+    expect(holdFlags(r.text).action).not.toBe('hold');
+    expect(r.released).toBe(true);
+    expect(r.removed.length).toBeGreaterThan(0);
+  });
+  it('keeps a post held when personal data remains after trimming', () => {
+    const r = releaseByTrimming('Call 0812 3456 7890.\n\nPsychiatric care was needed.\n');
+    expect(r.released).toBe(false);
+  });
+  it('treats a post that needs no trimming as released with nothing removed', () => {
+    const r = releaseByTrimming('A plain paragraph.\n');
+    expect(r).toMatchObject({ released: true, removed: [] });
+  });
+});
+
+describe('image links that cannot be resolved', () => {
+  it('drops a link into a folder that is not the blog image folder, including the angle-bracket form with spaces', () => {
+    const r = rewriteImages('A.\n\n![E-01: x](<../screenshots/image copy 2.png>)\n\nB.\n');
+    expect(r.md).not.toContain('screenshots');
+    expect(r.md).toContain('A.');
+    expect(r.md).toContain('B.');
+    expect(r.images).toEqual([]);
+    expect(r.dropped).toEqual(['../screenshots/image copy 2.png']);
+  });
+  it('drops an image that is not at the source when the list of available files is given, and keeps one that is', () => {
+    const r = rewriteImages('![a](have.png) ![b](gone.png)', new Set(['have.png']));
+    expect(r.md).toContain('/img/arsip-have.webp');
+    expect(r.md).not.toContain('gone');
+    expect(r.dropped).toEqual(['gone.png']);
+  });
+  it('drops a link with spaces in its path and no angle brackets, and one with a title', () => {
+    const r = rewriteImages('![a](../../../companies/Traveloka/screenshot/WhatsApp Image 2026-05-06.jpeg)\n\n![b](gone.png "a title")\n\n![c](have.png "a title")', new Set(['have.png']));
+    expect(r.md).not.toMatch(/companies|gone/);
+    expect(r.md).toContain('/img/arsip-have.webp');
+    expect(r.dropped).toEqual(['../../../companies/Traveloka/screenshot/WhatsApp Image 2026-05-06.jpeg', 'gone.png']);
+  });
+  it('leaves a link to something that is not an image alone', () => {
+    expect(rewriteImages('[a file](notes.pdf) ![x](https://example.org/a.png)').md).toBe('[a file](notes.pdf) ![x](https://example.org/a.png)');
+  });
+  it('names the output file the same way the rewritten link does, with url-safe characters', () => {
+    expect(imageName('My Shot (2).PNG')).toBe('arsip-my-shot-2.webp');
+    expect(imageName('a-header.png')).toBe('arsip-a-header.webp');
   });
 });

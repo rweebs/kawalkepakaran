@@ -18,11 +18,11 @@ const description = descriptionFromMarkdown(entry.body ?? '') || p.title;
 const parties = (await getPihak()).filter((x) => x.data.articles.includes(entry.id));
 const T = {
   id: { crumb: 'Arsip', marker: 'Arsip Infraloka: salinan tulisan dari blog Infraloka, disalin pada', original: 'Lihat tulisan aslinya',
-    trimmed: 'Dipangkas: kalimat yang menyebut diagnosis atau kesehatan mental penulis dibuang dari salinan ini. Teks lengkap ada di tulisan aslinya.',
+    trimmed: 'Dipangkas: bagian yang menyebut kondisi kesehatan, diagnosis, atau perawatan medis dibuang dari salinan ini. Teks lengkap ada di tulisan aslinya.',
     kind: 'Jenis', status: 'Status', parties: 'Pihak yang disebut', langNote: 'Tulisan ini berbahasa Inggris.', interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara ini.',
     reply: 'Setiap pihak yang disebut berhak menjawab lewat', replyLabel: 'hak jawab' },
   en: { crumb: 'Archive', marker: 'Infraloka archive: a copy of a post from the Infraloka blog, copied on', original: 'See the original post',
-    trimmed: 'Trimmed: sentences mentioning the author\'s diagnosis or mental health were removed from this copy. The full text is in the original post.',
+    trimmed: 'Trimmed: parts that mention health conditions, diagnoses or medical care were removed from this copy. The full text is in the original post.',
     kind: 'Type', status: 'Status', parties: 'Parties named', langNote: 'This post is in Indonesian.', interest: 'The author of this site (Rahmat Wibowo) is a party to this matter.',
     reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply' },
 }[locale];

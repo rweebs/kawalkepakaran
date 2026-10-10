@@ -1,7 +1,8 @@
 // Pure helpers of the archive importer (scripts/import-arsip.mjs). No file access here, so everything is testable.
 import { findPersonalData } from '../src/lib/privacy.ts';
 
-const ALLOWED_EMAILS = new Set(['rahmat.wibowo21@gmail.com']);
+// The author's own address, and an institutional address that the posts quote from a document (not a person's contact).
+const ALLOWED_EMAILS = new Set(['rahmat.wibowo21@gmail.com', 'rektor@itb.ac.id']);
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"])\/\/.*$/gm, '$1');
 
@@ -74,17 +75,31 @@ export function stripTitle(md) {
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i;
 
-/** Blog-relative image links become flat `/img/arsip-<name>.webp` links; external links stay. Lists the source files. */
-export function rewriteImages(md) {
+/** The flat output file name for a source image, url-safe: `My Shot (2).PNG` becomes `arsip-my-shot-2.webp`. */
+export function imageName(base) {
+  return `arsip-${slugify(base.replace(IMAGE_EXT, ''))}.webp`;
+}
+
+/**
+ * Blog image links become flat `/img/arsip-<name>.webp` links; external links stay. A link that cannot be resolved (a path into
+ * another folder) or whose file is not at the source (when `available` is given) is dropped and listed, so no page links a missing file.
+ */
+export function rewriteImages(md, available) {
   const images = [];
-  const out = md.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (whole, alt, src) => {
+  const dropped = [];
+  const out = md.replace(/!\[([^\]]*)\]\((<[^>]*>|[^)]+)\)/g, (whole, alt, raw) => {
+    const src = raw.replace(/^<|>$/g, '').replace(/\s+"[^"]*"\s*$/, '');
     if (/^https?:\/\//.test(src)) return whole;
-    const base = src.split('/').pop();
-    if (!IMAGE_EXT.test(base)) return whole;
+    if (!IMAGE_EXT.test(src.split('/').pop())) return whole;
+    const base = src.match(/^\/?(?:blog\/)?([^/]+)$/)?.[1];
+    if (!base || (available && !available.has(base))) {
+      dropped.push(src);
+      return '';
+    }
     if (!images.includes(base)) images.push(base);
-    return `![${alt}](/img/arsip-${base.replace(IMAGE_EXT, '').toLowerCase()}.webp)`;
+    return `![${alt}](/img/${imageName(base)})`;
   });
-  return { md: out, images };
+  return { md: out, images, dropped };
 }
 
 // Heavy medical wording (psychiatric care, records, suicidal ideation) holds a post. A mere mention of a diagnosis or of mental
@@ -161,4 +176,105 @@ export function pihakRecord({ name, kind, articles, updatedAt = '2026-10-10' }) 
     updatedAt,
     draft: true,
   };
+}
+
+// Everything that touches a medical subject, however lightly. Used only to trim a post that was held back for medical content.
+const MEDICAL = new RegExp(`${HEAVY.source}|${MENTION.source}|medis|medical|kesehatan|\\bmental\\b`, 'i');
+const TABLE_ROW = /^\s*\|/;
+const TABLE_SEP = /^\s*\|[\s:|-]+\|\s*$/;
+const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s/;
+const HEADING = /^(#{1,6})\s/;
+
+/**
+ * Removes the medical parts of a post: sentences of a paragraph, table rows, list items (with their continuation lines),
+ * images whose alt text mentions it, and any heading that mentions it together with its section. Returns what was removed so the
+ * owner can review it. A text with nothing medical comes back unchanged.
+ */
+export function trimMedical(text) {
+  const lines = text.split('\n');
+  const out = [];
+  const removed = [];
+  const short = (t) => t.trim().slice(0, 160);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const h = line.match(HEADING);
+    if (h && MEDICAL.test(line)) {
+      let j = i + 1;
+      while (j < lines.length) {
+        const n = lines[j].match(HEADING);
+        if (n && n[1].length <= h[1].length) break;
+        j += 1;
+      }
+      removed.push({ kind: 'section', text: short(line) });
+      i = j;
+      continue;
+    }
+    if (/^!\[/.test(line) && MEDICAL.test(line.match(/!\[([^\]]*)\]/)?.[1] ?? '')) {
+      removed.push({ kind: 'image', text: short(line) });
+      i += 1;
+      continue;
+    }
+    if (TABLE_ROW.test(line)) {
+      const isHeader = TABLE_SEP.test(lines[i + 1] ?? '');
+      if (isHeader && MEDICAL.test(line)) {
+        let j = i;
+        while (j < lines.length && TABLE_ROW.test(lines[j])) j += 1;
+        removed.push({ kind: 'table', text: short(line) });
+        i = j;
+        continue;
+      }
+      if (!TABLE_SEP.test(line) && MEDICAL.test(line)) removed.push({ kind: 'row', text: short(line) });
+      else out.push(line);
+      i += 1;
+      continue;
+    }
+    const li = line.match(LIST_ITEM);
+    if (li && MEDICAL.test(line)) {
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() !== '' && lines[j].match(/^\s*/)[0].length > li[1].length) j += 1;
+      removed.push({ kind: 'item', text: short(line) });
+      i = j;
+      continue;
+    }
+    if (MEDICAL.test(line)) {
+      if (/^\s*>/.test(line)) {
+        removed.push({ kind: 'quote', text: short(line) });
+      } else {
+        const sentences = line.split(/(?<=[.!?])\s+/);
+        const kept = sentences.filter((sentence) => !MEDICAL.test(sentence));
+        for (const sentence of sentences) if (MEDICAL.test(sentence)) removed.push({ kind: 'sentence', text: short(sentence) });
+        if (kept.length) out.push(kept.join(' '));
+      }
+      i += 1;
+      continue;
+    }
+    out.push(line);
+    i += 1;
+  }
+  if (!removed.length) return { text, removed: [] };
+
+  // A table that lost every data row is dropped with its header.
+  const cleaned = [];
+  for (let k = 0; k < out.length; k += 1) {
+    if (!TABLE_ROW.test(out[k])) { cleaned.push(out[k]); continue; }
+    let e = k;
+    while (e < out.length && TABLE_ROW.test(out[e])) e += 1;
+    const block = out.slice(k, e);
+    if (!(block.length === 2 && TABLE_SEP.test(block[1]))) cleaned.push(...block);
+    k = e - 1;
+  }
+  return { text: cleaned.join('\n').replace(/\n{3,}/g, '\n\n'), removed };
+}
+
+/**
+ * Tries to release a post that was held back for medical content by trimming it. It is released only when nothing heavy or
+ * mentioning remains and there is no personal data. Personal data is never trimmed: such a post stays held.
+ */
+export function releaseByTrimming(text) {
+  const before = holdFlags(text);
+  if (before.pii.length) return { released: false, text, removed: [] };
+  if (before.action !== 'hold') return { released: true, text, removed: [] };
+  const t = trimMedical(text);
+  return { released: holdFlags(t.text).action !== 'hold', text: t.text, removed: t.removed };
 }

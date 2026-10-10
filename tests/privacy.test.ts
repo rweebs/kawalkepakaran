@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findPersonalData } from '../src/lib/privacy';
 
-const ALLOWED = new Set(['abil@assai.id', 'rahmat.wibowo21@gmail.com', 'ditjen-pd@kemdikbud.go.id']);
+const ALLOWED = new Set(['abil@assai.id', 'rahmat.wibowo21@gmail.com', 'ditjen-pd@kemdikbud.go.id', 'rektor@itb.ac.id']);
 const DIRS = ['src/content/posts', 'src/content/arsip'];
 
 describe('no personal data in content', () => {
