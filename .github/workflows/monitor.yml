@@ -22,8 +22,11 @@ jobs:
             code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$S$path")
             echo "$path -> $code"; [ "$code" = "200" ]
           done
-          curl -fsS -m 20 "$S/sitemap.xml" | grep -q '<urlset'
-          curl -fsS -m 20 "$S/robots.txt" | grep -q 'Sitemap: https://kawalkepakaran.org/sitemap.xml'
+          # Download first, then search: grep -q exits on the first match, which kills curl mid-transfer (exit 23 under pipefail).
+          sitemap=$(curl -fsS -m 20 "$S/sitemap.xml")
+          grep -q '<urlset' <<< "$sitemap"
+          robots=$(curl -fsS -m 20 "$S/robots.txt")
+          grep -q 'Sitemap: https://kawalkepakaran.org/sitemap.xml' <<< "$robots"
           hdrs=$(curl -sI -m 20 "$S/" | tr -d '\r')
           for h in strict-transport-security content-security-policy x-content-type-options; do
             echo "$hdrs" | grep -qi "^$h:" || { echo "missing header: $h"; exit 1; }
