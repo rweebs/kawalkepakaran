@@ -13,7 +13,7 @@ original: true
 
 ## Why the name changed
 
-My first site was built around one person. That is the wrong shape for the long run: what deserves testing is a **claim**, not a person. So the name became Kawal Kepakaran, and the Abil Sudarman matter became **Case 001**, the first of those that may follow. The articles, evidence, timeline and the Bowobharata page from the early days are still there.
+My first site was built around one person. That is too narrow: what deserves testing is **people and their claims**, not only one person. So the name became Kawal Kepakaran, and the Abil Sudarman matter became **Case 001**, the first of those that may follow. The articles, evidence, timeline and the Bowobharata page from the early days are still there.
 
 ## What is on the site
 

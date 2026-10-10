@@ -48,9 +48,11 @@ describe('manifesto page', () => {
   });
   it('states the seven principles in both languages', () => {
     const s = page();
-    for (const k of ['Kami memeriksa klaim, bukan orangnya', 'We check claims, not people', 'Kami tidak menghukum', 'We do not punish']) {
+    for (const k of ['Kami memeriksa orang dan klaimnya', 'We check people and their claims', 'Kami tidak menghukum', 'We do not punish']) {
       expect(s, k).toContain(k);
     }
+    expect(s).not.toContain('bukan orangnya');
+    expect(s).not.toContain('not people');
   });
   it('cites both sources by address', () => {
     const s = page();

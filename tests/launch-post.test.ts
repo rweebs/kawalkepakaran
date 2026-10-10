@@ -102,6 +102,12 @@ describe('launch article', () => {
     const t = body(read(EN)).replace(/\bmy\b|\bI\b|\bme\b/gi, '');
     expect(t).not.toMatch(/\b(he|his|him|himself|she|her|hers)\b/i);
   });
+  it('does not contradict the manifesto: it never says the site checks claims and not people', () => {
+    expect(read(ID)).not.toMatch(/bukan seseorang|bukan orangnya/i);
+    expect(read(EN)).not.toMatch(/not a person|not people/i);
+    expect(read(ID)).toMatch(/orang dan klaimnya/);
+    expect(read(EN)).toMatch(/people and their claims/);
+  });
   it('uses no internal tooling language', () => {
     for (const s of [read(ID), read(EN)]) expect(s).not.toMatch(/\b(aegis|claude|anthropic|prompt|skill)\b/i);
   });

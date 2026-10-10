@@ -13,7 +13,7 @@ translationStatus: final
 
 ## Mengapa berganti nama
 
-Situs pertama saya berpusat pada satu orang. Itu keliru sebagai bentuk jangka panjang: yang layak diuji adalah **klaim**, bukan seseorang. Maka namanya menjadi Kawal Kepakaran, dan kasus Abil Sudarman menjadi **Kasus 001**, kasus pertama dari yang mungkin menyusul. Artikel, bukti, linimasa, dan halaman Bowobharata dari masa awal tetap ada di sana.
+Situs pertama saya berpusat pada satu orang. Itu terlalu sempit: yang layak diuji adalah **orang dan klaimnya**, tidak hanya satu orang. Maka namanya menjadi Kawal Kepakaran, dan kasus Abil Sudarman menjadi **Kasus 001**, kasus pertama dari yang mungkin menyusul. Artikel, bukti, linimasa, dan halaman Bowobharata dari masa awal tetap ada di sana.
 
 ## Apa yang ada di situs
 
