@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { SITE } from '../lib/site';
-import { localizedPath, type Locale } from '../i18n';
+import { localizedPath, routePath, type Locale } from '../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('reply', locale);
 const T = {
@@ -18,12 +18,14 @@ const T = {
       <>
         <p>Pakar yang disebut berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman di situs ini. Tanggapan dapat dikirim ke <a href={`mailto:${SITE.replyEmail}`}>{SITE.replyEmail}</a>.</p>
         <p>Tanggapan yang diterima akan dimuat <strong>apa adanya, tanpa penyuntingan</strong>, bersama halaman yang bersangkutan, lengkap dengan tanggal penerimaan.</p>
+        <p>Kami menjawab bahwa tanggapan diterima, dan berupaya memuatnya dalam 14 hari kalender. Pakar dapat meminta tanggapan dimuat dengan nama atau tanpa nama alamat surelnya. Untuk koreksi atau penghapusan, lihat <a href={routePath('policy', locale)}>Kebijakan</a>.</p>
         <p class="muted">Jika tidak ada tanggapan, situs tidak menyimpulkan apa pun. Belum adanya tanggapan bukan pengakuan atas apa pun.</p>
       </>
     ) : (
       <>
         <p>Any expert named has the right to respond to, correct, or add context to any page on this site. Replies can be sent to <a href={`mailto:${SITE.replyEmail}`}>{SITE.replyEmail}</a>.</p>
         <p>Replies received will be published <strong>as received, without editing</strong>, alongside the page concerned, with the date they were received.</p>
+        <p>We confirm that a reply was received and aim to publish it within 14 calendar days. The sender may ask for their email address to be left out. For corrections or removal, see <a href={routePath('policy', locale)}>Policies</a>.</p>
         <p class="muted">If there is no reply, the site draws no conclusion. The absence of a reply is not an admission of anything.</p>
       </>
     )}

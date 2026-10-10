@@ -11,6 +11,7 @@ export interface UiStrings {
   readMore: string;
   breadcrumbLabel: string;
   menu: string;
+  skipToContent: string;
   language: string;
   disclaimer: string;
   footer: (author: string) => string;
@@ -31,6 +32,7 @@ export const UI: Record<Locale, UiStrings> = {
     readMore: 'Selengkapnya',
     breadcrumbLabel: 'Jejak halaman',
     menu: 'Menu',
+    skipToContent: 'Lewati ke konten utama',
     language: 'Bahasa',
     disclaimer:
       'Situs ini memuat pendapat dan catatan pribadi Rahmat Wibowo. Isinya bukan temuan kepolisian maupun putusan pengadilan, ' +
@@ -55,6 +57,7 @@ export const UI: Record<Locale, UiStrings> = {
     readMore: 'Read more',
     breadcrumbLabel: 'Breadcrumb',
     menu: 'Menu',
+    skipToContent: 'Skip to main content',
     language: 'Language',
     disclaimer:
       "This site contains Rahmat Wibowo's personal opinions and notes. Its contents are not police findings or court rulings, " +
@@ -67,7 +70,7 @@ export const UI: Record<Locale, UiStrings> = {
       '/pakar': 'Experts', '/klaim': 'Claim checks', '/metode': 'Method', Kasus: 'Cases',
       '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', '/kasus/abil-sudarman/linimasa-abil': 'Abil timeline', '/arsip': 'Case archive', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
       '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/manifesto': 'Manifesto', '/kasus/abil-sudarman/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
-      '/disclaimer': 'Disclaimer', '/hak-jawab': 'Right of reply',
+      '/disclaimer': 'Disclaimer', '/kebijakan': 'Policies', '/hak-jawab': 'Right of reply',
     },
     themeSong: {
       aria: 'Theme song', label: 'Theme song', playing: 'Playing', song: 'Song', stop: 'Stop', openMusic: 'Open in YouTube Music',

@@ -37,6 +37,15 @@ const T = {
         <h2>Tingkat keyakinan</h2>
         <p><strong>Rendah</strong>: sedikit sumber atau hanya sumber tidak langsung. <strong>Sedang</strong>: beberapa sumber yang saling sejalan. <strong>Tinggi</strong>: sumber primer dan konfirmasi langsung.</p>
 
+        <h2>Standar sebelum terbit</h2>
+        <ul>
+          <li>Pakar yang alamatnya diketahui diberi tahu lewat surel sebelum putusan baru terbit, dan diberi waktu 7 hari untuk menjawab. Tanggal pemberitahuan dicatat di halaman klaim.</li>
+          <li>Putusan <em>Dikonfirmasi</em> atau <em>Tidak terbukti</em> memerlukan tinjauan orang kedua. Selama belum ada peninjau, klaim tetap <em>Belum bisa diverifikasi</em>.</li>
+          <li><em>Tidak terbukti</em> hanya dipakai setelah penerbit kredensial atau sumber primer dihubungi dan tidak menguatkan klaim.</li>
+          <li>Halaman arsip memuat tulisan penulis yang menjadi pihak dalam perkara; halaman itu bukan putusan metode ini.</li>
+          <li>Koreksi dan penarikan dicatat di <a href={routePath('policy', locale)}>halaman Kebijakan</a>.</li>
+        </ul>
+
         <h2>Batas</h2>
         <p>Isi situs ini adalah pendapat dan catatan penulis, bukan putusan pengadilan. Setiap orang berhak atas praduga tak bersalah dan <a href={routePath('reply', locale)}>hak jawab</a>.</p>
         <p><a href={routePath('claims', locale)}>Lihat klaim yang sudah diperiksa →</a></p>
@@ -64,6 +73,15 @@ const T = {
 
         <h2>Confidence</h2>
         <p><strong>Low</strong>: few sources or only indirect ones. <strong>Medium</strong>: several sources that agree. <strong>High</strong>: primary sources and direct confirmation.</p>
+
+        <h2>Standards before publishing</h2>
+        <ul>
+          <li>An expert whose address is known is told by email before a new verdict is published, and given 7 days to reply. The date of notice is recorded on the claim page.</li>
+          <li>A <em>Confirmed</em> or <em>Not supported</em> verdict needs a second reviewer. Until one is available, the claim stays <em>Cannot yet be verified</em>.</li>
+          <li><em>Not supported</em> is used only after the credential issuer or a primary source has been contacted and does not support the claim.</li>
+          <li>Archive pages carry posts by the author, who is a party to those matters; they are not verdicts under this method.</li>
+          <li>Corrections and withdrawals are recorded on the <a href={routePath('policy', locale)}>Policies page</a>.</li>
+        </ul>
 
         <h2>Limits</h2>
         <p>What this site publishes is the author's opinion and notes, not a court ruling. Everyone has the presumption of innocence and the <a href={routePath('reply', locale)}>right of reply</a>.</p>

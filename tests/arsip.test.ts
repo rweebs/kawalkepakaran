@@ -118,8 +118,9 @@ describe('pages and policy', () => {
     expect(read('LICENSE-CONTENT.md')).toMatch(/all rights reserved|seluruh hak/i);
   });
   it('the archive article page keeps its title short and free of characters that grow in HTML, so the title stays within 65', () => {
-    const s = read('src/pages/arsip/artikel/[slug].astro');
+    const s = read('src/lib/arsip.ts');
     expect(s).toContain('truncateAtWord(');
+    expect(s).toContain('arsipStaticPaths');
     expect(s).toMatch(/replace\(\/&\/g/);
   });
   it('the sitemap leaves out the /pakar and /klaim indexes while generated entries make them noindex', () => {

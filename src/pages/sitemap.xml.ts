@@ -43,6 +43,7 @@ export const GET: APIRoute = async () => {
     ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date })),
     { path: '/hak-jawab', lastmod: PAGE_LASTMOD['/hak-jawab'] },
     { path: '/disclaimer', lastmod: PAGE_LASTMOD['/disclaimer'] },
+    { path: '/kebijakan', lastmod: PAGE_LASTMOD['/kebijakan'] },
     ...posts.map((p) => {
       const header = firstImage(p.body ?? '');
       return { path: `/kasus/abil-sudarman/artikel/${p.id}`, lastmod: iso(p.data.translationDate), images: header ? [header.src] : [] };

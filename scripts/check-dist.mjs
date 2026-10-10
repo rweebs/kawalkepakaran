@@ -41,6 +41,10 @@ export function findProblems(distDir, site = DEFAULT_SITE) {
     if (!html.includes('data-disclaimer')) problems.push(`${file}: missing disclaimer banner`);
     const lang = /^\/en(\/|$)/.test(base.pathname) ? 'en' : 'id';
     if (!new RegExp(`<html[^>]*\\slang="${lang}"`).test(html)) problems.push(`${file}: html lang is not "${lang}"`);
+    if (!/<a class="skip-link" href="#main"/.test(html) || !/<main id="main"/.test(html)) problems.push(`${file}: missing skip link or main#main`);
+    for (const m of html.matchAll(/<img(?=\s)[^>]*\ssrc="\/(?:img|thumb)\/[^"]+"[^>]*>/g)) {
+      if (!/\swidth=/.test(m[0]) || !/\sheight=/.test(m[0])) problems.push(`${file}: image without width/height ${m[0].slice(0, 80)}`);
+    }
     const noindex = /<meta[^>]*name="robots"[^>]*content="[^"]*noindex/.test(html);
     const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] ?? '';
     if (title.length < 10 || title.length > 65) problems.push(`${file}: title length ${title.length} (want 10-65)`);

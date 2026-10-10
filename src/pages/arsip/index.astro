@@ -1,4 +1,5 @@
 ---
+import ListFilter from '../../components/ListFilter.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getArsip, arsipPath, KIND_LABEL, STATUS_LABEL } from '../../lib/arsip';
 import { localizedPath, routePath, type Locale } from '../../i18n';
@@ -22,6 +23,7 @@ const T = {
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
+    <ListFilter locale={locale} />
     <p class="lead">{T.lead}</p>
     <p class="muted">{UI[locale].disclaimer}</p>
     <p class="linimasa-note">{T.note} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>

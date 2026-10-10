@@ -1,4 +1,5 @@
 ---
+import ListFilter from '../../components/ListFilter.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
@@ -27,6 +28,7 @@ const T = {
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex={generated.length > 0} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
+    <ListFilter locale={locale} />
     <p class="lead">{T.lead}</p>
     {claims.length === 0 ? (
       <p class="muted">{T.empty}</p>

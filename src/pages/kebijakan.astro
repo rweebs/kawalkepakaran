@@ -1,0 +1,91 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SITE } from '../lib/site';
+import { CORRECTIONS } from '../lib/corrections';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('policy', locale);
+const mail = `mailto:${SITE.correctionsEmail}`;
+const T = {
+  id: { title: 'Kebijakan: privasi, koreksi, independensi', h1: 'Kebijakan', crumb: 'Kebijakan',
+    description: 'Kebijakan situs ini: kepentingan penulis, data yang dikumpulkan, cara meminta koreksi atau penghapusan, dan catatan koreksi yang sudah dilakukan.' },
+  en: { title: 'Policies: privacy, corrections, independence', h1: 'Policies', crumb: 'Policies',
+    description: 'This site\'s policies: the author\'s interests, the data collected, how to request a correction or removal, and the log of corrections made.' },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    {locale === 'id' ? (
+      <>
+        <h2 id="independensi">Independensi dan kepentingan penulis</h2>
+        <p>Penulis situs ini, {SITE.author}, adalah pihak dalam sebagian sengketa yang diuraikan di <a href={routePath('archive', locale)}>Arsip Perkara</a>. Setiap halaman yang menyangkut sengketa itu menyatakannya. Situs ini adalah proyek InfraLoka dan tidak menampilkan iklan.</p>
+        <p>Karena penulis bukan pihak yang netral dalam perkara-perkara itu, halaman arsip hanya merangkum tulisan penulis dan tidak dihitung sebagai putusan <a href={routePath('method', locale)}>Metode</a>.</p>
+
+        <h2 id="data">Data yang dikumpulkan</h2>
+        <ul>
+          <li>Situs ini tidak memiliki akun, kolom komentar, atau formulir. Kami tidak memasang cookie iklan.</li>
+          <li>Kunjungan dihitung secara agregat oleh Cloudflare Web Analytics. Cloudflare juga mencatat permintaan jaringan seperlunya untuk menjalankan situs.</li>
+          <li>Pemutar YouTube untuk lagu tema dan video baru dimuat setelah Anda menekan tombol atau menyentuh halaman, dan memakai domain tanpa cookie (youtube-nocookie.com).</li>
+          <li>Surat elektronik yang Anda kirim (hak jawab, koreksi, permintaan data) disimpan selama diperlukan untuk menanggapinya dan membuktikan bahwa tanggapan itu diberikan.</li>
+        </ul>
+
+        <h2 id="pihak-disebut">Data tentang pihak yang disebut</h2>
+        <p>Situs ini memuat nama pihak yang disebut dalam tulisan penulis, tanpa alamat rumah, nomor telepon, nomor identitas, atau keterangan kesehatan. Bagian tulisan yang menyebut kondisi kesehatan dipangkas dari salinan arsip dan ditandai.</p>
+        <p>Pihak yang disebut dapat meminta akses, koreksi, atau penghapusan data tentang dirinya, selain memakai <a href={routePath('reply', locale)}>hak jawab</a>.</p>
+
+        <h2 id="koreksi">Cara meminta koreksi atau penghapusan</h2>
+        <ol>
+          <li>Kirim surel ke <a href={mail}>{SITE.correctionsEmail}</a> dengan subjek "Koreksi" atau "Penghapusan", sebutkan halaman dan bagian yang dimaksud, dan alasannya.</li>
+          <li>Kami menjawab bahwa permintaan diterima. Target kami 14 hari kalender untuk memutuskan.</li>
+          <li>Hasilnya salah satu dari: diperbaiki dengan catatan koreksi, dicatat sebagai tanggapan di halaman itu, dihapus, atau ditolak disertai alasan tertulis.</li>
+          <li>Setiap perubahan yang dilakukan dicatat di bawah ini dengan tanggalnya.</li>
+        </ol>
+
+        <h2 id="catatan-koreksi">Catatan koreksi</h2>
+        {CORRECTIONS.length === 0 ? (
+          <p class="muted">Belum ada koreksi yang tercatat.</p>
+        ) : (
+          <ul class="stack">
+            {CORRECTIONS.map((c) => <li><strong>{formatDateLocale(c.date, locale)}</strong> · <a href={c.path}>{c.path}</a>: {c.id}</li>)}
+          </ul>
+        )}
+      </>
+    ) : (
+      <>
+        <h2 id="independence">Independence and the author's interests</h2>
+        <p>The author of this site, {SITE.author}, is a party to some of the disputes described in the <a href={routePath('archive', locale)}>Case archive</a>. Every page about those disputes says so. The site is a project of InfraLoka and shows no advertising.</p>
+        <p>Because the author is not a neutral party in those matters, archive pages only summarise the author's posts and do not count as a verdict under the <a href={routePath('method', locale)}>Method</a>.</p>
+
+        <h2 id="data">Data collected</h2>
+        <ul>
+          <li>The site has no accounts, comment boxes or forms. We set no advertising cookies.</li>
+          <li>Visits are counted in aggregate by Cloudflare Web Analytics. Cloudflare also logs the network requests needed to run the site.</li>
+          <li>The YouTube player for the theme song and new videos loads only after you press the button or touch the page, and uses the cookie-less domain (youtube-nocookie.com).</li>
+          <li>Email you send (a reply, a correction, a data request) is kept for as long as needed to respond and to show that a response was given.</li>
+        </ul>
+
+        <h2 id="named-parties">Data about parties named</h2>
+        <p>The site names parties mentioned in the author's posts, without home addresses, phone numbers, identity numbers or health information. Parts of a post that mention health conditions are trimmed from the archive copy and marked.</p>
+        <p>A party named can ask for access to, correction of, or removal of data about them, in addition to using the <a href={routePath('reply', locale)}>right of reply</a>.</p>
+
+        <h2 id="corrections">How to request a correction or removal</h2>
+        <ol>
+          <li>Email <a href={mail}>{SITE.correctionsEmail}</a> with the subject "Correction" or "Removal", naming the page, the passage and the reason.</li>
+          <li>We confirm receipt. Our target is to decide within 14 calendar days.</li>
+          <li>The outcome is one of: corrected with a correction note, recorded as a reply on that page, removed, or declined with a written reason.</li>
+          <li>Every change made is recorded below with its date.</li>
+        </ol>
+
+        <h2 id="corrections-log">Corrections log</h2>
+        {CORRECTIONS.length === 0 ? (
+          <p class="muted">No corrections have been recorded yet.</p>
+        ) : (
+          <ul class="stack">
+            {CORRECTIONS.map((c) => <li><strong>{formatDateLocale(c.date, locale)}</strong> · <a href={c.path}>{c.path}</a>: {c.en}</li>)}
+          </ul>
+        )}
+      </>
+    )}
+  </article>
+</BaseLayout>

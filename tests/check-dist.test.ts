@@ -14,7 +14,7 @@ const page = (body: string, opts: { banner?: boolean; nav?: string; og?: string;
   const rel = opts.rel ?? 'index.html';
   const h1 = '<h1>Judul</h1>'.repeat(opts.h1 ?? 1);
   const head = opts.head ?? `<title>Judul halaman uji</title><meta name="description" content="${DESC}" /><link rel="canonical" href="${urlOf(rel)}" />`;
-  return `<html lang="${opts.lang ?? 'id'}"><head>${head}${opts.og ?? OG}</head><body>${opts.banner === false ? '' : '<div data-disclaimer></div>'}${opts.nav ?? NAV}${h1}${body}</body></html>`;
+  return `<html lang="${opts.lang ?? 'id'}"><head>${head}${opts.og ?? OG}</head><body><a class="skip-link" href="#main">Lewati</a>${opts.banner === false ? '' : '<div data-disclaimer></div>'}${opts.nav ?? NAV}<main id="main">${h1}${body}</main></body></html>`;
 };
 
 beforeEach(() => {
@@ -30,12 +30,20 @@ beforeEach(() => {
 
 describe('findProblems', () => {
   it('returns no problems for a clean dist', () => {
-    writeFileSync(join(dir, 'index.html'), page('<img src="/img/a.png"><a href="/artikel">x</a>'));
+    writeFileSync(join(dir, 'index.html'), page('<img src="/img/a.png" width="1" height="1"><a href="/artikel">x</a>'));
     expect(findProblems(dir)).toEqual([]);
   });
   it('flags a page without the disclaimer banner', () => {
     writeFileSync(join(dir, 'index.html'), page('hi', { banner: false }));
     expect(findProblems(dir).join('\n')).toContain('disclaimer');
+  });
+  it('flags an image without dimensions', () => {
+    writeFileSync(join(dir, 'index.html'), page('<img src="/img/a.png">'));
+    expect(findProblems(dir).join('\n')).toContain('without width/height');
+  });
+  it('flags a page without the skip link', () => {
+    writeFileSync(join(dir, 'index.html'), page('hi').replace('<a class="skip-link" href="#main">Lewati</a>', ''));
+    expect(findProblems(dir).join('\n')).toContain('skip link');
   });
   it('flags a missing image', () => {
     writeFileSync(join(dir, 'index.html'), page('<img src="/img/missing.png">'));

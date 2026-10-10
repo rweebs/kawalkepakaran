@@ -7,7 +7,7 @@ const read = (p: string) => readFileSync(p, 'utf8');
 describe('videos wiring', () => {
   it('has Videos in the menu', () => {
     expect(NAV.filter((n) => n.href === '/videos')).toHaveLength(1);
-    expect(NAV.find((n) => n.href === '/videos')?.label).toBe('Videos');
+    expect(NAV.find((n) => n.href === '/videos')?.label).toBe('Video');
   });
   it('has a YYYY-MM-DD lastmod and a sitemap entry', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/videos']).toMatch(/^\d{4}-\d{2}-\d{2}$/);

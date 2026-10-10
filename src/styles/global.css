@@ -305,3 +305,22 @@ a.lang-toggle__opt:hover { background: var(--bg-glass-border); }
 .bb-credits__title { font-size: 1rem; margin: 0 0 0.4rem; }
 .bb-credits ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; }
 @media (min-width: 700px) { .bb-duo { grid-template-columns: 1fr 1fr; } .bb-parva:nth-child(even) { justify-content: flex-end; } }
+
+/* Skip link: first tab stop, visible only on focus. */
+.skip-link { position: absolute; left: 0.5rem; top: -4rem; z-index: 100; padding: 0.6rem 1rem; background: var(--bg-primary); color: var(--text-primary); border: 2px solid var(--accent-amber); border-radius: 6px; }
+.skip-link:focus { top: 0.5rem; }
+main:focus { outline: none; }
+
+@media print {
+  body { background: #fff; color: #000; }
+  .banner, .nav, .footer, .theme-song, .skip-link, .breadcrumbs, canvas { display: none !important; }
+  a { color: #000; text-decoration: underline; }
+  .reading a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; }
+  img { max-width: 100%; break-inside: avoid; }
+}
+
+.list-filter { margin: 1rem 0; }
+.list-filter label { display: block; margin-bottom: 0.25rem; color: var(--text-secondary); }
+.list-filter input { width: 100%; max-width: 28rem; padding: 0.6rem 0.8rem; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); font: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--accent-amber); outline-offset: 2px; }

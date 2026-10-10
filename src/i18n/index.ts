@@ -30,6 +30,7 @@ export const ROUTES = {
   bowobharata: { id: '/kasus/abil-sudarman/bowobharata', en: '/en/cases/abil-sudarman/bowobharata' },
   reply: { id: '/hak-jawab', en: '/en/right-of-reply' },
   disclaimer: { id: '/disclaimer', en: '/en/disclaimer' },
+  policy: { id: '/kebijakan', en: '/en/policy' },
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 

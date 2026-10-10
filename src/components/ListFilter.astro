@@ -1,0 +1,13 @@
+---
+import type { Locale } from '../i18n';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const t = locale === 'id'
+  ? { label: 'Cari di daftar ini', placeholder: 'Ketik nama atau kata kunci', none: 'Tidak ada yang cocok.' }
+  : { label: 'Search this list', placeholder: 'Type a name or keyword', none: 'Nothing matches.' };
+---
+<div class="list-filter" data-list-filter hidden>
+  <label for="list-filter-input">{t.label}</label>
+  <input id="list-filter-input" type="search" placeholder={t.placeholder} autocomplete="off" />
+  <p class="muted" data-list-filter-empty hidden role="status">{t.none}</p>
+</div>
+<script>import '../scripts/list-filter';</script>
