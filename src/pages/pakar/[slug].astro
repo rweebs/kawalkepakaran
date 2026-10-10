@@ -2,10 +2,12 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import CredentialList from '../../components/CredentialList.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
-import { getPakar, klaimForPakar } from '../../lib/pakar';
+import { getPakar, isGenerated, klaimForPakar } from '../../lib/pakar';
+import { articlesForPakar, arsipPath, KIND_LABEL, STATUS_LABEL } from '../../lib/arsip';
 import { truncateAtWord } from '../../lib/seo';
 import { personLd } from '../../lib/schema-org';
 import { SITE } from '../../lib/site';
+import { UI } from '../../i18n/ui';
 import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
 import { localizedPath, routePath, type Locale } from '../../i18n';
 
@@ -15,33 +17,42 @@ export async function getStaticPaths() {
 // Indonesian page. The English page (src/pages/en/experts/[slug].astro) passes locale="en".
 const { id, locale = 'id' } = Astro.props as { id: string; locale?: Locale };
 const pakar = (await getPakar()).find((p) => p.id === id)!;
+const generated = isGenerated(pakar);
 const claims = await klaimForPakar(id);
+const articles = await articlesForPakar(id);
 const path = localizedPath('experts', locale, id);
 const alternates = { id: localizedPath('experts', 'id', id), en: localizedPath('experts', 'en', id) };
 const summary = locale === 'id' ? pakar.data.summary : pakar.data.summaryEn;
+const interest = locale === 'id' ? pakar.data.interest : pakar.data.interestEn;
+const limits = locale === 'id' ? pakar.data.limits : pakar.data.limitsEn;
 const description = truncateAtWord(`${pakar.data.name}: ${summary}`, 160);
 const ld = personLd({ url: new URL(path, SITE.url).toString(), name: pakar.data.name, field: pakar.data.field, description, locale });
 const T = {
-  id: { crumb: 'Pakar', creds: 'Kredensial', claims: 'Klaim yang diperiksa', none: 'Belum ada klaim yang diperiksa.',
-    confidence: 'Keyakinan', reply: 'Hak jawab', replyNote: 'berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman ini lewat', replyLabel: 'hak jawab' },
-  en: { crumb: 'Experts', creds: 'Credentials', claims: 'Claims checked', none: 'No claims have been checked yet.',
-    confidence: 'Confidence', reply: 'Right of reply', replyNote: 'has the right to respond, correct or add context to any of these pages through the', replyLabel: 'right of reply' },
+  id: { crumb: 'Pakar', creds: 'Kredensial', claims: 'Klaim yang diperiksa', claimsGen: 'Dokumen dan klaim', none: 'Belum ada klaim yang diperiksa.',
+    confidence: 'Keyakinan', reply: 'Hak jawab', replyNote: 'berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman ini lewat', replyLabel: 'hak jawab',
+    posts: 'Tulisan yang menyebut pihak ini', status: 'Status', interest: 'Kepentingan penulis', limits: 'Yang tidak dibuktikan' },
+  en: { crumb: 'Experts', creds: 'Credentials', claims: 'Claims checked', claimsGen: 'Documents and claims', none: 'No claims have been checked yet.',
+    confidence: 'Confidence', reply: 'Right of reply', replyNote: 'has the right to respond, correct or add context to any of these pages through the', replyLabel: 'right of reply',
+    posts: 'Posts that name this party', status: 'Status', interest: 'The author\'s interest', limits: 'What this does not prove' },
 }[locale];
 ---
-<BaseLayout title={pakar.data.name} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
+<BaseLayout title={pakar.data.name} description={description} path={path} locale={locale} alternates={alternates} jsonLd={generated ? undefined : ld} noindex={generated}
   breadcrumbs={[{ name: T.crumb, path: routePath('experts', locale) }, { name: pakar.data.name, path }]}>
   <article class="reading">
     <h1>{pakar.data.name}</h1>
     <p class="lead">{pakar.data.field}</p>
+    {generated && <p class="muted">{UI[locale].disclaimer}</p>}
     <p>{summary}</p>
 
-    <section aria-labelledby="kredensial-h">
-      <h2 id="kredensial-h">{T.creds}</h2>
-      <CredentialList credentials={pakar.data.credentials} locale={locale} />
-    </section>
+    {!generated && (
+      <section aria-labelledby="kredensial-h">
+        <h2 id="kredensial-h">{T.creds}</h2>
+        <CredentialList credentials={pakar.data.credentials} locale={locale} />
+      </section>
+    )}
 
     <section aria-labelledby="klaim-h">
-      <h2 id="klaim-h">{T.claims}</h2>
+      <h2 id="klaim-h">{generated ? T.claimsGen : T.claims}</h2>
       {claims.length === 0 ? (
         <p class="muted">{T.none}</p>
       ) : (
@@ -56,6 +67,33 @@ const T = {
         </ul>
       )}
     </section>
+
+    {articles.length > 0 && (
+      <section aria-labelledby="posts-h">
+        <h2 id="posts-h">{T.posts}</h2>
+        <ul class="stack">
+          {articles.map((a) => (
+            <li>
+              <a href={arsipPath(a.id, locale)}>{a.data.title}</a>
+              <span class="muted"> · {KIND_LABEL[a.data.kind as keyof typeof KIND_LABEL][locale]} · {T.status}: {STATUS_LABEL[a.data.status as keyof typeof STATUS_LABEL][locale]}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {generated && interest && (
+      <section aria-labelledby="int-h">
+        <h2 id="int-h">{T.interest}</h2>
+        <p>{interest}</p>
+      </section>
+    )}
+    {generated && limits && (
+      <section aria-labelledby="lim-h">
+        <h2 id="lim-h">{T.limits}</h2>
+        <p>{limits}</p>
+      </section>
+    )}
 
     <p class="notice">{pakar.data.name} {T.replyNote} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>
   </article>

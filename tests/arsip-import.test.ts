@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { arsipSchema, pihakSchema } from '../src/lib/schemas';
+import { arsipSchema, klaimSchema, pakarSchema } from '../src/lib/schemas';
 import {
-  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, trimMedical, releaseByTrimming, statusFor, slugify, frontmatter, pihakRecord, imageName,
+  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, trimMedical, releaseByTrimming, statusFor, slugify, frontmatter, pakarFromParty, klaimFromDocument, klaimId, imageName,
 } from '../scripts/arsip-lib.mjs';
 
 const SLUGS_SRC = `export const professionalBlacklistSlugs = new Set<string>([
@@ -177,13 +177,37 @@ describe('generated records', () => {
   it('keeps quotes, colons and ampersands in a title intact', () => {
     expect(read(fm).title).toBe('Legal Notice No. 046: "Ibrahim" & Co');
   });
-  it('makes a pihak record that the schema accepts, states the interest and limits, and starts as a draft', () => {
-    const r = pihakRecord({ name: 'GovTech Edu', kind: 'Company', articles: ['somasi-046-x'] });
-    expect(pihakSchema.safeParse(r).success).toBe(true);
-    expect(r.interest).toMatch(/Rahmat Wibowo/);
-    expect(r.interestEn).toMatch(/Rahmat Wibowo/);
-    expect(r.limits).toMatch(/bukan pengakuan/);
+  it('makes a pakar record for a party that the schema accepts, marked as generated from the archive', () => {
+    const r = pakarFromParty({ name: 'GovTech Edu', kind: 'Company', articles: ['a', 'b'] });
+    expect(pakarSchema.safeParse(r).success).toBe(true);
+    expect(r.source).toBe('arsip');
     expect(r.draft).toBe(true);
+    expect(r.kind).toBe('Company');
+    expect(r.summary).toMatch(/2 tulisan/);
+    expect(r.summaryEn).toMatch(/2 posts/);
+    expect(r.interest).toMatch(/Rahmat Wibowo/);
+    expect(r.limits).toMatch(/bukan pengakuan/);
+    expect(r.credentials).toEqual([]);
+  });
+  it('makes a claim for a document that only records the document, with the fixed limits text, as a draft', () => {
+    const k = klaimFromDocument({ party: 'govtech-edu', article: { slug: 'somasi-046-x', title: 'Legal Notice No. 046', kind: 'somasi' } });
+    expect(klaimSchema.safeParse(k).success).toBe(true);
+    expect(k.pakar).toBe('govtech-edu');
+    expect(k.claim).toBe('Dokumen penulis: Legal Notice No. 046');
+    expect(k.claimEn).toBe("Author's document: Legal Notice No. 046");
+    expect(k.verdict).toBe('belum-terverifikasi');
+    expect(k.confidence).toBe('rendah');
+    expect(k.limits).toMatch(/dibuat otomatis/);
+    expect(k.limits).toMatch(/bukan bahwa isinya/);
+    expect(k.limitsEn).toMatch(/generated automatically/);
+    expect(k.evidence).toEqual([]);
+    expect(k.articles).toEqual(['somasi-046-x']);
+    expect(k.draft).toBe(true);
+    expect(k.source).toBe('arsip');
+  });
+  it('names a generated claim after its party and document, so one document can serve several parties', () => {
+    expect(klaimId('govtech-edu', 'somasi-046-x')).toBe('govtech-edu--somasi-046-x');
+    expect(klaimId('ibrahim-arief', 'somasi-046-x')).not.toBe(klaimId('govtech-edu', 'somasi-046-x'));
   });
 });
 

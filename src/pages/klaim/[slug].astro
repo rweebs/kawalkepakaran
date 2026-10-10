@@ -1,7 +1,8 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
-import { getKlaim, getPakar } from '../../lib/pakar';
+import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
+import { getArsip, arsipPath } from '../../lib/arsip';
 import { getBukti } from '../../lib/content';
 import { truncateAtWord } from '../../lib/seo';
 import { claimReviewLd } from '../../lib/schema-org';
@@ -17,6 +18,8 @@ const { id, locale = 'id' } = Astro.props as { id: string; locale?: Locale };
 const klaim = (await getKlaim()).find((k) => k.id === id)!;
 const pakar = (await getPakar()).find((p) => p.id === klaim.data.pakar)!;
 const evidence = (await getBukti()).filter((b) => klaim.data.evidence.includes(b.id)).sort((a, b) => a.data.order - b.data.order);
+const generated = isGenerated(klaim);
+const docs = (await getArsip()).filter((a) => (klaim.data.articles ?? []).includes(a.id));
 const claim = locale === 'id' ? klaim.data.claim : klaim.data.claimEn;
 const limits = locale === 'id' ? klaim.data.limits : klaim.data.limitsEn;
 const path = localizedPath('claims', locale, id);
@@ -28,12 +31,12 @@ const ld = claimReviewLd({
 const description = truncateAtWord(`${verdictLabel(klaim.data.verdict, locale)}: ${claim} ${pakar.data.name}. ${limits}`, 160);
 const T = {
   id: { crumb: 'Cek klaim', by: 'Pakar', venue: 'Disampaikan di', madeAt: 'Tanggal', verdict: 'Putusan pemeriksaan', confidence: 'Tingkat keyakinan',
-    evidence: 'Bukti', noEvidence: 'Belum ada bukti yang ditautkan.', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
+    evidence: 'Bukti', noEvidence: 'Belum ada bukti yang ditautkan.', doc: 'Dokumen', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
   en: { crumb: 'Claim checks', by: 'Expert', venue: 'Made at', madeAt: 'Date', verdict: 'Verdict', confidence: 'Confidence',
-    evidence: 'Evidence', noEvidence: 'No evidence linked yet.', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
+    evidence: 'Evidence', noEvidence: 'No evidence linked yet.', doc: 'Document', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
 }[locale];
 ---
-<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
+<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates} jsonLd={generated ? undefined : ld} noindex={generated}
   breadcrumbs={[{ name: T.crumb, path: routePath('claims', locale) }, { name: claim, path }]}>
   <article class="reading">
     <h1>{claim}</h1>
@@ -42,6 +45,10 @@ const T = {
       <strong>{T.venue}:</strong> {klaim.data.venue}
       {klaim.data.madeAt && <><br /><strong>{T.madeAt}:</strong> {formatDateLocale(klaim.data.madeAt, locale)}</>}
     </p>
+
+    {docs.length > 0 && (
+      <p><strong>{T.doc}:</strong> {docs.map((d, i) => <>{i > 0 && ', '}<a href={arsipPath(d.id, locale)}>{d.data.title}</a></>)}</p>
+    )}
 
     <section aria-labelledby="putusan-h">
       <h2 id="putusan-h">{T.verdict}</h2>

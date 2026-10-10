@@ -1,7 +1,7 @@
 import { EVENTS, eventUrl } from '../lib/linimasa';
 import type { APIRoute } from 'astro';
 import { getBukti, getPosts, getPostsEn } from '../lib/content';
-import { getKlaim, getPakar } from '../lib/pakar';
+import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
 import { ROUTES } from '../i18n';
 import { localizedEvents, eventPath } from '../lib/linimasa-locale';
 import { firstImage } from '../lib/header-image';
@@ -14,8 +14,8 @@ export const GET: APIRoute = async () => {
   const posts = await getPosts();
   const bukti = await getBukti();
   const postsEn = await getPostsEn();
-  const pakar = await getPakar();
-  const klaim = await getKlaim();
+  const pakar = (await getPakar()).filter((p) => !isGenerated(p));
+  const klaim = (await getKlaim()).filter((k) => !isGenerated(k));
   const latest = posts.length ? iso(new Date(Math.max(...posts.map((p) => p.data.translationDate.getTime())))) : undefined;
 
   const entries: SitemapEntry[] = [

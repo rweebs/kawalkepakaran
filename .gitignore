@@ -14,5 +14,6 @@ public/thumb/
 
 # Imported archive: a public repo shows every committed file, so it stays local until the owner publishes it.
 src/content/arsip/*.md
-src/content/pihak/*.json
+src/content/pakar/generated/*.json
+src/content/klaim/generated/*.json
 public/img/arsip-*

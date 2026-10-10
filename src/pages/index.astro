@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SkyStage from '../components/SkyStage.astro';
 import VerdictBadge from '../components/VerdictBadge.astro';
-import { getKlaim, getPakar } from '../lib/pakar';
+import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
 import { SITE } from '../lib/site';
 import { localizedPath, routePath, type Locale } from '../i18n';
 import { HOME_SECTIONS } from '../lib/sky/states';
 
 const { locale = 'id' } = Astro.props as { locale?: Locale };
-const pakar = (await getPakar()).sort((a, b) => a.data.name.localeCompare(b.data.name)).slice(0, 6);
-const claims = (await getKlaim()).slice(0, 5);
+const pakar = (await getPakar()).filter((p) => !isGenerated(p)).sort((a, b) => a.data.name.localeCompare(b.data.name)).slice(0, 6);
+const claims = (await getKlaim()).filter((k) => !isGenerated(k)).slice(0, 5);
 const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
 const SECTIONS = [...HOME_SECTIONS];
 const T = {

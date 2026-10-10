@@ -1,7 +1,8 @@
 ---
 import { render } from 'astro:content';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getArsip, getPihak, arsipPath, pihakPath, KIND_LABEL, STATUS_LABEL } from '../../../lib/arsip';
+import { getArsip, arsipPath, KIND_LABEL, STATUS_LABEL } from '../../../lib/arsip';
+import { getPakar } from '../../../lib/pakar';
 import { descriptionFromMarkdown } from '../../../lib/seo';
 import { UI } from '../../../i18n/ui';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../i18n';
@@ -15,7 +16,7 @@ const p = entry.data;
 const { Content } = await render(entry);
 const path = arsipPath(entry.id, locale);
 const description = descriptionFromMarkdown(entry.body ?? '') || p.title;
-const parties = (await getPihak()).filter((x) => x.data.articles.includes(entry.id));
+const parties = (await getPakar()).filter((x) => p.parties.includes(x.id));
 const T = {
   id: { crumb: 'Arsip', marker: 'Arsip Infraloka: salinan tulisan dari blog Infraloka, disalin pada', original: 'Lihat tulisan aslinya',
     trimmed: 'Dipangkas: bagian yang menyebut kondisi kesehatan, diagnosis, atau perawatan medis dibuang dari salinan ini. Teks lengkap ada di tulisan aslinya.',
@@ -42,7 +43,7 @@ const T = {
     </p>
     {p.trimmed && <p class="notice">{T.trimmed}</p>}
     {parties.length > 0 && (
-      <p><strong>{T.parties}:</strong> {parties.map((x, i) => <>{i > 0 && ', '}<a href={pihakPath(x.id, locale)}>{x.data.name}</a></>)}</p>
+      <p><strong>{T.parties}:</strong> {parties.map((x, i) => <>{i > 0 && ', '}<a href={localizedPath('experts', locale, x.id)}>{x.data.name}</a></>)}</p>
     )}
     <p class="muted">{T.interest}</p>
     <div class="prose"><Content /></div>

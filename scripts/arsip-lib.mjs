@@ -163,20 +163,6 @@ export function frontmatter({ title, slug, lang, kind, status, parties, trimmed,
   ].join('\n');
 }
 
-/** The page data of a party. It always states the author's interest and the limits, and starts as a draft. */
-export function pihakRecord({ name, kind, articles, updatedAt = '2026-10-10' }) {
-  return {
-    name,
-    kind,
-    articles,
-    interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara yang diuraikan dalam tulisan-tulisan ini.',
-    interestEn: 'The author of this site (Rahmat Wibowo) is a party to the matters described in these posts.',
-    limits: 'Halaman ini hanya merangkum tulisan penulis. Ia tidak membuktikan hal yang disebut dalam tulisan itu, status berasal dari sumber dan bukan dari putusan, dan belum adanya jawaban dari pihak ini bukan pengakuan atas apa pun.',
-    limitsEn: 'This page only summarises the author\'s posts. It does not prove what those posts say, the status comes from the source and not from a ruling, and the absence of a reply from this party is not an admission of anything.',
-    updatedAt,
-    draft: true,
-  };
-}
 
 // Everything that touches a medical subject, however lightly. Used only to trim a post that was held back for medical content.
 const MEDICAL = new RegExp(`${HEAVY.source}|${MENTION.source}|medis|medical|kesehatan|\\bmental\\b`, 'i');
@@ -278,3 +264,50 @@ export function releaseByTrimming(text) {
   const t = trimMedical(text);
   return { released: holdFlags(t.text).action !== 'hold', text: t.text, removed: t.removed };
 }
+
+const KIND_FIELD = { Person: 'Orang', Company: 'Perusahaan', Group: 'Kelompok' };
+const GENERATED_LIMITS = 'Halaman ini hanya merangkum tulisan penulis. Ia tidak membuktikan hal yang disebut dalam tulisan itu, status berasal dari sumber dan bukan dari putusan, dan belum adanya jawaban dari pihak ini bukan pengakuan atas apa pun.';
+const GENERATED_LIMITS_EN = 'This page only summarises the author\'s posts. It does not prove what those posts say, the status comes from the source and not from a ruling, and the absence of a reply from this party is not an admission of anything.';
+
+/** The profile of a party named in the archive, for /pakar. Generated, so it says so, states the author's interest, and is a draft. */
+export function pakarFromParty({ name, kind, articles }) {
+  const n = articles.length;
+  return {
+    name,
+    field: KIND_FIELD[kind],
+    kind,
+    source: 'arsip',
+    summary: `Pihak yang disebut dalam ${n} tulisan penulis. Halaman ini hanya merangkum tulisan itu dan bukan penilaian atas pihak ini.`,
+    summaryEn: `A party named in ${n} post${n === 1 ? '' : 's'} by the author. This page only summarises those posts and is not an assessment of this party.`,
+    credentials: [],
+    interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara yang diuraikan dalam tulisan-tulisan ini.',
+    interestEn: 'The author of this site (Rahmat Wibowo) is a party to the matters described in these posts.',
+    limits: GENERATED_LIMITS,
+    limitsEn: GENERATED_LIMITS_EN,
+    draft: true,
+  };
+}
+
+/**
+ * One claim per party and formal document. It records that the author's document exists; it does not say the party made a claim and it
+ * does not say the content was checked. The fixed limits text states exactly that.
+ */
+export function klaimFromDocument({ party, article }) {
+  return {
+    pakar: party,
+    claim: `Dokumen penulis: ${article.title}`,
+    claimEn: `Author's document: ${article.title}`,
+    venue: 'Dokumen penulis',
+    verdict: 'belum-terverifikasi',
+    confidence: 'rendah',
+    evidence: [],
+    limits: 'Entri ini dibuat otomatis dari dokumen penulis. Ia mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.',
+    limitsEn: 'This entry was generated automatically from the author\'s document. It records that the document exists, not that its content has been checked or proven.',
+    replyStatus: 'belum-ada',
+    articles: [article.slug],
+    source: 'arsip',
+    draft: true,
+  };
+}
+
+export const klaimId = (party, articleSlug) => `${party}--${articleSlug}`;

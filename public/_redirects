@@ -9,6 +9,10 @@
 /en/pagespeed/* /en 301
 /pagespeed / 301
 /pagespeed/* / 301
+/en/parties /en/experts 301
+/en/parties/* /en/experts/:splat 301
+/pihak /pakar 301
+/pihak/* /pakar/:splat 301
 /en/articles /en/cases/abil-sudarman/articles 301
 /en/articles/* /en/cases/abil-sudarman/articles/:splat 301
 /en/evidence /en/cases/abil-sudarman/evidence 301

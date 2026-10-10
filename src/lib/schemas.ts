@@ -101,6 +101,13 @@ export const pakarSchema = z.object({
     source: z.string().url().optional(),
     checkedAt: z.coerce.date(),
   })).default([]),
+  /** Set only on profiles generated from the archive (a party named in its posts). Hand-made profiles leave these out. */
+  kind: z.enum(['Company', 'Person', 'Group']).optional(),
+  source: z.literal('arsip').optional(),
+  interest: z.string().min(1).optional(),
+  interestEn: z.string().min(1).optional(),
+  limits: z.string().min(1).optional(),
+  limitsEn: z.string().min(1).optional(),
   draft: z.boolean().default(false),
 });
 
@@ -117,6 +124,9 @@ export const klaimSchema = z.object({
   limits: z.string().min(1),
   limitsEn: z.string().min(1),
   replyStatus: z.enum(['belum-ada', 'diterima', 'dipublikasikan']),
+  /** Archive posts the claim is about; set only on claims generated from a document. */
+  articles: z.array(z.string()).optional(),
+  source: z.literal('arsip').optional(),
   draft: z.boolean().default(false),
 });
 
@@ -134,19 +144,6 @@ export const arsipSchema = z.object({
   date: z.coerce.date().optional(),
   parties: z.array(z.string()).default([]),
   trimmed: z.boolean().default(false),
-  draft: z.boolean().default(true),
-});
-
-/** A party a post is about. Shown only through the posts that name it, with the author's interest and the limits. */
-export const pihakSchema = z.object({
-  name: z.string().min(1),
-  kind: z.enum(['Company', 'Person', 'Group']),
-  articles: z.array(z.string()).min(1),
-  interest: z.string().min(1),
-  interestEn: z.string().min(1),
-  limits: z.string().min(1),
-  limitsEn: z.string().min(1),
-  updatedAt: z.coerce.date(),
   draft: z.boolean().default(true),
 });
 

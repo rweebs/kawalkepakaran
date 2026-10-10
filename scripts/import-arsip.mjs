@@ -1,13 +1,13 @@
 // Archive importer. Reads the Infraloka blog's Professional Blacklist posts and decides what may be copied.
 // Run: node scripts/import-arsip.mjs --source /path/to/infraloka
 // Mode "report" (the default) writes tmp/arsip-hold-report.md and copies nothing.
-// Mode "--write" also copies into src/content/arsip, src/content/pihak and public/img (all git-ignored). A post held back for medical
+// Mode "--write" also copies into src/content/arsip, src/content/{pakar,klaim}/generated and public/img (all git-ignored). A post held back for medical
 // content is released only by trimming the medical parts (personal data is never trimmed); what was removed is listed in
 // tmp/arsip-trim-review.md for the owner. A lone diagnosis mention is trimmed too. Images are compressed to WebP (1600 px at most).
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, imageName, pihakRecord, releaseByTrimming, rewriteImages, statusFor, stripTitle, titleFrom, trimMentions,
+  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, imageName, klaimFromDocument, klaimId, pakarFromParty, releaseByTrimming, rewriteImages, statusFor, stripTitle, titleFrom, trimMentions,
 } from './arsip-lib.mjs';
 
 const args = process.argv.slice(2);
@@ -86,7 +86,7 @@ if (args.includes('--write')) {
   const eligible = planned.filter((x) => x.copy);
 
   // Start from a clean slate so a re-run never leaves a post that has since been held back.
-  for (const [dir, ext] of [['src/content/arsip', '.md'], ['src/content/pihak', '.json']]) {
+  for (const [dir, ext] of [['src/content/arsip', '.md'], ['src/content/pakar/generated', '.json'], ['src/content/klaim/generated', '.json']]) {
     mkdirSync(dir, { recursive: true });
     for (const f of readdirSync(dir)) if (f.endsWith(ext)) rmSync(join(dir, f));
   }
@@ -108,7 +108,21 @@ if (args.includes('--write')) {
       partyMap.set(p.slug, entry);
     }
   }
-  for (const [slug, p] of partyMap) writeFileSync(join('src/content/pihak', `${slug}.json`), `${JSON.stringify(pihakRecord({ ...p, updatedAt: archivedAt }), null, 2)}\n`);
+  // Each party becomes a /pakar profile, and each formal document one claim per party it names. Abil Sudarman has a hand-made
+  // profile with curated claims, so he is neither duplicated nor given generated claims; his posts reach his page through `parties`.
+  const CURATED = new Set(['abil-sudarman']);
+  let claimsWritten = 0;
+  for (const [slug, party] of partyMap) {
+    if (CURATED.has(slug)) continue;
+    writeFileSync(join('src/content/pakar/generated', `${slug}.json`), `${JSON.stringify(pakarFromParty(party), null, 2)}\n`);
+  }
+  for (const x of eligible.filter((e) => ['somasi', 'aduan'].includes(e.r.kind))) {
+    for (const party of x.r.parties.filter((q) => !CURATED.has(q.slug))) {
+      const article = { slug: x.r.slug, title: x.r.title, kind: x.r.kind };
+      writeFileSync(join('src/content/klaim/generated', `${klaimId(party.slug, x.r.slug)}.json`), `${JSON.stringify(klaimFromDocument({ party: party.slug, article }), null, 2)}\n`);
+      claimsWritten += 1;
+    }
+  }
 
   mkdirSync('public/img', { recursive: true });
   const missingImages = [];
@@ -144,7 +158,7 @@ ${stillHeld.map((x) => `- \`${x.r.slug}\` (${x.r.flags.pii.length ? 'data pribad
 `;
   writeFileSync('tmp/arsip-trim-review.md', review);
   const removedTotal = released.reduce((n, x) => n + x.removed.length, 0);
-  console.log(`written: ${eligible.length} posts (${eligible.filter((x) => x.trimmed).length} trimmed; ${released.length} released from hold, ${removedTotal} parts removed), ${partyMap.size} parties, ${written} new images (${(bytes / 1048576).toFixed(1)} MB), ${images.size} referenced`);
+  console.log(`written: ${eligible.length} posts (${eligible.filter((x) => x.trimmed).length} trimmed; ${released.length} released from hold, ${removedTotal} parts removed), ${partyMap.size - (partyMap.has('abil-sudarman') ? 1 : 0)} profiles, ${claimsWritten} claims, ${written} new images (${(bytes / 1048576).toFixed(1)} MB), ${images.size} referenced`);
   console.log(`still held: ${stillHeld.length}; images dropped (not at the source): ${droppedImages.length}; failed: ${failed.length}${failed.length ? ` ${failed.slice(0, 2).join(' | ')}` : ''}`);
   console.log('review: tmp/arsip-trim-review.md');
 }

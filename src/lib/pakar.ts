@@ -24,3 +24,6 @@ export async function getKlaim() {
 export async function klaimForPakar(slug: string) {
   return (await getKlaim()).filter((k) => k.data.pakar === slug);
 }
+
+/** A profile or claim generated from the archive (not curated by hand): it is noindex and kept out of the home page and the sitemap. */
+export const isGenerated = (entry: { data: { source?: string } }): boolean => entry.data.source === 'arsip';

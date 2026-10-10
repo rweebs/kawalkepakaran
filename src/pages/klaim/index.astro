@@ -1,26 +1,30 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
-import { getKlaim, getPakar } from '../../lib/pakar';
+import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
 import { confidenceLabel } from '../../lib/verdict';
 import { localizedPath, routePath, type Locale } from '../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('claims', locale);
-const claims = await getKlaim();
+const all = await getKlaim();
+const claims = all.filter((k) => !isGenerated(k));
+const generated = all.filter(isGenerated);
 const pakar = await getPakar();
 const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
 const T = {
   id: { title: 'Cek klaim para pakar', h1: 'Cek klaim', crumb: 'Cek klaim',
     description: 'Klaim para pakar yang telah diperiksa, masing-masing dengan putusan pemeriksaan, tingkat keyakinan, bukti, dan batas apa yang tidak dibuktikan.',
     lead: 'Setiap klaim diberi putusan pemeriksaan dan tingkat keyakinan, dengan bukti dan batas apa yang tidak dibuktikan.',
-    empty: 'Belum ada klaim yang dimuat.', confidence: 'Keyakinan', method: 'Bagaimana putusan ditentukan' },
+    empty: 'Belum ada klaim yang dimuat.', confidence: 'Keyakinan', method: 'Bagaimana putusan ditentukan',
+    genH: 'Dari dokumen arsip', genLead: 'Dibuat otomatis, satu per dokumen penulis. Entri ini hanya mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.' },
   en: { title: 'Expert claim checks', h1: 'Claim checks', crumb: 'Claim checks',
     description: 'Expert claims we have checked, each with a verdict, a confidence level, the evidence, and the limits of what the evidence does not prove.',
     lead: 'Each claim gets a verdict and a confidence level, with the evidence and the limits of what it does not prove.',
-    empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided' },
+    empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided',
+    genH: 'From archive documents', genLead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.' },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex={generated.length > 0} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <p class="lead">{T.lead}</p>
@@ -36,6 +40,21 @@ const T = {
           </li>
         ))}
       </ul>
+    )}
+    {generated.length > 0 && (
+      <section aria-labelledby="gen-h">
+        <h2 id="gen-h">{T.genH} ({generated.length})</h2>
+        <p class="muted">{T.genLead}</p>
+        <ul class="stack">
+          {generated.map((k) => (
+            <li>
+              <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
+              {' '}<VerdictBadge verdict={k.data.verdict} locale={locale} />
+              <span class="muted"> · {nameOf(k.data.pakar)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
     )}
     <p><a href={routePath('method', locale)}>{T.method} →</a></p>
   </article>

@@ -1,24 +1,30 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getKlaim, getPakar } from '../../lib/pakar';
+import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
+import { PAKAR_KIND_LABEL } from '../../lib/arsip';
 import { localizedPath, routePath, type Locale } from '../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('experts', locale);
-const pakar = (await getPakar()).sort((a, b) => a.data.name.localeCompare(b.data.name));
+const all = (await getPakar()).sort((a, b) => a.data.name.localeCompare(b.data.name));
+const pakar = all.filter((p) => !isGenerated(p));
+const generated = all.filter(isGenerated);
 const klaim = await getKlaim();
 const count = (id: string) => klaim.filter((k) => k.data.pakar === id).length;
+const KINDS = ['Person', 'Company', 'Group'] as const;
 const T = {
   id: { title: 'Daftar pakar yang diperiksa', h1: 'Pakar', crumb: 'Pakar',
     description: 'Profil para pakar yang klaimnya diperiksa Kawal Kepakaran: kredensial yang diverifikasi, klaim yang dicek, dan tanggapan mereka.',
     lead: 'Setiap pakar punya halaman sendiri: kredensial yang diperiksa, klaim yang diuji, dan tanggapannya.',
-    empty: 'Belum ada pakar yang dimuat.', claims: 'klaim diperiksa', method: 'Lihat metode kami' },
+    empty: 'Belum ada pakar yang dimuat.', claims: 'klaim diperiksa', method: 'Lihat metode kami',
+    archiveH: 'Pihak dalam arsip', archiveLead: 'Pihak yang disebut dalam tulisan penulis di Arsip Perkara. Halaman mereka hanya merangkum tulisan itu, dengan batas dan hak jawab, dan bukan hasil pemeriksaan kredensial.', posts: 'tulisan' },
   en: { title: 'Experts we have checked', h1: 'Experts', crumb: 'Experts',
     description: "Profiles of the experts whose claims Kawal Kepakaran has checked: verified credentials, claims checked, and the experts' replies.",
     lead: 'Each expert has a page of their own: the credentials checked, the claims tested, and their reply.',
-    empty: 'No experts have been listed yet.', claims: 'claims checked', method: 'See our method' },
+    empty: 'No experts have been listed yet.', claims: 'claims checked', method: 'See our method',
+    archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts' },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex={generated.length > 0} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <p class="lead">{T.lead}</p>
@@ -34,6 +40,23 @@ const T = {
           </a>
         ))}
       </div>
+    )}
+    {generated.length > 0 && (
+      <section aria-labelledby="arsip-h">
+        <h2 id="arsip-h">{T.archiveH} ({generated.length})</h2>
+        <p class="muted">{T.archiveLead}</p>
+        {KINDS.map((k) => {
+          const list = generated.filter((p) => p.data.kind === k);
+          return list.length > 0 && (
+            <>
+              <h3>{PAKAR_KIND_LABEL[k][locale]} ({list.length})</h3>
+              <ul class="stack">
+                {list.map((p) => <li><a href={localizedPath('experts', locale, p.id)}>{p.data.name}</a> <span class="muted">· {count(p.id)} {T.claims === 'klaim diperiksa' ? 'dokumen' : 'documents'}</span></li>)}
+              </ul>
+            </>
+          );
+        })}
+      </section>
     )}
     <p><a href={routePath('method', locale)}>{T.method} →</a></p>
   </article>

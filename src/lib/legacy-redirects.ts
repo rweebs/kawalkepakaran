@@ -1,5 +1,7 @@
 /** Paths of the old abilsudarman.my.id site that moved under the Kasus 001 case path. Everything else keeps its path. */
 export const LEGACY_MOVES = [
+  ['/en/parties', '/en/experts'],
+  ['/pihak', '/pakar'],
   ['/en/articles', '/en/cases/abil-sudarman/articles'],
   ['/en/evidence', '/en/cases/abil-sudarman/evidence'],
   ['/en/timeline', '/en/cases/abil-sudarman/timeline'],
