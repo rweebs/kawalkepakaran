@@ -126,8 +126,11 @@ jobs:
             echo "$path -> $code"
             [ "$code" = "200" ]
           done
-          curl -fsS "$SITE_URL/en" | grep -q '<html lang="en"'
-          curl -fsS "$SITE_URL/" | grep -q 'hreflang="en"'
+          # Download first, then search: grep -q exits on the first match, which kills curl mid-transfer (exit 23 under pipefail).
+          en_page=$(curl -fsS "$SITE_URL/en")
+          grep -q '<html lang="en"' <<< "$en_page"
+          home_page=$(curl -fsS "$SITE_URL/")
+          grep -q 'hreflang="en"' <<< "$home_page"
           # A bad _headers edit must not ship silently: the live security headers have to be present.
           headers=$(curl -fsSI "$SITE_URL/")
           for h in strict-transport-security content-security-policy x-content-type-options x-frame-options; do
