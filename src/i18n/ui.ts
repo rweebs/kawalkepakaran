@@ -16,6 +16,12 @@ export interface UiStrings {
   disclaimer: string;
   footer: (author: string) => string;
   corrections: string;
+  projectOf: string;
+  policies: string;
+  rss: string;
+  data: string;
+  license: string;
+  correctedOn: string;
   classification: Record<'pendapat' | 'fakta-dengan-bukti' | 'laporan-aduan', string>;
   ogImageAlt: string;
   nav: Record<string, string>;
@@ -39,6 +45,12 @@ export const UI: Record<Locale, UiStrings> = {
       'dan tidak menyatakan bahwa siapa pun yang disebut bersalah. Setiap orang berhak atas praduga tak bersalah dan hak jawab.',
     footer: (author) => `Konten oleh ${author}. Bukan nasihat hukum.`,
     corrections: 'Permintaan koreksi',
+    projectOf: 'Proyek',
+    policies: 'Kebijakan',
+    rss: 'RSS',
+    data: 'Data (JSON)',
+    license: 'Konten asli: CC BY 4.0. Arsip dan profil pihak: hak cipta dilindungi.',
+    correctedOn: 'Dikoreksi pada',
     classification: { 'pendapat': 'Pendapat', 'fakta-dengan-bukti': 'Fakta dengan bukti', 'laporan-aduan': 'Laporan/aduan' },
     ogImageAlt: 'Kawal Kepakaran: penjaga wayang menimbang klaim para pakar',
     nav: {},
@@ -64,6 +76,12 @@ export const UI: Record<Locale, UiStrings> = {
       'and do not state that anyone mentioned is guilty. Everyone has the right to the presumption of innocence and the right of reply.',
     footer: (author) => `Content by ${author}. Not legal advice.`,
     corrections: 'Corrections',
+    projectOf: 'A project of',
+    policies: 'Policies',
+    rss: 'RSS',
+    data: 'Data (JSON)',
+    license: 'Original content: CC BY 4.0. Archive and party profiles: all rights reserved.',
+    correctedOn: 'Corrected on',
     classification: { 'pendapat': 'Opinion', 'fakta-dengan-bukti': 'Fact with evidence', 'laporan-aduan': 'Report/complaint' },
     ogImageAlt: "Kawal Kepakaran: a wayang guardian weighing experts' claims",
     nav: {

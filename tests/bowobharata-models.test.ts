@@ -34,8 +34,8 @@ describe('model manifest', () => {
       }
     }
   });
-  it('caches the models for a week, so a returning visitor does not download them again', () => {
-    expect(read('public/_headers')).toMatch(/\/models\/\*\n\s+Cache-Control: public, max-age=604800/);
+  it('caches the models for a day and revalidates, so a returning visitor does not download them again but a model update is never stale for long', () => {
+    expect(read('public/_headers')).toMatch(/\/models\/\*\n\s+Cache-Control: public, max-age=86400, must-revalidate/);
   });
   it('keeps the credits module free of three.js so the page never imports it', () => {
     expect(read('src/lib/bowobharata/model-credits.ts')).not.toMatch(/from 'three/);

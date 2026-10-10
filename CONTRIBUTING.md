@@ -29,14 +29,14 @@ other form.
 1. Fork the repo and save the masked image in `public/img/`.
 2. Add one JSON file in `src/content/bukti/`. Copy an existing entry; the schema is in `src/lib/schemas.ts` (fields `title`,
    `group`, `images`, `shows`, `limits`, `source`, `order`).
-3. Run `npm test && npm run build`, then open the PR.
+3. Run `npm run scan && npm run typecheck && npm test && npm run build`, then open the PR.
 
 ### Code contributions
 
 - Read the [Engineering guide](docs/engineering-guide.md) first (setup, folder map, how to add an article, a timeline entry
   or a page).
 - Branch from `main`, keep one logical change per commit, and use messages like `feat(seo): …` or `fix(build): …`.
-- Run `npm test && npm run build` before opening the PR. CI runs the same.
+- Run `npm run scan && npm run typecheck && npm test && npm run build` before opening the PR. CI runs the same.
 - Keep wording about people hedged ("I allege", "in my opinion"). Do not change the disclaimer or right-of-reply text without
   the author's approval.
 
@@ -67,14 +67,14 @@ Kode dan konten situs ini terbuka. Siapa pun boleh mengirim bukti, baik yang mem
 **Lewat Pull Request:**
 1. Fork repo, lalu simpan gambar yang sudah ditutup datanya di `public/img/`.
 2. Tambahkan satu berkas JSON di `src/content/bukti/` (salin format entri yang ada; skema di `src/lib/schemas.ts`, kolom `title`, `group`, `images`, `shows`, `limits`, `source`, `order`).
-3. Jalankan `npm test && npm run build`, lalu buka PR.
+3. Jalankan `npm run scan && npm run typecheck && npm test && npm run build`, lalu buka PR.
 
 ### Kontribusi kode
 
 - Baca dulu [Panduan engineering](docs/engineering-guide.id.md) (persiapan, peta folder, cara menambah artikel, entri linimasa,
   atau halaman).
 - Cabangkan dari `main`, satu perubahan logis per commit, dan pakai pesan seperti `feat(seo): …` atau `fix(build): …`.
-- Jalankan `npm test && npm run build` sebelum membuka PR. CI menjalankan hal yang sama.
+- Jalankan `npm run scan && npm run typecheck && npm test && npm run build` sebelum membuka PR. CI menjalankan hal yang sama.
 - Jaga kalimat tentang orang tetap berhati-hati ("saya menduga", "menurut saya"). Jangan mengubah disclaimer atau teks hak
   jawab tanpa persetujuan penulis.
 

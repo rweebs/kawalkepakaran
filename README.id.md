@@ -59,7 +59,7 @@ Perintah yang berguna:
 | `npm run build:preview` | Build ala produksi yang menyertakan draf |
 | `npm run check` | Menjalankan ulang pemeriksaan pada `dist/` yang sudah ada |
 
-Sebelum mendorong perubahan apa pun, jalankan `npm test && npm run build`. Jika keduanya lolos, perubahan aman diterbitkan.
+Sebelum mendorong perubahan apa pun, jalankan `npm run scan && npm run typecheck && npm test && npm run build`. Jika keduanya lolos, perubahan aman diterbitkan.
 
 ## Cara kerjanya (satu paragraf)
 

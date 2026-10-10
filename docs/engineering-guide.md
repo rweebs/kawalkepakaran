@@ -5,7 +5,7 @@
 For junior and new engineers. Read the [README](../README.md) first for the 10-minute setup. This guide explains how
 things fit together and how to make common changes safely.
 
-**The golden rule:** run `npm test && npm run build` before you push. If both pass, you have not broken the site.
+**The golden rule:** run `npm run scan && npm run typecheck && npm test && npm run build` before you push. If both pass, you have not broken the site.
 
 ## 1. The big picture
 
@@ -97,7 +97,7 @@ articles: { id: '/artikel', en: '/en/articles' },
 5. The test `translation.test.ts` expects an exact post count; update the number when you add a post. It also fails if an
    Indonesian post contains untranslated English paragraphs (allow genuine exceptions in `tests/translation-allow.json`
    with a reason).
-6. Run `npm test && npm run build`.
+6. Run `npm run scan && npm run typecheck && npm test && npm run build`.
 
 ### 4.2 An evidence item
 
@@ -135,9 +135,10 @@ image **before** adding it.
 
 `npm run build` runs, in order:
 
+0. `scripts/make-redirects.mjs` regenerates `public/_redirects`.
 1. `scripts/make-thumbs.mjs` makes small thumbnails (output is git-ignored).
 2. `astro build` writes the site to `dist/`.
-3. `scripts/prune-images.mjs` deletes images no page uses.
+3. `scripts/prune-images.mjs` deletes images no page uses, then `scripts/size-images.mjs` adds image sizes.
 4. `scripts/check-dist.mjs` scans every page. **The build fails** if any rule is broken:
 
 | Rule | Why it exists |

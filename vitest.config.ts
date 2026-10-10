@@ -3,6 +3,6 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   test: {
     include: ['tests/**/*.test.{ts,tsx}'],
-    coverage: { provider: 'v8', include: ['src/lib/**', 'scripts/**'], reporter: ['text-summary', 'lcov'] },
+    coverage: { provider: 'v8', include: ['src/lib/**', 'src/scripts/**', 'scripts/**'], reporter: ['text-summary', 'lcov'] },
   },
 });

@@ -46,8 +46,8 @@ const ld = { '@context': 'https://schema.org', '@type': 'AboutPage', name: T.tit
     <p class="muted">{DISCLAIMER}</p>
     <p class="lead">{T.purpose} <a href={routePath('method', locale)}>{T.methodLink} →</a></p>
     {en
-      ? <p class="muted">The <a href={SOURCE_URL} rel="noopener">original story at infraloka.co.id/story</a>, written by the initiator of this site. This story contains personal history and the author's statements about himself; its source is that original page.</p>
-      : <p class="muted">Terjemahan bahasa Indonesia dari <a href={SOURCE_URL} rel="noopener">kisah asli di infraloka.co.id/story</a>, ditulis oleh penggagas situs ini. Kisah ini memuat riwayat pribadi dan pernyataan penulis tentang dirinya sendiri; sumbernya adalah halaman asli tersebut.</p>}
+      ? <p class="muted">The <a href={SOURCE_URL} rel="noopener noreferrer">original story at infraloka.co.id/story</a>, written by the initiator of this site. This story contains personal history and the author's statements about himself; its source is that original page.</p>
+      : <p class="muted">Terjemahan bahasa Indonesia dari <a href={SOURCE_URL} rel="noopener noreferrer">kisah asli di infraloka.co.id/story</a>, ditulis oleh penggagas situs ini. Kisah ini memuat riwayat pribadi dan pernyataan penulis tentang dirinya sendiri; sumbernya adalah halaman asli tersebut.</p>}
 
     {before.map((c) => (
         <section id={c.id} class="tentang-chapter" aria-labelledby={`${c.id}-h`}>
@@ -91,7 +91,7 @@ const ld = { '@context': 'https://schema.org', '@type': 'AboutPage', name: T.tit
     </section>
 
     {en
-      ? <p class="muted tentang-foot">Rahmat Wibowo is the founder of InfraLoka. Replies or corrections: <a href={localizedPath('reply', locale)}>{T.reply}</a> or <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. Connect on <a href={LINKEDIN_URL} rel="noopener nofollow">LinkedIn</a>.</p>
-      : <p class="muted tentang-foot">Rahmat Wibowo adalah pendiri InfraLoka. Tanggapan atau koreksi: <a href={localizedPath('reply', locale)}>{T.reply}</a> atau <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. Terhubung di <a href={LINKEDIN_URL} rel="noopener nofollow">LinkedIn</a>.</p>}
+      ? <p class="muted tentang-foot">Rahmat Wibowo is the founder of InfraLoka. Replies or corrections: <a href={localizedPath('reply', locale)}>{T.reply}</a> or <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. Connect on <a href={LINKEDIN_URL} rel="noopener noreferrer nofollow">LinkedIn</a>.</p>
+      : <p class="muted tentang-foot">Rahmat Wibowo adalah pendiri InfraLoka. Tanggapan atau koreksi: <a href={localizedPath('reply', locale)}>{T.reply}</a> atau <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. Terhubung di <a href={LINKEDIN_URL} rel="noopener noreferrer nofollow">LinkedIn</a>.</p>}
   </article>
 </BaseLayout>

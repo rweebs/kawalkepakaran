@@ -29,7 +29,7 @@ const DESCRIPTION = T.description;
       ? <p class="muted">{T.empty}</p>
       : <ul class="buku-grid">{books.map((b) => (
           <li class="card buku-item">
-            <a class="buku-cover" href={b.data.file} target="_blank" rel="noopener">
+            <a class="buku-cover" href={b.data.file} target="_blank" rel="noopener noreferrer">
               <img src={thumbFor(b.data.cover)} alt={`${T.cover} ${b.text.title}`} width="640" height="905" loading="lazy" decoding="async" />
             </a>
             <h2>{b.text.title}</h2>
@@ -37,7 +37,7 @@ const DESCRIPTION = T.description;
             <p>{b.text.description}</p>
             <p class="buku-note"><strong>{T.note}</strong> {b.text.note}</p>
             <div class="buku-actions">
-              <a class="btn" href={b.data.file} target="_blank" rel="noopener">{T.read}</a>
+              <a class="btn" href={b.data.file} target="_blank" rel="noopener noreferrer">{T.read}</a>
               <a class="btn" href={b.data.file} download>{T.download} ({b.size})</a>
             </div>
           </li>))}</ul>}

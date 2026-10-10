@@ -5,12 +5,13 @@ import { arsipStaticPaths, arsipPath, KIND_LABEL, STATUS_LABEL } from '../../../
 import { firstImage } from '../../../lib/header-image';
 import { getPakar } from '../../../lib/pakar';
 import { descriptionFromMarkdown, truncateAtWord } from '../../../lib/seo';
+import type { CollectionEntry } from 'astro:content';
 import { UI } from '../../../i18n/ui';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../i18n';
 
 export const getStaticPaths = arsipStaticPaths;
 // Indonesian page. The English page (src/pages/en/archive/articles/[slug].astro) passes locale="en".
-const { entry, shortTitle, locale = 'id' } = Astro.props as { entry: any; shortTitle: string; locale?: Locale };
+const { entry, shortTitle, locale = 'id' } = Astro.props as { entry: CollectionEntry<'arsip'>; shortTitle: string; locale?: Locale };
 const p = entry.data;
 const { Content } = await render(entry);
 const path = arsipPath(entry.id, locale);
@@ -33,8 +34,8 @@ const T = {
   <article class="reading">
     <h1 lang={p.lang}>{p.title}</h1>
     <p class="linimasa-note">
-      {T.marker} {formatDateLocale(p.archivedAt, locale)}. <a href={p.sourceUrl} rel="noopener nofollow" target="_blank">{T.original} →</a>
-      · <a href={`https://web.archive.org/web/2/${p.sourceUrl}`} rel="noopener nofollow" target="_blank">{T.snapshot} →</a>
+      {T.marker} {formatDateLocale(p.archivedAt, locale)}. <a href={p.sourceUrl} rel="noopener noreferrer nofollow" target="_blank">{T.original} →</a>
+      · <a href={`https://web.archive.org/web/2/${p.sourceUrl}`} rel="noopener noreferrer nofollow" target="_blank">{T.snapshot} →</a>
     </p>
     <p class="muted">{UI[locale].disclaimer}</p>
     <p>

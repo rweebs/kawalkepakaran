@@ -18,9 +18,21 @@ export const LEGACY_REMOVED = [
   ['/pagespeed', '/'],
 ] as const;
 
+/** Fixed old-domain paths that are not a prefix move. make-redirects.mjs writes the same rules, so the worker lands in one hop. */
+export const LEGACY_FIXED = [
+  ['/blog', '/kasus/abil-sudarman/artikel'],
+  ['/kawal', '/'],
+  ['/sitemap-index.xml', '/sitemap.xml'],
+  ['/sitemap-0.xml', '/sitemap.xml'],
+] as const;
+
 /** Path on kawalkepakaran.org for a path on the old domain. Unknown paths map to themselves. */
 export function legacyTarget(pathname: string): string {
   const p = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  for (const [from, to] of LEGACY_FIXED) {
+    if (p === from) return to;
+  }
+  if (p.startsWith('/blog/')) return `/kasus/abil-sudarman/artikel/${p.slice('/blog/'.length)}`;
   for (const [from, to] of LEGACY_REMOVED) {
     if (p === from || p.startsWith(`${from}/`)) return to;
   }

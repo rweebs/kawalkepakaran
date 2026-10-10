@@ -45,7 +45,7 @@ const indexPath = localizedPath('timeline', locale);
     {event.sources.length > 0 && (
       <section aria-labelledby="sumber-h">
         <h2 id="sumber-h">{T.sources}</h2>
-        <ul>{event.sources.map((s) => <li><a href={s.url} rel="noopener nofollow" target="_blank">{s.label}</a></li>)}</ul>
+        <ul>{event.sources.map((s) => <li><a href={s.url} rel="noopener noreferrer nofollow" target="_blank">{s.label}</a></li>)}</ul>
         <p class="muted">{T.sourcesNote}</p>
       </section>
     )}

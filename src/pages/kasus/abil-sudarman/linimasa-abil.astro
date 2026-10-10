@@ -72,7 +72,7 @@ const undated = entries.filter((e) => e.undated);
             <p>{e.text}</p>
             <p class="muted"><strong>{T.limits}:</strong> {e.limits}</p>
             {e.links.length > 0 && (
-              <p class="muted">{T.sources}: {e.links.map((l, i) => <>{i > 0 && '; '}<a href={l.href} rel="noopener">{l.label}</a></>)}</p>
+              <p class="muted">{T.sources}: {e.links.map((l, i) => <>{i > 0 && '; '}<a href={l.href} rel="noopener noreferrer">{l.label}</a></>)}</p>
             )}
           </li>
         ))}
@@ -90,7 +90,7 @@ const undated = entries.filter((e) => e.undated);
             <p>{e.text}</p>
             <p class="muted"><strong>{T.limits}:</strong> {e.limits}</p>
             {e.links.length > 0 && (
-              <p class="muted">{T.sources}: {e.links.map((l, i) => <>{i > 0 && '; '}<a href={l.href} rel="noopener">{l.label}</a></>)}</p>
+              <p class="muted">{T.sources}: {e.links.map((l, i) => <>{i > 0 && '; '}<a href={l.href} rel="noopener noreferrer">{l.label}</a></>)}</p>
             )}
           </li>
         ))}

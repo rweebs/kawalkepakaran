@@ -5,7 +5,7 @@
 Untuk engineer junior dan baru. Baca dulu [README.id](../README.id.md) untuk persiapan 10 menit. Panduan ini menjelaskan
 bagaimana bagian-bagiannya saling terhubung dan cara membuat perubahan umum dengan aman.
 
-**Aturan emas:** jalankan `npm test && npm run build` sebelum mendorong perubahan. Jika keduanya lolos, situs tidak rusak.
+**Aturan emas:** jalankan `npm run scan && npm run typecheck && npm test && npm run build` sebelum mendorong perubahan. Jika keduanya lolos, situs tidak rusak.
 
 ## 1. Gambaran besar
 
@@ -97,7 +97,7 @@ articles: { id: '/artikel', en: '/en/articles' },
 5. Tes `translation.test.ts` mengharapkan jumlah artikel yang tepat; ubah angkanya saat menambah artikel. Tes juga gagal bila
    artikel Indonesia memuat paragraf bahasa Inggris yang belum diterjemahkan (pengecualian yang sah dicatat di
    `tests/translation-allow.json` beserta alasannya).
-6. Jalankan `npm test && npm run build`.
+6. Jalankan `npm run scan && npm run typecheck && npm test && npm run build`.
 
 ### 4.2 Butir bukti
 

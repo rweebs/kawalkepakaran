@@ -1,7 +1,16 @@
 import { SITE } from './site';
 import type { Locale } from '../i18n';
 
-const publisher = { '@type': 'Organization', name: SITE.name, url: SITE.url } as const;
+export const CONTENT_LICENSE = 'https://creativecommons.org/licenses/by/4.0/';
+
+/** The site as a publisher: a stable @id and a logo, so every page names the same entity. */
+export const publisher = {
+  '@type': 'Organization',
+  '@id': `${SITE.url}/#organization`,
+  name: SITE.name,
+  url: SITE.url,
+  logo: { '@type': 'ImageObject', url: `${SITE.url}/apple-touch-icon.png` },
+} as const;
 
 interface ClaimReviewInput {
   url: string;
@@ -11,7 +20,10 @@ interface ClaimReviewInput {
   verdictLabel: string;
   /** "What this does not prove": published as the review body so the limits travel with the verdict. */
   limits: string;
+  /** Date the check was last reviewed (YYYY-MM-DD). */
   datePublished: string;
+  /** URL of the claimant's profile page; links the claim's author to the Person entity. */
+  pakarUrl?: string;
   locale: Locale;
   /** Left out of the output when unknown. */
   claimMadeAt?: string;
@@ -25,12 +37,14 @@ export function claimReviewLd(i: ClaimReviewInput) {
     url: i.url,
     inLanguage: i.locale,
     datePublished: i.datePublished,
+    dateModified: i.datePublished,
+    license: CONTENT_LICENSE,
     claimReviewed: i.claim,
     reviewBody: i.limits,
     author: { ...publisher },
     itemReviewed: {
       '@type': 'Claim',
-      author: { '@type': 'Person', name: i.pakarName },
+      author: { '@type': 'Person', ...(i.pakarUrl ? { '@id': `${i.pakarUrl}#person` } : {}), name: i.pakarName },
       ...(i.claimMadeAt ? { datePublished: i.claimMadeAt } : {}),
     },
     reviewRating: { '@type': 'Rating', alternateName: i.verdictLabel },
@@ -52,7 +66,7 @@ export function personLd(i: PersonInput) {
   };
 }
 
-interface ArticleInput { url: string; headline: string; description: string; datePublished: string; locale: Locale }
+interface ArticleInput { url: string; headline: string; description: string; datePublished: string; dateModified?: string; image?: string; locale: Locale }
 
 /** A page written by the site's founder (for example the manifesto). */
 export function articleLd(i: ArticleInput) {
@@ -64,8 +78,9 @@ export function articleLd(i: ArticleInput) {
     description: i.description,
     inLanguage: i.locale,
     datePublished: i.datePublished,
-    dateModified: i.datePublished,
-    author: { '@type': 'Person', name: SITE.author },
+    dateModified: i.dateModified ?? i.datePublished,
+    ...(i.image ? { image: i.image } : {}),
+    author: { '@type': 'Person', name: SITE.author, url: `${SITE.url}/tentang` },
     publisher: { ...publisher },
   };
 }

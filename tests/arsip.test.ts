@@ -41,7 +41,7 @@ describe('schemas', () => {
     expect(klaimSchema.safeParse(klaim).success).toBe(true);
     const { kind: _k, source: _s, interest: _i, interestEn: _ie, limits: _l, limitsEn: _le, ...handMadePakar } = pakar;
     expect(pakarSchema.safeParse(handMadePakar).success).toBe(true);
-    const { articles: _a, source: _src, ...handMadeKlaim } = klaim;
+    const { articles: _a, source: _src, ...handMadeKlaim } = { ...klaim, reviewedAt: '2026-10-11' };
     expect(klaimSchema.safeParse(handMadeKlaim).success).toBe(true);
   });
   it('rejects a generated pakar with an unknown kind', () => {

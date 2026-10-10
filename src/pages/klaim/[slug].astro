@@ -7,6 +7,7 @@ import { getBukti } from '../../lib/content';
 import { truncateAtWord } from '../../lib/seo';
 import { claimReviewLd } from '../../lib/schema-org';
 import { PAGE_LASTMOD, SITE } from '../../lib/site';
+import { sourceLineFor } from '../../lib/bukti';
 import { confidenceLabel, replyStatusLabel, verdictLabel } from '../../lib/verdict';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
 
@@ -24,16 +25,21 @@ const claim = locale === 'id' ? klaim.data.claim : klaim.data.claimEn;
 const limits = locale === 'id' ? klaim.data.limits : klaim.data.limitsEn;
 const path = localizedPath('claims', locale, id);
 const alternates = { id: localizedPath('claims', 'id', id), en: localizedPath('claims', 'en', id) };
+const reviewedIso = klaim.data.reviewedAt?.toISOString().slice(0, 10) ?? PAGE_LASTMOD['/klaim'];
+const canonicalUrl = new URL(path, SITE.url).toString();
 const ld = claimReviewLd({
-  url: new URL(path, SITE.url).toString(), claim, pakarName: pakar.data.name, verdictLabel: verdictLabel(klaim.data.verdict, locale),
-  limits, datePublished: PAGE_LASTMOD['/klaim'], locale, claimMadeAt: klaim.data.madeAt?.toISOString().slice(0, 10),
+  url: canonicalUrl, claim, pakarName: pakar.data.name, verdictLabel: verdictLabel(klaim.data.verdict, locale),
+  limits, datePublished: reviewedIso, pakarUrl: new URL(localizedPath('experts', locale, pakar.id), SITE.url).toString(), locale, claimMadeAt: klaim.data.madeAt?.toISOString().slice(0, 10),
 });
 const description = truncateAtWord(`${verdictLabel(klaim.data.verdict, locale)}: ${claim} ${pakar.data.name}. ${limits}`, 160);
+const citation = `${SITE.name}, "${claim.replace(/"/g, "'")}", ${canonicalUrl}, ${locale === 'id' ? 'ditinjau' : 'reviewed'} ${reviewedIso}.`;
+const reply = klaim.data.reply;
+const replyText = reply && (locale === 'en' && reply.textEn ? reply.textEn : reply.text);
 const T = {
   id: { crumb: 'Cek klaim', by: 'Pakar', venue: 'Disampaikan di', madeAt: 'Tanggal', verdict: 'Putusan pemeriksaan', confidence: 'Tingkat keyakinan',
-    evidence: 'Bukti', noEvidence: 'Belum ada bukti yang ditautkan.', doc: 'Dokumen', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
+    evidence: 'Bukti', reviewed: 'Terakhir ditinjau', cite: 'Kutip halaman ini', copy: 'Salin tautan', copied: 'Tautan disalin', medical: 'Catatan kesehatan: halaman ini memeriksa sebuah klaim, bukan memberi nasihat medis. Untuk keputusan kesehatan, tanyakan tenaga medis berizin.', replyReceived: 'Tanggapan diterima', replyAsReceived: 'Disajikan apa adanya, tanpa penyuntingan.', replyRequested: 'Tanggapan diminta', noEvidence: 'Belum ada bukti yang ditautkan.', doc: 'Dokumen', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
   en: { crumb: 'Claim checks', by: 'Expert', venue: 'Made at', madeAt: 'Date', verdict: 'Verdict', confidence: 'Confidence',
-    evidence: 'Evidence', noEvidence: 'No evidence linked yet.', doc: 'Document', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
+    evidence: 'Evidence', reviewed: 'Last reviewed', cite: 'Cite this page', copy: 'Copy link', copied: 'Link copied', medical: 'Health note: this page checks a claim; it is not medical advice. For health decisions, ask a licensed clinician.', replyReceived: 'Reply received', replyAsReceived: 'Shown as received, unedited.', replyRequested: 'Reply requested', noEvidence: 'No evidence linked yet.', doc: 'Document', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
 }[locale];
 ---
 <BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates} jsonLd={generated ? undefined : ld} noindex={generated}
@@ -44,7 +50,9 @@ const T = {
       <strong>{T.by}:</strong> <a href={localizedPath('experts', locale, pakar.id)}>{pakar.data.name}</a><br />
       <strong>{T.venue}:</strong> {klaim.data.venue}
       {klaim.data.madeAt && <><br /><strong>{T.madeAt}:</strong> {formatDateLocale(klaim.data.madeAt, locale)}</>}
+      {klaim.data.reviewedAt && <><br /><strong>{T.reviewed}:</strong> <time datetime={reviewedIso}>{formatDateLocale(klaim.data.reviewedAt, locale)}</time></>}
     </p>
+    {klaim.data.topic === 'kesehatan' && <p class="notice" role="note">{T.medical}</p>}
 
     {docs.length > 0 && (
       <p><strong>{T.doc}:</strong> {docs.map((d, i) => <>{i > 0 && ', '}<a href={arsipPath(d.id, locale)}>{d.data.title}</a></>)}</p>
@@ -65,8 +73,10 @@ const T = {
             const x = locale === 'en' && b.data.en ? b.data.en : b.data;
             return (
               <li>
-                <a href={b.data.images[0].src} target="_blank" rel="noopener">{x.title}</a>
+                <a href={b.data.images[0].src} target="_blank" rel="noopener noreferrer">{x.title}</a>
                 <span class="muted"> · {x.shows}</span>
+                <br /><span class="muted">{sourceLineFor({ ...b.data, source: x.source }, locale)}</span>
+                {b.data.sourceUrl && <> <a href={b.data.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">{locale === 'id' ? 'sumber' : 'source'}</a></>}
               </li>
             );
           })}
@@ -80,6 +90,30 @@ const T = {
       <p>{limits}</p>
     </section>
 
+    {reply && (
+      <section aria-labelledby="reply-h">
+        <h2 id="reply-h">{T.replyReceived}</h2>
+        <p class="muted">{formatDateLocale(reply.receivedAt, locale)} · {T.replyAsReceived}</p>
+        <blockquote><p>{replyText}</p></blockquote>
+      </section>
+    )}
+    {klaim.data.replyRequestedAt && !reply && <p class="muted">{T.replyRequested}: {formatDateLocale(klaim.data.replyRequestedAt, locale)}</p>}
+
+    <section aria-labelledby="kutip-h" class="cite">
+      <h2 id="kutip-h">{T.cite}</h2>
+      <p><code data-cite>{citation}</code></p>
+      <p><button type="button" data-copy={citation} data-done={T.copied}>{T.copy}</button> <span role="status" data-copy-status></span></p>
+    </section>
+
     <p class="notice">{T.reply}: {replyStatusLabel(klaim.data.replyStatus, locale)}. <a href={routePath('reply', locale)}>{T.replyLink}</a>.</p>
   </article>
 </BaseLayout>
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy ?? ''); } catch { return; }
+      const s = b.parentElement?.querySelector('[data-copy-status]');
+      if (s) s.textContent = b.dataset.done ?? '';
+    });
+  });
+</script>

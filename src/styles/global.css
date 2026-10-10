@@ -13,6 +13,7 @@
 }
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg-primary);
   color: var(--text-primary); font-family: var(--font); line-height: 1.65; }
 main { flex: 1; }
@@ -312,7 +313,12 @@ a.lang-toggle__opt:hover { background: var(--bg-glass-border); }
 main:focus { outline: none; }
 
 @media print {
+  :root { --text-primary: #000; --text-secondary: #222; --text-accent: #000; --bg-primary: #fff; --bg-secondary: #fff; --bg-card: transparent; --bg-glass-border: #999; }
   body { background: #fff; color: #000; }
+  .hero { background: none !important; }
+  .card { background: transparent !important; border: 1px solid #999; box-shadow: none; }
+  .muted, .reading blockquote { color: #222 !important; }
+  .cite button, [data-copy-status] { display: none; }
   .banner, .nav, .footer, .theme-song, .skip-link, .breadcrumbs, canvas { display: none !important; }
   a { color: #000; text-decoration: underline; }
   .reading a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; }
@@ -324,3 +330,7 @@ main:focus { outline: none; }
 .list-filter input { width: 100%; max-width: 28rem; padding: 0.6rem 0.8rem; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); font: inherit; }
 [hidden] { display: none !important; }
 :focus-visible { outline: 3px solid var(--accent-amber); outline-offset: 2px; }
+
+.cite code { display: block; padding: 0.6rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); overflow-wrap: anywhere; font-family: var(--mono); font-size: 0.9rem; }
+.cite button { padding: 0.4rem 0.9rem; font: inherit; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); cursor: pointer; }
+.notice.container { margin-top: 1rem; }

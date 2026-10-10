@@ -32,6 +32,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Dependency audit (production, high and above)
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Secret and personal-data scan
         run: npm run scan
 
@@ -72,7 +75,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       - name: Download the verified build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -99,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
           sleep 90
-          for path in / /en /artikel /en/articles /pakar /klaim /arsip /metode /hak-jawab /sitemap.xml /robots.txt; do
+          for path in / /en /kasus/abil-sudarman/artikel /en/cases/abil-sudarman/articles /pakar /klaim /arsip /metode /hak-jawab /sitemap.xml /robots.txt; do
             for attempt in 1 2 3 4 5; do
               code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL$path" || true)
               [ "$code" = "200" ] && break
@@ -110,3 +113,8 @@ jobs:
           done
           curl -fsS "$SITE_URL/en" | grep -q '<html lang="en"'
           curl -fsS "$SITE_URL/" | grep -q 'hreflang="en"'
+          # A bad _headers edit must not ship silently: the live security headers have to be present.
+          headers=$(curl -fsSI "$SITE_URL/")
+          for h in strict-transport-security content-security-policy x-content-type-options x-frame-options; do
+            echo "$headers" | grep -qi "^$h:" || { echo "missing header: $h"; exit 1; }
+          done

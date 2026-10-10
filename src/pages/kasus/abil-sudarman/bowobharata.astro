@@ -78,7 +78,7 @@ const ld = { '@context': 'https://schema.org', '@type': 'WebPage', name: PAGE.ti
     <section class="bb-credits muted" aria-label={U.creditsLabel}>
       <h2 class="bb-credits__title">{U.credits}</h2>
       <ul>
-        {CREDITS.map((c) => <li>{c.text} <a href={c.source} rel="noopener">{U.source}</a></li>)}
+        {CREDITS.map((c) => <li>{c.text} <a href={c.source} rel="noopener noreferrer">{U.source}</a></li>)}
       </ul>
     </section>
 

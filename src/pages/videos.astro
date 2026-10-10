@@ -26,7 +26,7 @@ const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: 
       ? <p class="muted">{T.empty}</p>
       : <ul class="video-grid">{videos.map((v) => (
           <li class="card">
-            <a class="video-card" href={watchUrl(v.data.youtubeId, v.data.start)} target="_blank" rel="noopener"
+            <a class="video-card" href={watchUrl(v.data.youtubeId, v.data.start)} target="_blank" rel="noopener noreferrer"
                data-video-id={v.data.youtubeId} data-start={v.data.start} data-title={v.data.title}>
               <span class="video-thumb">
                 <img src={thumbFor(thumbSrc(v.data.youtubeId))} srcset={thumbSrcset(thumbSrc(v.data.youtubeId))} sizes={CARD_THUMB_SIZES} alt="" width="640" height="360" loading="lazy" decoding="async" />

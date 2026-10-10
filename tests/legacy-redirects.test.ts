@@ -33,6 +33,14 @@ describe('redirect worker', () => {
     expect(res.status).toBe(301);
     expect(res.headers.get('location')).toBe('https://kawalkepakaran.org/nonexistent');
   });
+  it('lands old blog and sitemap paths in one hop', () => {
+    expect(call('https://abilsudarman.my.id/blog/x').headers.get('location')).toBe('https://kawalkepakaran.org/kasus/abil-sudarman/artikel/x');
+    expect(call('https://abilsudarman.my.id/sitemap-0.xml').headers.get('location')).toBe('https://kawalkepakaran.org/sitemap.xml');
+  });
+  it.each(['//evil.com', '/\\evil.com', '/%2F%2Fevil.com', '/..//evil.com'])('never leaves the new origin for %s', (path) => {
+    const res = call(`https://abilsudarman.my.id${path}`);
+    expect(new URL(res.headers.get('location')!).origin).toBe('https://kawalkepakaran.org');
+  });
   it('sends the root to the new root', () => {
     expect(call('https://abilsudarman.my.id/').headers.get('location')).toBe('https://kawalkepakaran.org/');
   });

@@ -18,9 +18,10 @@ export const GET: APIRoute = async () => {
     ...klaim.map((k) => ({
       title: k.data.claim,
       path: `/klaim/${k.id}`,
-      date: k.data.madeAt ?? new Date('2026-10-09T00:00:00Z'),
+      date: k.data.reviewedAt ?? k.data.madeAt ?? p0,
       summary: k.data.limits,
     })),
   ];
   return new Response(buildRss(items, SITE), { headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' } });
 };
+const p0 = new Date('2026-10-09T00:00:00Z');

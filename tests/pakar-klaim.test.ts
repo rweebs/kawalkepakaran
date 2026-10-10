@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
-import { pakarSchema, klaimSchema } from '../src/lib/schemas';
-import { assertKlaimRefsPakar, selectVisible } from '../src/lib/pakar-refs';
+import { pakarSchema, klaimSchema, arsipSchema } from '../src/lib/schemas';
+import { assertKlaimRefsPakar, assertKlaimRefsContent, assertArsipPartiesExist, selectVisible } from '../src/lib/pakar-refs';
 
 const pakar = { name: 'A', field: 'f', summary: 's', summaryEn: 's', credentials: [] };
 const klaim = {
   pakar: 'a', claim: 'c', claimEn: 'c', venue: 'v',
-  verdict: 'sebagian', confidence: 'sedang', evidence: [], limits: 'l', limitsEn: 'l', replyStatus: 'belum-ada',
+  verdict: 'belum-terverifikasi', confidence: 'sedang', evidence: [], reviewedAt: '2026-10-11', limits: 'l', limitsEn: 'l', replyStatus: 'belum-ada',
 };
 
 describe('schemas', () => {
@@ -19,6 +19,39 @@ describe('schemas', () => {
     expect(klaimSchema.safeParse(klaim).success).toBe(true);
     expect(klaimSchema.safeParse({ ...klaim, madeAt: '2026-01-02' }).success).toBe(true);
   });
+});
+
+describe('klaim review rules', () => {
+  it('requires reviewedAt on a hand-made claim but not on one generated from the archive', () => {
+    const { reviewedAt: _r, ...noDate } = klaim;
+    expect(klaimSchema.safeParse(noDate).success).toBe(false);
+    expect(klaimSchema.safeParse({ ...noDate, source: 'arsip' }).success).toBe(true);
+  });
+  it('rejects a decided verdict with no evidence', () => {
+    expect(klaimSchema.safeParse({ ...klaim, verdict: 'tidak-terbukti' }).success).toBe(false);
+    expect(klaimSchema.safeParse({ ...klaim, verdict: 'tidak-terbukti', evidence: ['01-x'] }).success).toBe(true);
+  });
+  it('needs the reply text once a reply is published', () => {
+    expect(klaimSchema.safeParse({ ...klaim, replyStatus: 'dipublikasikan' }).success).toBe(false);
+    expect(klaimSchema.safeParse({ ...klaim, replyStatus: 'dipublikasikan', reply: { receivedAt: '2026-10-12', text: 'Jawaban' } }).success).toBe(true);
+  });
+});
+
+describe('https-only URLs', () => {
+  it.each(['javascript:alert(1)', 'data:text/html,x', 'http://example.com'])('rejects %s as an archive source', (u) => {
+    expect(arsipSchema.safeParse({ title: 't', sourceUrl: u, archivedAt: '2026-01-01', lang: 'id', kind: 'catatan' }).success).toBe(false);
+  });
+  it('accepts https', () => {
+    expect(arsipSchema.safeParse({ title: 't', sourceUrl: 'https://example.com/x', archivedAt: '2026-01-01', lang: 'id', kind: 'catatan' }).success).toBe(true);
+  });
+});
+
+describe('dangling content references', () => {
+  const k = { id: 'k1', data: { evidence: ['01-a'], articles: ['post-1'] } };
+  it('throws on unknown evidence', () => expect(() => assertKlaimRefsContent([], ['post-1'], [k])).toThrow(/k1.*01-a/));
+  it('throws on an unknown archive post', () => expect(() => assertKlaimRefsContent(['01-a'], [], [k])).toThrow(/post-1/));
+  it('passes when everything exists', () => expect(() => assertKlaimRefsContent(['01-a'], ['post-1'], [k])).not.toThrow());
+  it('throws on a misspelt party', () => expect(() => assertArsipPartiesExist(['a'], [{ id: 'x', data: { parties: ['b'] } }])).toThrow(/x.*b/));
 });
 
 describe('assertKlaimRefsPakar', () => {

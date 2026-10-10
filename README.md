@@ -58,8 +58,13 @@ Useful commands:
 | `npm run build` | Production build into `dist/`, then runs the safety checks. **Drafts are left out.** |
 | `npm run build:preview` | Production-style build that includes drafts |
 | `npm run check` | Re-runs the safety checks on an existing `dist/` |
+| `npm run scan` | Scans tracked files for secrets and personal data |
+| `npm run typecheck` | Type-checks the TypeScript (not `.astro` files) |
+| `npm run redirects` | Regenerates `public/_redirects` from `src/lib/legacy-redirects.ts` |
+| `npm run og` | Regenerates the Open Graph images |
+| `npm run test:coverage` | Runs the tests with a coverage report |
 
-Before you push anything, run `npm test && npm run build`. If both pass, the change is safe to publish.
+Before you push anything, run `npm run scan && npm run typecheck && npm test && npm run build`. If both pass, the change is safe to publish.
 
 ## How it is built (in one paragraph)
 

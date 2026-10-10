@@ -1,15 +1,12 @@
 // Writes public/_redirects from src/lib/legacy-redirects.ts so the redirect map has one source of truth.
 import { writeFileSync } from 'node:fs';
-import { LEGACY_MOVES, LEGACY_REMOVED } from '../src/lib/legacy-redirects.ts';
+import { LEGACY_FIXED, LEGACY_MOVES, LEGACY_REMOVED } from '../src/lib/legacy-redirects.ts';
 
 const ARTICLES = LEGACY_MOVES.find(([from]) => from === '/artikel')[1];
 
 const fixed = [
-  `/blog ${ARTICLES} 301`,
+  ...LEGACY_FIXED.map(([from, to]) => `${from} ${to} 301`),
   `/blog/* ${ARTICLES}/:splat 301`,
-  '/kawal / 301',
-  '/sitemap-index.xml /sitemap.xml 301',
-  '/sitemap-0.xml /sitemap.xml 301',
 ];
 const moves = [
   ...LEGACY_REMOVED.flatMap(([from, to]) => [`${from} ${to} 301`, `${from}/* ${to} 301`]),

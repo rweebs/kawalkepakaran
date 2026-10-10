@@ -3,7 +3,7 @@ export interface FeedItem { title: string; path: string; date: Date; summary: st
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** RSS 2.0 feed, newest item first. */
-export function buildRss(items: FeedItem[], site: { url: string; name: string; description: string }, feedPath = '/rss.xml'): string {
+export function buildRss(items: FeedItem[], site: { url: string; name: string; description: string }, feedPath = '/rss.xml', language = 'id'): string {
   const sorted = [...items].sort((a, b) => b.date.getTime() - a.date.getTime());
   const abs = (p: string) => new URL(p, site.url).toString();
   const body = sorted.map((i) =>
@@ -15,7 +15,7 @@ export function buildRss(items: FeedItem[], site: { url: string; name: string; d
     `    <title>${esc(site.name)}</title>`,
     `    <link>${esc(site.url)}</link>`,
     `    <description>${esc(site.description)}</description>`,
-    '    <language>id</language>',
+    `    <language>${language}</language>`,
     `    <atom:link href="${esc(abs(feedPath))}" rel="self" type="application/rss+xml"/>`,
     ...body,
     '  </channel>',

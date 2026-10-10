@@ -33,7 +33,7 @@ const TIKTOK_SIZES = '(min-width: 768px) 220px, 50vw';
       ? <p class="muted">{T.empty}</p>
       : <ul class="video-grid tiktok-grid">{videos.map((v) => (
           <li class="card">
-            <a class="video-card" href={watchUrl(v.data.tiktokId)} target="_blank" rel="noopener"
+            <a class="video-card" href={watchUrl(v.data.tiktokId)} target="_blank" rel="noopener noreferrer"
                data-tiktok-id={v.data.tiktokId} data-title={v.data.title}>
               <span class="video-thumb">
                 <img src={thumbFor(thumbSrc(v.data.tiktokId))} srcset={thumbSrcset(thumbSrc(v.data.tiktokId))} sizes={TIKTOK_SIZES} alt="" width="320" height="569" loading="lazy" decoding="async" />
@@ -53,7 +53,7 @@ const TIKTOK_SIZES = '(min-width: 768px) 220px, 50vw';
       <p class="muted video-note">{T.note}</p>
       <p class="video-fallback">
         <button type="button" class="btn video-reload">{T.reload}</button>
-        <a class="btn video-open" href="https://www.tiktok.com/" target="_blank" rel="noopener">{T.open}</a>
+        <a class="btn video-open" href="https://www.tiktok.com/" target="_blank" rel="noopener noreferrer">{T.open}</a>
       </p>
     </div>
   </dialog>

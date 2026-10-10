@@ -1,13 +1,15 @@
 import { getCollection } from 'astro:content';
 import { includeDrafts } from './publish';
-import { assertKlaimRefsPakar, selectVisible } from './pakar-refs';
+import { assertArsipPartiesExist, assertKlaimRefsContent, assertKlaimRefsPakar, selectVisible } from './pakar-refs';
 
 export { assertKlaimRefsPakar };
 
 const INCLUDE_DRAFTS = includeDrafts(process.env);
 
 async function visible() {
-  const [pakar, klaim] = await Promise.all([getCollection('pakar'), getCollection('klaim')]);
+  const [pakar, klaim, bukti, arsip] = await Promise.all([getCollection('pakar'), getCollection('klaim'), getCollection('bukti'), getCollection('arsip')]);
+  assertKlaimRefsContent(bukti.map((b) => b.id), arsip.map((a) => a.id), klaim);
+  assertArsipPartiesExist(pakar.map((p) => p.id), arsip);
   return selectVisible(pakar, klaim, INCLUDE_DRAFTS);
 }
 

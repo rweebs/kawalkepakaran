@@ -9,6 +9,17 @@
 - [Hak jawab](https://kawalkepakaran.org/hak-jawab)
 - [Disclaimer](https://kawalkepakaran.org/disclaimer)
 
+## English
+- [Method](https://kawalkepakaran.org/en/method)
+- [Claim checks](https://kawalkepakaran.org/en/claims)
+- [Experts](https://kawalkepakaran.org/en/experts)
+- [Right of reply](https://kawalkepakaran.org/en/right-of-reply)
+- [Policies](https://kawalkepakaran.org/en/policy)
+
+## Pakar
+- [Pakar](https://kawalkepakaran.org/pakar): profil, kredensial, dan klaim yang diperiksa
+
 ## Opsional
 - [Sitemap](https://kawalkepakaran.org/sitemap.xml)
 - [RSS](https://kawalkepakaran.org/rss.xml)
+- [RSS (English)](https://kawalkepakaran.org/en/rss.xml)

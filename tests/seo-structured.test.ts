@@ -27,7 +27,7 @@ describe('claimReviewLd', () => {
     expect(ld.reviewRating).toEqual({ '@type': 'Rating', alternateName: 'Belum bisa diverifikasi' });
   });
   it('is authored by the site, not by a person, and never invents a numeric rating', () => {
-    expect(ld.author).toEqual({ '@type': 'Organization', name: SITE.name, url: SITE.url });
+    expect(ld.author).toMatchObject({ '@type': 'Organization', name: SITE.name, url: SITE.url });
     expect(JSON.stringify(ld)).not.toMatch(/ratingValue|bestRating|worstRating/);
   });
   it('states the limits as the review body and omits the claim date when unknown', () => {
@@ -49,7 +49,7 @@ describe('personLd and articleLd', () => {
   it('describes the manifesto as an Article by the founder with a date', () => {
     const a = articleLd({ url: 'u', headline: 'Bukan Daftar Hitam', description: 'd', datePublished: '2026-10-09', locale: 'id' });
     expect(a).toMatchObject({ '@type': 'Article', headline: 'Bukan Daftar Hitam', datePublished: '2026-10-09', inLanguage: 'id' });
-    expect(a.author).toEqual({ '@type': 'Person', name: SITE.author });
+    expect(a.author).toMatchObject({ '@type': 'Person', name: SITE.author });
   });
 });
 

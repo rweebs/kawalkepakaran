@@ -1,11 +1,14 @@
 import { z } from 'astro/zod';
 
+/** An absolute https URL. Plain `.url()` also accepts `javascript:` and `data:`, which would end up in an href. */
+export const httpsUrl = z.string().url().refine((u) => /^https:\/\//i.test(u), 'must be an https:// URL');
+
 export const classification = z.enum(['pendapat', 'fakta-dengan-bukti', 'laporan-aduan']);
 
 export const postSchema = z.object({
   title: z.string().min(1),
   originalTitle: z.string().min(1),
-  originalUrl: z.string().url().optional(),
+  originalUrl: httpsUrl.optional(),
   author: z.string().min(1),
   originalDate: z.coerce.date().optional(),
   translationDate: z.coerce.date(),
@@ -20,7 +23,7 @@ export const postSchema = z.object({
 // English edition of a post: the original English text (the Indonesian post is its translation). Same id as the Indonesian post.
 export const postEnSchema = z.object({
   title: z.string().min(1),
-  originalUrl: z.string().url().optional(),
+  originalUrl: httpsUrl.optional(),
   author: z.string().min(1),
   originalDate: z.coerce.date().optional(),
   publishedDate: z.coerce.date(),
@@ -46,7 +49,7 @@ export const buktiSchema = z.object({
   shows: z.string().min(1),
   limits: z.string().min(1),
   source: z.string().min(1).optional(),
-  sourceUrl: z.string().url().optional(),
+  sourceUrl: httpsUrl.optional(),
   capturedAt: z.coerce.date().optional(),
   order: z.number().int(),
   en: z.object({
@@ -101,7 +104,7 @@ export const pakarSchema = z.object({
     title: z.string().min(1),
     issuer: z.string().min(1),
     status: credentialStatus,
-    source: z.string().url().optional(),
+    source: httpsUrl.optional(),
     checkedAt: z.coerce.date(),
   })).default([]),
   /** Set only on profiles generated from the archive (a party named in its posts). Hand-made profiles leave these out. */
@@ -114,7 +117,7 @@ export const pakarSchema = z.object({
   draft: z.boolean().default(false),
 });
 
-export const klaimSchema = z.object({
+const klaimBase = z.object({
   pakar: z.string().min(1),
   claim: z.string().min(1),
   claimEn: z.string().min(1),
@@ -127,10 +130,26 @@ export const klaimSchema = z.object({
   limits: z.string().min(1),
   limitsEn: z.string().min(1),
   replyStatus: z.enum(['belum-ada', 'diterima', 'dipublikasikan']),
+  /** When the claim was requested for a reply; starts the 14-day clock. */
+  replyRequestedAt: z.coerce.date().optional(),
+  /** The reply as received, shown unedited. Required once replyStatus is dipublikasikan. */
+  reply: z.object({ receivedAt: z.coerce.date(), text: z.string().min(1), textEn: z.string().min(1).optional() }).optional(),
+  /** Date this check was last reviewed; shown on the page and used as the ClaimReview date. */
+  reviewedAt: z.coerce.date().optional(),
+  /** Health claims carry an extra not-medical-advice notice. */
+  topic: z.enum(['kesehatan']).optional(),
   /** Archive posts the claim is about; set only on claims generated from a document. */
   articles: z.array(z.string()).optional(),
   source: z.literal('arsip').optional(),
   draft: z.boolean().default(false),
+});
+
+/** A claim written by hand must say when it was reviewed, and a decided verdict must cite evidence. */
+export const klaimSchema = klaimBase.superRefine((k, ctx) => {
+  if (k.replyStatus === 'dipublikasikan' && !k.reply) ctx.addIssue({ code: 'custom', path: ['reply'], message: 'replyStatus dipublikasikan needs the reply text' });
+  if (k.source === 'arsip') return;
+  if (!k.reviewedAt) ctx.addIssue({ code: 'custom', path: ['reviewedAt'], message: 'a hand-made claim needs reviewedAt' });
+  if (k.verdict !== 'belum-terverifikasi' && k.evidence.length === 0) ctx.addIssue({ code: 'custom', path: ['evidence'], message: 'a decided verdict needs at least one evidence item' });
 });
 
 export const arsipKind = z.enum(['somasi', 'aduan', 'ringkasan', 'analisis', 'catatan']);
@@ -139,7 +158,7 @@ export const arsipStatus = z.enum(['dikirim', 'diajukan', 'dijawab', 'diputus', 
 /** A post copied from the Infraloka blog's Professional Blacklist section. Procedural status only. */
 export const arsipSchema = z.object({
   title: z.string().min(1),
-  sourceUrl: z.string().url(),
+  sourceUrl: httpsUrl,
   archivedAt: z.coerce.date(),
   lang: z.enum(['id', 'en']),
   kind: arsipKind,
