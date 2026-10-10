@@ -11,3 +11,8 @@ docs/superpowers/specs/
 docs/superpowers/plans/
 .wrangler
 public/thumb/
+
+# Imported archive: a public repo shows every committed file, so it stays local until the owner publishes it.
+src/content/arsip/*.md
+src/content/pihak/*.json
+public/img/arsip-*

@@ -10,6 +10,8 @@ indicate changes.
 
 ## What this license does not cover
 
+- **The archive (`arsip`) and the parties (`pihak`).** Posts copied from the Infraloka blog and the pages about the parties they name are **all rights reserved by the author**, not CC BY 4.0. They describe disputes with named people; the license would invite anyone to re-publish those allegations.
+
 - **Third-party material.** Evidence screenshots (`public/img/`), quoted posts and articles, photographs, logos and any
   other material created by someone else remain under their owners' terms. They are included for criticism, research and
   reporting, with the source stated next to each item.

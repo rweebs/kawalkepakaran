@@ -1,0 +1,51 @@
+---
+import { render } from 'astro:content';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getArsip, getPihak, arsipPath, pihakPath, KIND_LABEL, STATUS_LABEL } from '../../../lib/arsip';
+import { descriptionFromMarkdown } from '../../../lib/seo';
+import { UI } from '../../../i18n/ui';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../i18n';
+
+export async function getStaticPaths() {
+  return (await getArsip()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+// Indonesian page. The English page (src/pages/en/archive/articles/[slug].astro) passes locale="en".
+const { entry, locale = 'id' } = Astro.props as { entry: any; locale?: Locale };
+const p = entry.data;
+const { Content } = await render(entry);
+const path = arsipPath(entry.id, locale);
+const description = descriptionFromMarkdown(entry.body ?? '') || p.title;
+const parties = (await getPihak()).filter((x) => x.data.articles.includes(entry.id));
+const T = {
+  id: { crumb: 'Arsip', marker: 'Arsip Infraloka: salinan tulisan dari blog Infraloka, disalin pada', original: 'Lihat tulisan aslinya',
+    trimmed: 'Dipangkas: kalimat yang menyebut diagnosis atau kesehatan mental penulis dibuang dari salinan ini. Teks lengkap ada di tulisan aslinya.',
+    kind: 'Jenis', status: 'Status', parties: 'Pihak yang disebut', langNote: 'Tulisan ini berbahasa Inggris.', interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara ini.',
+    reply: 'Setiap pihak yang disebut berhak menjawab lewat', replyLabel: 'hak jawab' },
+  en: { crumb: 'Archive', marker: 'Infraloka archive: a copy of a post from the Infraloka blog, copied on', original: 'See the original post',
+    trimmed: 'Trimmed: sentences mentioning the author\'s diagnosis or mental health were removed from this copy. The full text is in the original post.',
+    kind: 'Type', status: 'Status', parties: 'Parties named', langNote: 'This post is in Indonesian.', interest: 'The author of this site (Rahmat Wibowo) is a party to this matter.',
+    reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply' },
+}[locale];
+---
+<BaseLayout title={p.title} description={description} path={path} locale={locale} noindex
+  breadcrumbs={[{ name: T.crumb, path: localizedPath('archive', locale) }, { name: p.title, path }]}>
+  <article class="reading">
+    <h1>{p.title}</h1>
+    <p class="linimasa-note">
+      {T.marker} {formatDateLocale(p.archivedAt, locale)}. <a href={p.sourceUrl} rel="noopener nofollow" target="_blank">{T.original} →</a>
+    </p>
+    <p class="muted">{UI[locale].disclaimer}</p>
+    <p>
+      <strong>{T.kind}:</strong> {KIND_LABEL[p.kind as keyof typeof KIND_LABEL][locale]}
+      · <strong>{T.status}:</strong> {STATUS_LABEL[p.status as keyof typeof STATUS_LABEL][locale]}
+      {p.lang !== locale && <> · {T.langNote}</>}
+    </p>
+    {p.trimmed && <p class="notice">{T.trimmed}</p>}
+    {parties.length > 0 && (
+      <p><strong>{T.parties}:</strong> {parties.map((x, i) => <>{i > 0 && ', '}<a href={pihakPath(x.id, locale)}>{x.data.name}</a></>)}</p>
+    )}
+    <p class="muted">{T.interest}</p>
+    <div class="prose"><Content /></div>
+    <p class="notice">{T.reply} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>
+  </article>
+</BaseLayout>

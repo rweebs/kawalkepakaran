@@ -1,0 +1,10 @@
+---
+import Page from '../../pihak/[slug].astro';
+import { getPihak } from '../../../lib/arsip';
+
+export async function getStaticPaths() {
+  return (await getPihak()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+const { entry } = Astro.props;
+---
+<Page entry={entry} locale="en" />

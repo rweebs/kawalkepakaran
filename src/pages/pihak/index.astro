@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPihak, pihakPath, PIHAK_KIND_LABEL } from '../../lib/arsip';
+import { localizedPath, routePath, type Locale } from '../../i18n';
+import { UI } from '../../i18n/ui';
+
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('parties', locale);
+const items = (await getPihak()).sort((a, b) => a.data.name.localeCompare(b.data.name));
+const KINDS = ['Company', 'Group', 'Person'] as const;
+const T = {
+  id: { title: 'Pihak yang disebut', h1: 'Pihak yang disebut', crumb: 'Pihak', description: 'Pihak yang disebut dalam tulisan arsip: perusahaan, kelompok, dan orang, dengan status prosedural tiap perkara.',
+    lead: 'Pihak yang disebut dalam tulisan di Arsip Perkara. Halaman tiap pihak hanya memuat apa yang sudah ditulis, dengan status prosedural dan batasnya.',
+    note: 'Penulis situs ini adalah pihak dalam perkara-perkara ini. Setiap pihak berhak menjawab lewat', replyLabel: 'hak jawab', empty: 'Belum diterbitkan.', articles: 'tulisan', archive: 'Lihat Arsip Perkara' },
+  en: { title: 'Parties named', h1: 'Parties named', crumb: 'Parties', description: 'Parties named in the archived posts: companies, groups and people, with the procedural status of each matter.',
+    lead: 'The parties named in the posts of the Case archive. Each party\'s page only holds what has been written, with its procedural status and its limits.',
+    note: 'The author of this site is a party to these matters. Every party has the right to reply through the', replyLabel: 'right of reply', empty: 'Not published yet.', articles: 'posts', archive: 'See the Case archive' },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    <p class="lead">{T.lead}</p>
+    <p class="muted">{UI[locale].disclaimer}</p>
+    <p class="linimasa-note">{T.note} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>
+    <p><a href={routePath('archive', locale)}>{T.archive} →</a></p>
+    {items.length === 0 ? (
+      <p class="muted">{T.empty}</p>
+    ) : (
+      KINDS.map((k) => {
+        const list = items.filter((i) => i.data.kind === k);
+        return list.length > 0 && (
+          <section aria-labelledby={`k-${k}`}>
+            <h2 id={`k-${k}`}>{PIHAK_KIND_LABEL[k][locale]} ({list.length})</h2>
+            <ul class="stack">
+              {list.map((i) => <li><a href={pihakPath(i.id, locale)}>{i.data.name}</a> <span class="muted">· {i.data.articles.length} {T.articles}</span></li>)}
+            </ul>
+          </section>
+        );
+      })
+    )}
+  </article>
+</BaseLayout>

@@ -120,5 +120,35 @@ export const klaimSchema = z.object({
   draft: z.boolean().default(false),
 });
 
+export const arsipKind = z.enum(['somasi', 'aduan', 'ringkasan', 'analisis', 'catatan']);
+export const arsipStatus = z.enum(['dikirim', 'diajukan', 'dijawab', 'diputus', 'tidak-diketahui']);
+
+/** A post copied from the Infraloka blog's Professional Blacklist section. Procedural status only. */
+export const arsipSchema = z.object({
+  title: z.string().min(1),
+  sourceUrl: z.string().url(),
+  archivedAt: z.coerce.date(),
+  lang: z.enum(['id', 'en']),
+  kind: arsipKind,
+  status: arsipStatus.default('tidak-diketahui'),
+  date: z.coerce.date().optional(),
+  parties: z.array(z.string()).default([]),
+  trimmed: z.boolean().default(false),
+  draft: z.boolean().default(true),
+});
+
+/** A party a post is about. Shown only through the posts that name it, with the author's interest and the limits. */
+export const pihakSchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(['Company', 'Person', 'Group']),
+  articles: z.array(z.string()).min(1),
+  interest: z.string().min(1),
+  interestEn: z.string().min(1),
+  limits: z.string().min(1),
+  limitsEn: z.string().min(1),
+  updatedAt: z.coerce.date(),
+  draft: z.boolean().default(true),
+});
+
 export type Verdict = z.infer<typeof verdict>;
 export type CredentialStatus = z.infer<typeof credentialStatus>;

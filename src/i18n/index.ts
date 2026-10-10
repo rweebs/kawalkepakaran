@@ -26,6 +26,8 @@ export const ROUTES = {
   books: { id: '/buku', en: '/en/books' },
   about: { id: '/tentang', en: '/en/about' },
   manifesto: { id: '/manifesto', en: '/en/manifesto' },
+  archive: { id: '/arsip', en: '/en/archive' },
+  parties: { id: '/pihak', en: '/en/parties' },
   bowobharata: { id: '/kasus/abil-sudarman/bowobharata', en: '/en/cases/abil-sudarman/bowobharata' },
   reply: { id: '/hak-jawab', en: '/en/right-of-reply' },
   disclaimer: { id: '/disclaimer', en: '/en/disclaimer' },

@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getArsip, arsipPath, KIND_LABEL, STATUS_LABEL } from '../../lib/arsip';
+import { localizedPath, routePath, type Locale } from '../../i18n';
+import { UI } from '../../i18n/ui';
+
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('archive', locale);
+const items = (await getArsip()).sort((a, b) => a.data.title.localeCompare(b.data.title));
+const KINDS = ['somasi', 'aduan', 'ringkasan', 'analisis', 'catatan'] as const;
+const T = {
+  id: { title: 'Arsip Perkara', h1: 'Arsip Perkara', crumb: 'Arsip', description: 'Tulisan penulis tentang sengketa, somasi, dan aduan, disalin dari blog Infraloka, beserta pihak yang disebut.',
+    lead: 'Salinan tulisan dari blog Infraloka tentang sengketa profesional, apa adanya, dengan sumber aslinya. Pihak yang disebut ada di halaman Pihak.',
+    note: 'Penulis situs ini adalah pihak dalam perkara-perkara ini. Isinya pendapat dan catatan penulis, bukan putusan. Setiap pihak berhak menjawab lewat', replyLabel: 'hak jawab',
+    empty: 'Arsip belum diterbitkan.', parties: 'Lihat pihak yang disebut', lang: { id: 'Bahasa Indonesia', en: 'Bahasa Inggris' }, trimmed: 'dipangkas' },
+  en: { title: 'Case archive', h1: 'Case archive', crumb: 'Archive', description: 'The author\'s posts on disputes, legal notices and complaints, copied from the Infraloka blog, with the parties they name.',
+    lead: 'Copies of posts from the Infraloka blog about professional disputes, as published, with their original source. The parties named are on the Parties page.',
+    note: 'The author of this site is a party to these matters. What is published is the author\'s opinion and notes, not a ruling. Every party has the right to reply through the', replyLabel: 'right of reply',
+    empty: 'The archive has not been published yet.', parties: 'See the parties named', lang: { id: 'Indonesian', en: 'English' }, trimmed: 'trimmed' },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    <p class="lead">{T.lead}</p>
+    <p class="muted">{UI[locale].disclaimer}</p>
+    <p class="linimasa-note">{T.note} <a href={routePath('reply', locale)}>{T.replyLabel}</a>.</p>
+    <p><a href={routePath('parties', locale)}>{T.parties} →</a></p>
+    {items.length === 0 ? (
+      <p class="muted">{T.empty}</p>
+    ) : (
+      KINDS.map((k) => {
+        const list = items.filter((i) => i.data.kind === k);
+        return list.length > 0 && (
+          <section aria-labelledby={`k-${k}`}>
+            <h2 id={`k-${k}`}>{KIND_LABEL[k][locale]} ({list.length})</h2>
+            <ul class="stack">
+              {list.map((i) => (
+                <li>
+                  <a href={arsipPath(i.id, locale)}>{i.data.title}</a>
+                  <span class="muted"> · {T.lang[i.data.lang]} · {STATUS_LABEL[i.data.status][locale]}{i.data.trimmed ? ` · ${T.trimmed}` : ''}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })
+    )}
+  </article>
+</BaseLayout>
