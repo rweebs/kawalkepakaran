@@ -1,9 +1,13 @@
 // Archive importer. Reads the Infraloka blog's Professional Blacklist posts and decides what may be copied.
 // Run: node scripts/import-arsip.mjs --source /path/to/infraloka
 // Mode "report" (the default) writes tmp/arsip-hold-report.md and copies nothing.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Mode "--write" also copies what may be copied into src/content/arsip, src/content/pihak and public/img (all git-ignored):
+// posts held back are skipped, a lone diagnosis mention is trimmed, images are compressed to WebP (1600 px wide at most).
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, statusFor, titleFrom } from './arsip-lib.mjs';
+import {
+  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, pihakRecord, rewriteImages, statusFor, stripTitle, titleFrom, trimMentions,
+} from './arsip-lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
@@ -63,3 +67,53 @@ ${section('Pangkas', 'trim', false)}`;
 mkdirSync('tmp', { recursive: true });
 writeFileSync('tmp/arsip-hold-report.md', report);
 console.log(`report: tmp/arsip-hold-report.md | hold ${by('hold').length}, trim ${by('trim').length}, review ${by('review').length}, publish ${by('publish').length} | parties ${parties.size}`);
+
+if (args.includes('--write')) {
+  const sharp = (await import('sharp')).default;
+  const archivedAt = new Date().toISOString().slice(0, 10);
+  const eligible = rows.filter((r) => ['publish', 'review', 'trim'].includes(r.flags.action));
+
+  // Start from a clean slate so a re-run never leaves a post that has since been held back.
+  for (const [dir, ext] of [['src/content/arsip', '.md'], ['src/content/pihak', '.json']]) {
+    mkdirSync(dir, { recursive: true });
+    for (const f of readdirSync(dir)) if (f.endsWith(ext)) rmSync(join(dir, f));
+  }
+
+  const images = new Set();
+  const partyMap = new Map();
+  let trimmed = 0;
+  for (const r of eligible) {
+    let text = readFileSync(join(SOURCE, 'src/content/blog', `${r.slug}.md`), 'utf8');
+    const wasTrimmed = r.flags.action === 'trim';
+    if (wasTrimmed) { text = trimMentions(text).text; trimmed += 1; }
+    const rewritten = rewriteImages(stripTitle(text));
+    for (const img of rewritten.images) images.add(img);
+    const fm = frontmatter({ title: r.title, slug: r.slug, lang: r.lang, kind: r.kind, status: r.status, parties: r.parties.map((p) => p.slug), trimmed: wasTrimmed, archivedAt });
+    writeFileSync(join('src/content/arsip', `${r.slug}.md`), `${fm}${rewritten.md}`);
+    for (const p of r.parties) {
+      const entry = partyMap.get(p.slug) ?? { name: p.name, kind: p.kind, articles: [] };
+      entry.articles.push(r.slug);
+      partyMap.set(p.slug, entry);
+    }
+  }
+  for (const [slug, p] of partyMap) writeFileSync(join('src/content/pihak', `${slug}.json`), `${JSON.stringify(pihakRecord({ ...p, updatedAt: archivedAt }), null, 2)}\n`);
+
+  mkdirSync('public/img', { recursive: true });
+  const missingImages = [];
+  const failed = [];
+  let written = 0;
+  let bytes = 0;
+  for (const img of images) {
+    const out = join('public/img', `arsip-${img.replace(/\.[^.]+$/, '').toLowerCase()}.webp`);
+    const src = join(SOURCE, 'public/blog', img);
+    if (!existsSync(src)) { missingImages.push(img); continue; }
+    if (existsSync(out)) continue;
+    try {
+      const info = await sharp(src).resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 74 }).toFile(out);
+      written += 1;
+      bytes += info.size;
+    } catch (e) { failed.push(`${img}: ${e.message}`); }
+  }
+  console.log(`written: ${eligible.length} posts (${trimmed} trimmed), ${partyMap.size} parties, ${written} new images (${(bytes / 1048576).toFixed(1)} MB), ${images.size} referenced`);
+  console.log(`missing at source: ${missingImages.length}${missingImages.length ? ` (${missingImages.slice(0, 4).join(', ')}...)` : ''}; failed: ${failed.length}${failed.length ? ` ${failed.slice(0, 2).join(' | ')}` : ''}`);
+}

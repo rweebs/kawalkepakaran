@@ -129,3 +129,36 @@ export function trimMentions(text) {
   if (!removed) return { text, removed: 0 };
   return { text: lines.join('\n').replace(/\n{3,}/g, '\n\n'), removed };
 }
+
+/** Frontmatter of an archived post. Values are JSON, which is valid YAML, so quotes and colons in a title are safe. */
+export function frontmatter({ title, slug, lang, kind, status, parties, trimmed, archivedAt }) {
+  return [
+    '---',
+    `title: ${JSON.stringify(title)}`,
+    `sourceUrl: ${JSON.stringify(`https://www.infraloka.co.id/blog/${slug}`)}`,
+    `archivedAt: ${archivedAt}`,
+    `lang: ${JSON.stringify(lang)}`,
+    `kind: ${JSON.stringify(kind)}`,
+    `status: ${JSON.stringify(status)}`,
+    `parties: ${JSON.stringify(parties)}`,
+    `trimmed: ${trimmed ? 'true' : 'false'}`,
+    'draft: true',
+    '---',
+    '',
+  ].join('\n');
+}
+
+/** The page data of a party. It always states the author's interest and the limits, and starts as a draft. */
+export function pihakRecord({ name, kind, articles, updatedAt = '2026-10-10' }) {
+  return {
+    name,
+    kind,
+    articles,
+    interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara yang diuraikan dalam tulisan-tulisan ini.',
+    interestEn: 'The author of this site (Rahmat Wibowo) is a party to the matters described in these posts.',
+    limits: 'Halaman ini hanya merangkum tulisan penulis. Ia tidak membuktikan hal yang disebut dalam tulisan itu, status berasal dari sumber dan bukan dari putusan, dan belum adanya jawaban dari pihak ini bukan pengakuan atas apa pun.',
+    limitsEn: 'This page only summarises the author\'s posts. It does not prove what those posts say, the status comes from the source and not from a ruling, and the absence of a reply from this party is not an admission of anything.',
+    updatedAt,
+    draft: true,
+  };
+}

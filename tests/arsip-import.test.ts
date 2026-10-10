@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { arsipSchema, pihakSchema } from '../src/lib/schemas';
 import {
-  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, statusFor, slugify,
+  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, statusFor, slugify, frontmatter, pihakRecord,
 } from '../scripts/arsip-lib.mjs';
 
 const SLUGS_SRC = `export const professionalBlacklistSlugs = new Set<string>([
@@ -137,5 +138,42 @@ describe('trimMentions', () => {
   it('leaves a text with no mention exactly as it was', () => {
     expect(trimMentions('Nothing here.\n').text).toBe('Nothing here.\n');
     expect(trimMentions('Nothing here.\n').removed).toBe(0);
+  });
+});
+
+describe('generated records', () => {
+  // The frontmatter values are JSON, so a small reader is enough to check what Astro will see.
+  const read = (fm: string) => {
+    const body = fm.match(/^---\n([\s\S]*?)\n---\n/)![1];
+    const o: Record<string, unknown> = {};
+    for (const line of body.split('\n')) {
+      const i = line.indexOf(': ');
+      const raw = line.slice(i + 2);
+      o[line.slice(0, i)] = /^["[]|^(true|false)$/.test(raw) ? JSON.parse(raw) : raw;
+    }
+    return o;
+  };
+  const fm = frontmatter({
+    title: 'Legal Notice No. 046: "Ibrahim" & Co', slug: 'somasi-046-x', lang: 'en', kind: 'somasi', status: 'dikirim',
+    parties: ['govtech-edu', 'ibrahim-arief'], trimmed: true, archivedAt: '2026-10-10',
+  });
+  it('writes frontmatter that the archive schema accepts, with a draft flag and the original address', () => {
+    const o = read(fm);
+    expect(arsipSchema.safeParse(o).success).toBe(true);
+    expect(o.draft).toBe(true);
+    expect(o.sourceUrl).toBe('https://www.infraloka.co.id/blog/somasi-046-x');
+    expect(o.trimmed).toBe(true);
+    expect(o.parties).toEqual(['govtech-edu', 'ibrahim-arief']);
+  });
+  it('keeps quotes, colons and ampersands in a title intact', () => {
+    expect(read(fm).title).toBe('Legal Notice No. 046: "Ibrahim" & Co');
+  });
+  it('makes a pihak record that the schema accepts, states the interest and limits, and starts as a draft', () => {
+    const r = pihakRecord({ name: 'GovTech Edu', kind: 'Company', articles: ['somasi-046-x'] });
+    expect(pihakSchema.safeParse(r).success).toBe(true);
+    expect(r.interest).toMatch(/Rahmat Wibowo/);
+    expect(r.interestEn).toMatch(/Rahmat Wibowo/);
+    expect(r.limits).toMatch(/bukan pengakuan/);
+    expect(r.draft).toBe(true);
   });
 });
