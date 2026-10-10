@@ -1,0 +1,28 @@
+---
+import { getKlaim, isGenerated } from '../lib/pakar';
+import { getBukti } from '../lib/content';
+import { verdictLabel } from '../lib/verdict';
+import type { Verdict } from '../lib/schemas';
+import type { Locale } from '../i18n';
+
+// Key numbers for the hand-made claims, counted at build time from the content itself, so the figures cannot drift from the
+// pages they summarise. Pass a pakar id to count one case only.
+interface Props { locale: Locale; pakar?: string }
+const { locale, pakar } = Astro.props;
+const claims = (await getKlaim()).filter((k) => !isGenerated(k) && (!pakar || k.data.pakar === pakar));
+const evidence = new Set(claims.flatMap((k) => k.data.evidence));
+const allBukti = (await getBukti()).length;
+const VERDICTS: Verdict[] = ['dikonfirmasi', 'sebagian', 'tidak-terbukti', 'belum-terverifikasi'];
+const byVerdict = VERDICTS.map((v) => [v, claims.filter((k) => k.data.verdict === v).length] as const).filter(([, n]) => n > 0);
+const replies = claims.filter((k) => k.data.replyStatus !== 'belum-ada').length;
+const T = {
+  id: { label: 'Angka kunci', claims: 'Klaim diperiksa', evidence: 'Bukti', replies: 'Tanggapan diterima' },
+  en: { label: 'Key numbers', claims: 'Claims checked', evidence: 'Evidence items', replies: 'Replies received' },
+}[locale];
+---
+<dl class="stats" aria-label={T.label}>
+  <div><dt>{T.claims}</dt><dd>{claims.length}</dd></div>
+  {byVerdict.map(([v, n]) => <div><dt><span class="verdict" data-verdict={v}>{verdictLabel(v, locale)}</span></dt><dd>{n}</dd></div>)}
+  <div><dt>{T.evidence}</dt><dd>{pakar ? evidence.size : allBukti}</dd></div>
+  <div><dt>{T.replies}</dt><dd>{replies}</dd></div>
+</dl>

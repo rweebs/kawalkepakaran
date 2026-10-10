@@ -9,6 +9,7 @@ if (menu) {
     for (const g of groups()) g.open = narrow.matches;
   };
   sync();
+  menu.dataset.ready = '';
   narrow.addEventListener('change', sync);
 
   // On wide screens only one dropdown is open at a time (not enforced natively, so it never collides with the flat mobile list).

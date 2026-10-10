@@ -1,22 +1,35 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getBukti } from '../../../lib/content';
-import { groupBukti, sourceLine, sourceLineFor, buktiText, BUKTI_GROUP_LABEL_EN, thumbFor } from '../../../lib/bukti';
+import sharp from 'sharp';
+import VerdictBadge from '../../../components/VerdictBadge.astro';
+import { groupBukti, sourceLineFor, buktiText, BUKTI_GROUP_LABEL_EN, thumbFor, thumbSrcset, CARD_THUMB_SIZES } from '../../../lib/bukti';
+import { getKlaim, isGenerated } from '../../../lib/pakar';
 import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
-import { localizedPath, type Locale } from '../../../i18n';
+import { localizedPath, routePath, type Locale } from '../../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const groups = groupBukti(await getBukti());
+// Which checked claims cite each item, so a reader can go from a screenshot to the verdict it feeds.
+const claims = (await getKlaim()).filter((k) => !isGenerated(k));
+const usedIn = (id: string) => claims.filter((k) => k.data.evidence.includes(id));
+// Real thumbnail size (640px wide, never enlarged) so the grid does not shift as images load.
+const thumbSize = async (src: string) => {
+  const m = await sharp(`public${src}`).metadata();
+  const w = Math.min(640, m.width ?? 640);
+  return { width: w, height: Math.round(w * (m.height ?? 360) / (m.width ?? 640)) };
+};
+const sizes = new Map(await Promise.all(groups.flatMap((g) => g.items).map(async (e) => [e.id, await thumbSize(e.data.images[0].src)] as const)));
 const DISCLAIMER = UI[locale].disclaimer;
 const T = {
-  id: { title: 'Bukti klaim Abil Sudarman', h1: 'Bukti klaim Abil Sudarman', crumb: 'Bukti', intro: 'Gambar di bawah menunjukkan klaim sebagaimana dipublikasikan dan catatan yang dapat diperiksa. Gambar bukan putusan. Nomor identitas ditutup.', empty: 'Belum ada bukti yang dipublikasikan.', shows: 'Menunjukkan:', link: 'Tautan sumber', image: 'Gambar', description: 'Tangkapan layar yang relevan dengan klaim Abil Sudarman, masing-masing dengan keterangan apa yang terlihat.' },
-  en: { title: 'Evidence and screenshots on Abil Sudarman', h1: 'Evidence', crumb: 'Evidence', intro: 'The images below show claims as published and records that can be checked. Images are not rulings. Identity numbers are masked.', empty: 'No evidence has been published yet.', shows: 'Shows:', link: 'Source link', image: 'Image', description: "Screenshots relevant to Abil Sudarman's claims, each with a note on what is visible and what it does not prove." },
+  id: { title: 'Bukti klaim Abil Sudarman', h1: 'Bukti klaim Abil Sudarman', crumb: 'Bukti', intro: 'Gambar di bawah menunjukkan klaim sebagaimana dipublikasikan dan catatan yang dapat diperiksa. Gambar bukan putusan. Nomor identitas ditutup.', empty: 'Belum ada bukti yang dipublikasikan.', shows: 'Menunjukkan:', limits: 'Yang tidak dibuktikan:', edited: 'Disunting:', usedIn: 'Dipakai di:', anchor: 'Tautan ke bukti ini', caseCrumb: 'Kasus 001', link: 'Tautan sumber', image: 'Gambar', description: 'Tangkapan layar yang relevan dengan klaim Abil Sudarman, masing-masing dengan keterangan apa yang terlihat.' },
+  en: { title: 'Evidence and screenshots on Abil Sudarman', h1: 'Evidence', crumb: 'Evidence', intro: 'The images below show claims as published and records that can be checked. Images are not rulings. Identity numbers are masked.', empty: 'No evidence has been published yet.', shows: 'Shows:', limits: 'Does not prove:', edited: 'Edited:', usedIn: 'Used in:', anchor: 'Link to this item', caseCrumb: 'Case 001', link: 'Source link', image: 'Image', description: "Screenshots relevant to Abil Sudarman's claims, each with a note on what is visible and what it does not prove." },
 }[locale];
 const path = localizedPath('evidence', locale);
 const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
 const DESCRIPTION = T.description;
 ---
-<BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.caseCrumb, path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
   <section class="container pad-block">
     <h1>{T.h1}</h1>
     <p class="muted">{DISCLAIMER}</p>
@@ -26,22 +39,28 @@ const DESCRIPTION = T.description;
       : groups.map((g) => (
         <section class="bukti-group" aria-labelledby={`grup-${g.id}`}>
           <h2 id={`grup-${g.id}`}>{locale === 'en' ? BUKTI_GROUP_LABEL_EN[g.id] : g.label}</h2>
-          <div class="grid bukti-grid">
+          <div class="grid bukti-grid" data-reveal>
             {g.items.map((e) => {
               const x = buktiText(e.data, locale);
               return (
-              <article class="card bukti-item">
+              <article class="card bukti-item" id={e.id} data-reveal-item>
                 <a class="bukti-thumb" href={e.data.images[0].src} target="_blank" rel="noopener noreferrer">
-                  <img src={thumbFor(e.data.images[0].src)} alt={x.alt(0)} width="640" loading="lazy" decoding="async" />
+                  <img src={thumbFor(e.data.images[0].src)} srcset={thumbSrcset(e.data.images[0].src)} sizes={CARD_THUMB_SIZES} alt={x.alt(0)} width={sizes.get(e.id)!.width} height={sizes.get(e.id)!.height} loading="lazy" decoding="async" />
                 </a>
-                <h3>{x.title}</h3>
+                <h3>{x.title}<a class="anchor" href={`#${e.id}`} aria-label={T.anchor}>#</a></h3>
                 <p><strong>{T.shows}</strong> {x.shows}</p>
+                <p class="muted"><strong>{T.limits}</strong> {x.limits}</p>
+                {(locale === 'en' ? e.data.en?.edited ?? e.data.edited : e.data.edited) && <p class="muted"><strong>{T.edited}</strong> {locale === 'en' ? e.data.en?.edited ?? e.data.edited : e.data.edited}</p>}
+                {usedIn(e.id).length > 0 && (
+                  <p class="muted"><strong>{T.usedIn}</strong> {usedIn(e.id).map((k, i) => <>{i > 0 && '; '}<a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a> <VerdictBadge verdict={k.data.verdict} locale={locale} /></>)}</p>
+                )}
                 <p class="bukti-source">{sourceLineFor({ ...e.data, source: x.source }, locale)}{e.data.sourceUrl && <> <a href={e.data.sourceUrl} rel="noopener noreferrer nofollow">{T.link}</a></>}</p>
                 {e.data.images.length > 1 && (
                   <p class="bukti-more">{e.data.images.slice(1).map((im, i) => (
                     <a href={im.src} target="_blank" rel="noopener noreferrer" aria-label={x.alt(i + 1)}>{T.image} {i + 2}</a>
                   ))}</p>
                 )}
+                <p class="muted bukti-url">{T.caseCrumb} · {SITE.url.replace(/^https:\/\//, '')}{path}#{e.id}</p>
               </article>
             );})}
           </div>

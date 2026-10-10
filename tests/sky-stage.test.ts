@@ -28,6 +28,16 @@ describe('home sky without a framework runtime', () => {
     expect(js).toMatch(/IDLE_FALLBACK_MS = 8000/);
     expect(js).toContain("root.dataset.mode = 'webgl'");
   });
+  it('keeps the static SVG sky on phones, slow or save-data connections and low-memory devices', () => {
+    const js = read('src/scripts/sky-stage.ts');
+    expect(js).toContain('saveData');
+    expect(js).toMatch(/\['slow-2g', '2g', '3g'\]\.includes/);
+    expect(js).toMatch(/memory < 4/);
+    expect(js).toContain("matchMedia('(max-width: 720px)')");
+    const gate = js.indexOf('if (forceFallback || liteDevice)');
+    expect(gate).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(js.indexOf("import('../lib/sky/AbabilScene')"));
+  });
   it('hides the SVG sky once WebGL is running', () => {
     expect(read('src/styles/global.css')).toContain(".sky-stage[data-mode='webgl'] .sky-stage__svg { display: none; }");
   });
@@ -43,9 +53,12 @@ describe('home image delivery', () => {
     expect(home).toMatch(/aria-label="\$\{T\.emblemAlt\}"/);
     expect(home).toMatch(/width="320" height="320"/);
   });
+  it('revalidates social cards daily, since their filenames are not hashed', () => {
+    expect(read('public/_headers')).toMatch(/\/og\/\*\n\s+Cache-Control: public, max-age=86400/);
+  });
   it('gives static assets a long cache lifetime', () => {
     const headers = read('public/_headers');
-    for (const p of ['/thumb/*', '/og/*', '/logo-kawal.svg', '/favicon.svg', '/apple-touch-icon.png']) {
+    for (const p of ['/thumb/*', '/logo-kawal.svg', '/favicon.svg', '/apple-touch-icon.png']) {
       expect(headers, p).toMatch(new RegExp(`${p.replace(/[*.]/g, '\\$&')}\\n\\s+Cache-Control: public, max-age=2592000`));
     }
   });

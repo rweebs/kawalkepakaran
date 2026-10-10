@@ -25,7 +25,7 @@ const T = {
     archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts' },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex={generated.length > 0} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <ListFilter locale={locale} />
@@ -47,17 +47,7 @@ const T = {
       <section aria-labelledby="arsip-h">
         <h2 id="arsip-h">{T.archiveH} ({generated.length})</h2>
         <p class="muted">{T.archiveLead}</p>
-        {KINDS.map((k) => {
-          const list = generated.filter((p) => p.data.kind === k);
-          return list.length > 0 && (
-            <>
-              <h3>{PAKAR_KIND_LABEL[k][locale]} ({list.length})</h3>
-              <ul class="stack">
-                {list.map((p) => <li><a href={localizedPath('experts', locale, p.id)}>{p.data.name}</a> <span class="muted">· {count(p.id)} {T.claims === 'klaim diperiksa' ? 'dokumen' : 'documents'}</span></li>)}
-              </ul>
-            </>
-          );
-        })}
+        <p><a href={routePath('expertsArchive', locale)}>{T.archiveH} →</a></p>
       </section>
     )}
     <p><a href={routePath('method', locale)}>{T.method} →</a></p>

@@ -4,12 +4,17 @@ import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import ClassificationBadge from '../../../../components/ClassificationBadge.astro';
 import TranslationNotice from '../../../../components/TranslationNotice.astro';
 import PostHeader from '../../../../components/PostHeader.astro';
+import VerdictBadge from '../../../../components/VerdictBadge.astro';
+import ShareBar from '../../../../components/ShareBar.astro';
+import { articleOg } from '../../../../lib/og';
+import { isGenerated, klaimForPakar } from '../../../../lib/pakar';
+import { replyStatusLabel, verdictLabel } from '../../../../lib/verdict';
 import { firstImage } from '../../../../lib/header-image';
 import { getPosts, getPostsEn } from '../../../../lib/content';
 import { SITE, CLASSIFICATION_LABEL } from '../../../../lib/site';
 import { descriptionFromMarkdown } from '../../../../lib/seo';
 import { UI } from '../../../../i18n/ui';
-import { localizedPath, type Locale } from '../../../../i18n';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../../i18n';
 
 export async function getStaticPaths() {
   return (await getPosts()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
@@ -29,6 +34,20 @@ const description = descriptionFromMarkdown(entry.body ?? '')
 const path = localizedPath('articles', locale, entry.id);
 const url = new URL(path, SITE.url).toString();
 const date = (en ? p.publishedDate : p.translationDate).toISOString().slice(0, 10);
+// The preview is a text card with the title and the not-a-ruling line, never the in-page header image: several headers are
+// posters whose wording goes further than the claim checks, and a preview travels without the page around it.
+const og = articleOg(entry.id, locale, title);
+const modified = (p.updatedDate ?? (en ? p.publishedDate : p.translationDate)).toISOString().slice(0, 10);
+const aboutAbil = (p.subjects ?? []).includes('Abil Sudarman');
+const related = aboutAbil ? (await klaimForPakar('abil-sudarman')).filter((k) => !isGenerated(k)) : [];
+const authorIsParty = (p.subjects ?? []).includes('Rahmat Wibowo') || aboutAbil;
+const L = {
+  id: { interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara ini.', claims: 'Hasil cek klaim terkait', reply: 'Setiap pihak yang disebut berhak menjawab lewat', replyLabel: 'hak jawab',
+    published: 'Terbit', updated: 'Diperbarui', next: 'Lanjut', caseHub: 'Kasus 001: ringkasan dan semua klaim', evidence: 'Bukti', claimsAll: 'Cek klaim', share: 'Kawal Kepakaran' },
+  en: { interest: 'The author of this site (Rahmat Wibowo) is a party to this matter.', claims: 'Related claim checks', reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply',
+    published: 'Published', updated: 'Updated', next: 'Continue', caseHub: 'Case 001: overview and all claims', evidence: 'Evidence', claimsAll: 'Claim checks', share: 'Kawal Kepakaran' },
+}[locale];
+const fmt = (iso: string) => formatDateLocale(new Date(iso), locale);
 const jsonLd = {
   '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: title.slice(0, 110),
   description,
@@ -37,21 +56,41 @@ const jsonLd = {
   author: { '@type': 'Person', name: p.author },
   publisher: { '@type': 'Organization', name: SITE.name, url: SITE.url, logo: { '@type': 'ImageObject', url: new URL('/apple-touch-icon.png', SITE.url).toString() } },
   isAccessibleForFree: true,
-  image: [new URL(header?.src ?? '/og/kawal-og.png', SITE.url).toString()],
+  image: [new URL(og.src, SITE.url).toString()],
   url,
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   ...(!en && p.originalUrl ? { translationOfWork: { '@type': 'CreativeWork', name: p.originalTitle, url: p.originalUrl } } : {}),
   ...(en ? { workTranslation: { '@type': 'Article', inLanguage: 'id', url: new URL(localizedPath('articles', 'id', entry.id), SITE.url).toString() } } : {}),
 };
 const crumbName = en ? 'Articles' : 'Artikel';
+const caseCrumb = { name: en ? 'Case 001' : 'Kasus 001', path: routePath('caseHome', locale) };
 const alternates = { id: localizedPath('articles', 'id', entry.id), en: localizedPath('articles', 'en', entry.id) };
 ---
-<BaseLayout title={title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} image={header ?? undefined} ogType="article" author={p.author} breadcrumbs={[{ name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
+<BaseLayout title={title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} image={og} ogType="article" publishedTime={date} modifiedTime={modified} section={crumbName} author={p.author} breadcrumbs={[caseCrumb, { name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
   <article class="reading has-header">
     <PostHeader title={title} slug={entry.id} image={header} />
     <ClassificationBadge value={p.classification} locale={locale} />
     <h1>{title}</h1>
+    <p class="muted">{L.published} <time datetime={date}>{fmt(date)}</time>{modified !== date && <> · {L.updated} <time datetime={modified}>{fmt(modified)}</time></>}</p>
+    {/* Fairness context sits above the body, so it is in view before the argument starts. */}
+    <aside class="notice stack" aria-label={L.claims}>
+      {authorIsParty && <p>{L.interest}</p>}
+      {related.length > 0 && (
+        <p><strong>{L.claims}:</strong> {related.map((k, i) => <>{i > 0 && '; '}<a href={localizedPath('claims', locale, k.id)}>{en ? k.data.claimEn : k.data.claim}</a> <VerdictBadge verdict={k.data.verdict} locale={locale} /></>)} <span class="muted">· {replyStatusLabel(related[0].data.replyStatus, locale)}</span></p>
+      )}
+      <p>{L.reply} <a href={routePath('reply', locale)}>{L.replyLabel}</a>.</p>
+    </aside>
     <TranslationNotice originalTitle={originalTitle} originalUrl={p.originalUrl} author={p.author} locale={locale} slug={entry.id} original={en ? p.original : true} />
     <div class="prose"><Content /></div>
+    <ShareBar url={url} text={`${title} · ${L.share}`} locale={locale} />
+    <p class="notice">{L.reply} <a href={routePath('reply', locale)}>{L.replyLabel}</a>.</p>
+    <nav aria-label={L.next}>
+      <h2>{L.next}</h2>
+      <ul>
+        <li><a href={routePath('caseHome', locale)}>{L.caseHub}</a></li>
+        <li><a href={routePath('claims', locale)}>{L.claimsAll}</a></li>
+        <li><a href={routePath('evidence', locale)}>{L.evidence}</a></li>
+      </ul>
+    </nav>
   </article>
 </BaseLayout>

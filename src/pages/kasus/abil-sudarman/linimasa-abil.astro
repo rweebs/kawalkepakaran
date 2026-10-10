@@ -55,7 +55,7 @@ const entries = ABIL_ENTRIES.map((e) => {
 const dated = entries.filter((e) => !e.undated);
 const undated = entries.filter((e) => e.undated);
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <p class="lead">{T.lead}</p>

@@ -15,6 +15,8 @@ export const ROUTES = {
   home: { id: '/', en: '/en' },
   experts: { id: '/pakar', en: '/en/experts' },
   claims: { id: '/klaim', en: '/en/claims' },
+  claimsArchive: { id: '/klaim/arsip', en: '/en/claims/archive' },
+  expertsArchive: { id: '/pakar/arsip', en: '/en/experts/archive' },
   method: { id: '/metode', en: '/en/method' },
   caseHome: { id: '/kasus/abil-sudarman', en: '/en/cases/abil-sudarman' },
   articles: { id: '/kasus/abil-sudarman/artikel', en: '/en/cases/abil-sudarman/articles' },
@@ -29,6 +31,7 @@ export const ROUTES = {
   archive: { id: '/arsip', en: '/en/archive' },
   bowobharata: { id: '/kasus/abil-sudarman/bowobharata', en: '/en/cases/abil-sudarman/bowobharata' },
   reply: { id: '/hak-jawab', en: '/en/right-of-reply' },
+  updates: { id: '/pembaruan', en: '/en/updates' },
   disclaimer: { id: '/disclaimer', en: '/en/disclaimer' },
   policy: { id: '/kebijakan', en: '/en/policy' },
 } as const;

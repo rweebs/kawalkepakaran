@@ -15,6 +15,15 @@ describe('home', () => {
     for (const id of HOME_SECTIONS) expect(home, id).toContain(`id="${id}"`);
     expect(home).toContain('id="kontribusi"');
   });
+  it('places the sections in the order the sky animation walks through, with the right of reply last', () => {
+    const order = [...home.matchAll(/<section id="([^"]+)"/g)].map((m) => m[1]);
+    expect(order).toEqual([...HOME_SECTIONS]);
+    expect(order.at(-1)).toBe('jawaban');
+  });
+  it('leads with the case before the method, and staggers sections in on scroll', () => {
+    expect(home.indexOf("routePath('caseHome'")).toBeLessThan(home.indexOf('T.howH'));
+    expect(home).toContain('data-reveal');
+  });
   it('links the contribution guide on the default branch', () => {
     expect(home).toContain('blob/main/CONTRIBUTING.md');
     expect(home).not.toContain('blob/master');

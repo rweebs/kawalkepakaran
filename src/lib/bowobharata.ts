@@ -2,6 +2,11 @@
 // only groups existing linimasa events (which carry their own sources) under an episode of the epic. The comparison is the
 // author's opinion, and the posters are AI-generated illustrations.
 import { EVENTS, getEvent, type TimelineEvent } from './linimasa';
+// Labelled copies with a burned-in "allegory and opinion, not a statement of fact" footer, made from the originals in
+// src/assets/bowobharata/ by scripts/make-bowobharata-posters.mjs (part of the build). Serve these, never the originals.
+import wideLabelled from '../assets/bowobharata/labelled/poster-wide.jpg';
+import krishnaLabelled from '../assets/bowobharata/labelled/krishna.jpg';
+import sengkuniLabelled from '../assets/bowobharata/labelled/sengkuni.jpg';
 
 export interface Parva {
   id: string;
@@ -26,9 +31,18 @@ export const FRAMING: string[] = [
 ];
 
 export const POSTERS = {
-  wide: { alt: 'Poster Bowobharata: Rahmat Wibowo sebagai Basudewa Krishna di kiri dan Abil Sudarman sebagai Sengkuni di kanan, ilustrasi AI bertema Mahabharata.' },
-  krishna: { alt: 'Ilustrasi AI Rahmat Wibowo sebagai Basudewa Krishna dengan seruling, bendera biru, dan kereta berkuda putih.' },
-  sengkuni: { alt: 'Ilustrasi AI Abil Sudarman sebagai Sengkuni dengan dadu, topeng, dan papan permainan.' },
+  wide: {
+    src: wideLabelled,
+    alt: 'Poster alegori Bowobharata (ilustrasi AI, pendapat penulis, bukan pernyataan fakta): Rahmat Wibowo sebagai Basudewa Krishna di kiri dan Abil Sudarman sebagai Sengkuni di kanan. Label di poster adalah bagian dari kiasan; status klaimnya belum bisa diverifikasi.',
+  },
+  krishna: {
+    src: krishnaLabelled,
+    alt: 'Ilustrasi AI alegoris, pendapat penulis: Rahmat Wibowo sebagai Basudewa Krishna dengan seruling, bendera biru, dan kereta berkuda putih. Bukan pernyataan fakta.',
+  },
+  sengkuni: {
+    src: sengkuniLabelled,
+    alt: 'Ilustrasi AI alegoris, pendapat penulis: Abil Sudarman sebagai Sengkuni dengan dadu, topeng, dan papan permainan. Bukan pernyataan fakta; status klaim belum bisa diverifikasi.',
+  },
 };
 
 export const PARVAS: Parva[] = [

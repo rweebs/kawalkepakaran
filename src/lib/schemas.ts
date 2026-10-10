@@ -51,6 +51,8 @@ export const buktiSchema = z.object({
   source: z.string().min(1).optional(),
   sourceUrl: httpsUrl.optional(),
   capturedAt: z.coerce.date().optional(),
+  /** What was cropped or masked in the published image, shown on the card so the edit is disclosed. */
+  edited: z.string().min(1).optional(),
   order: z.number().int(),
   en: z.object({
     title: z.string().min(1),
@@ -58,6 +60,7 @@ export const buktiSchema = z.object({
     shows: z.string().min(1),
     limits: z.string().min(1),
     source: z.string().min(1).optional(),
+    edited: z.string().min(1).optional(),
   }).optional(),
 });
 
@@ -93,7 +96,7 @@ export const videoSchema = z.object({
 });
 
 export const verdict = z.enum(['dikonfirmasi', 'sebagian', 'tidak-terbukti', 'belum-terverifikasi']);
-export const credentialStatus = z.enum(['terverifikasi', 'tidak-ditemukan', 'bertentangan', 'belum-diperiksa']);
+export const credentialStatus = z.enum(['terverifikasi', 'tidak-ditemukan', 'bertentangan', 'belum-terverifikasi', 'belum-diperiksa']);
 
 export const pakarSchema = z.object({
   name: z.string().min(1),
@@ -106,6 +109,8 @@ export const pakarSchema = z.object({
     status: credentialStatus,
     source: httpsUrl.optional(),
     checkedAt: z.coerce.date(),
+    /** The claim check that covers this credential, linked from the expert page. */
+    klaim: z.string().min(1).optional(),
   })).default([]),
   /** Set only on profiles generated from the archive (a party named in its posts). Hand-made profiles leave these out. */
   kind: z.enum(['Company', 'Person', 'Group']).optional(),
@@ -124,16 +129,23 @@ const klaimBase = z.object({
   /** Unknown for some claims; left out rather than guessed. */
   madeAt: z.coerce.date().optional(),
   venue: z.string().min(1),
+  /** Where the claim can be seen (an https page or an archived copy); becomes ClaimReview itemReviewed.appearance. */
+  venueUrl: httpsUrl.optional(),
   verdict,
   confidence: z.enum(['rendah', 'sedang', 'tinggi']),
   evidence: z.array(z.string()).default([]),
   limits: z.string().min(1),
   limitsEn: z.string().min(1),
+  /** One neutral sentence on what the check found. Left out, the page derives one from the verdict, evidence and reply status. */
+  finding: z.string().min(1).max(220).optional(),
+  findingEn: z.string().min(1).max(220).optional(),
   replyStatus: z.enum(['belum-ada', 'diterima', 'dipublikasikan']),
   /** When the claim was requested for a reply; starts the 14-day clock. */
   replyRequestedAt: z.coerce.date().optional(),
   /** The reply as received, shown unedited. Required once replyStatus is dipublikasikan. */
   reply: z.object({ receivedAt: z.coerce.date(), text: z.string().min(1), textEn: z.string().min(1).optional() }).optional(),
+  /** Date the check was first published; ClaimReview datePublished. Falls back to reviewedAt. */
+  publishedAt: z.coerce.date().optional(),
   /** Date this check was last reviewed; shown on the page and used as the ClaimReview date. */
   reviewedAt: z.coerce.date().optional(),
   /** Health claims carry an extra not-medical-advice notice. */

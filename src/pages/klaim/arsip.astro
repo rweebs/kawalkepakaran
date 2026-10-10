@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
+import { localizedPath, routePath, type Locale } from '../../i18n';
+// Entries generated from the author's archive documents. They are documents, not checked claims, so they carry no verdict
+// badge and stay out of search; keeping them here lets the main claims page be indexed.
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = routePath('claimsArchive', locale);
+const generated = (await getKlaim()).filter(isGenerated);
+const pakar = await getPakar();
+const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
+const T = {
+  id: { title: 'Dokumen arsip', h1: 'Dari dokumen arsip', crumb: 'Cek klaim', here: 'Dokumen arsip',
+    description: 'Entri yang dibuat otomatis dari dokumen penulis. Entri ini hanya mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.',
+    lead: 'Dibuat otomatis, satu per dokumen penulis. Entri ini hanya mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.', back: 'Kembali ke cek klaim' },
+  en: { title: 'Archive documents', h1: 'From archive documents', crumb: 'Claim checks', here: 'Archive documents',
+    description: 'Entries generated automatically from the author\'s documents. They only record that the document exists, not that its content has been checked or proven.',
+    lead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.', back: 'Back to claim checks' },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex
+  alternates={{ id: routePath('claimsArchive', 'id'), en: routePath('claimsArchive', 'en') }}
+  breadcrumbs={[{ name: T.crumb, path: routePath('claims', locale) }, { name: T.here, path }]}>
+  <article class="reading">
+    <h1>{T.h1} ({generated.length})</h1>
+    <p class="lead muted">{T.lead}</p>
+    <ListFilter locale={locale} />
+    <ul class="stack">
+      {generated.map((k) => (
+        <li><a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a> <span class="muted">· {nameOf(k.data.pakar)}</span></li>
+      ))}
+    </ul>
+    <p><a href={routePath('claims', locale)}>← {T.back}</a></p>
+  </article>
+</BaseLayout>

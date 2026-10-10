@@ -1,21 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { renderToString } from 'react-dom/server';
-import Reveal from '../src/components/motion/Reveal';
-import TiltCard from '../src/components/motion/TiltCard';
-import ParallaxHeader from '../src/components/motion/ParallaxHeader';
+import { existsSync, readFileSync } from 'node:fs';
 
-describe('motion islands render on the server', () => {
-  it('Reveal renders its children', () => {
-    expect(renderToString(<Reveal><p>halo</p></Reveal>)).toContain('halo');
+// The React motion islands (Reveal, TiltCard, ParallaxHeader) were replaced by server-rendered markup plus Motion's DOM API,
+// so article pages ship no framework runtime. This guards against them coming back.
+const read = (p: string) => readFileSync(p, 'utf8');
+
+describe('article pages without React motion islands', () => {
+  it('removed the React motion components', () => {
+    for (const f of ['Reveal', 'TiltCard', 'ParallaxHeader']) expect(existsSync(`src/components/motion/${f}.tsx`), f).toBe(false);
   });
-  it('TiltCard renders a link with its children', () => {
-    const html = renderToString(<TiltCard href="/kawal/x"><span>isi</span></TiltCard>);
-    expect(html).toContain('href="/kawal/x"');
-    expect(html).toContain('isi');
+  it('renders the article header as a plain, prioritised <img> with its real size and no client directive', () => {
+    const c = read('src/components/PostHeader.astro');
+    expect(c).not.toMatch(/client:/);
+    expect(c).not.toContain('.tsx');
+    expect(c).toContain('fetchpriority="high"');
+    expect(c).toContain('decoding="async"');
+    expect(c).toContain('imageSize(image.src)');
+    expect(c).toContain("prefers-reduced-motion: reduce");
+    expect(c).toContain("import('motion')");
   });
-  it('ParallaxHeader renders the image with its alt text', () => {
-    const html = renderToString(<ParallaxHeader src="/img/a.png" alt="alt teks" />);
-    expect(html).toContain('/img/a.png');
-    expect(html).toContain('alt teks');
+  it('renders the article index cards as plain links, revealed by the shared script', () => {
+    const c = read('src/pages/kasus/abil-sudarman/artikel/index.astro');
+    expect(c).not.toMatch(/client:/);
+    expect(c).not.toContain('TiltCard');
+    expect(c).toContain('class="card card--link card-link"');
+    expect(c).toContain('data-reveal');
+    expect(c).toContain('data-reveal-item');
   });
 });

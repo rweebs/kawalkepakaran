@@ -16,9 +16,9 @@ export const FRAMING_EN: string[] = [
 ];
 
 export const POSTERS_EN = {
-  wide: { alt: 'Bowobharata poster: Rahmat Wibowo as Basudewa Krishna on the left and Abil Sudarman as Sengkuni on the right, an AI illustration with a Mahabharata theme.' },
-  krishna: { alt: 'AI illustration of Rahmat Wibowo as Basudewa Krishna with a flute, a blue banner and a white horse-drawn chariot.' },
-  sengkuni: { alt: 'AI illustration of Abil Sudarman as Sengkuni with dice, a mask and a game board.' },
+  wide: { alt: "Bowobharata allegory poster (AI illustration, the author's opinion, not a statement of fact): Rahmat Wibowo as Basudewa Krishna on the left and Abil Sudarman as Sengkuni on the right. The labels on the poster are part of the allegory; the claim status is cannot yet be verified." },
+  krishna: { alt: "Allegorical AI illustration, the author's opinion: Rahmat Wibowo as Basudewa Krishna with a flute, a blue banner and a white horse-drawn chariot. Not a statement of fact." },
+  sengkuni: { alt: "Allegorical AI illustration, the author's opinion: Abil Sudarman as Sengkuni with dice, a mask and a game board. Not a statement of fact; the claim status is cannot yet be verified." },
 };
 
 type ParvaEn = Pick<Parva, 'title' | 'episode' | 'paragraphs'>;

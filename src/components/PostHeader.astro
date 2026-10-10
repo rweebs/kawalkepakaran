@@ -1,10 +1,28 @@
 ---
-import { hueFromSlug } from '../lib/header-image';
-import ParallaxHeader from './motion/ParallaxHeader.tsx';
+import { hueFromSlug, imageSize } from '../lib/header-image';
 const { title, slug, image } = Astro.props as { title: string; slug: string; image: { src: string; alt: string } | null };
 const hueClass = `hue-${Math.floor(hueFromSlug(slug) / 30)}`;
 const alt = image && image.alt && !['Isi artikel', 'Article content'].includes(image.alt) ? image.alt : title;
+// The header is the article's LCP element: a plain server-rendered <img> with its real size, fetched first. No framework runtime.
+const size = image ? await imageSize(image.src) : null;
 ---
 {image
-  ? <ParallaxHeader client:visible src={image.src} alt={alt} />
+  ? <figure class="post-header" data-post-header>
+      <img src={image.src} alt={alt} width={size?.width ?? 1280} height={size?.height ?? 720} loading="eager" fetchpriority="high" decoding="async" data-parallax />
+    </figure>
   : <figure class="post-header" data-post-header><div class={`post-header__fallback ${hueClass}`} role="img" aria-label={title}></div></figure>}
+
+<script>
+  // Parallax as progressive enhancement: the image is server-rendered and already painted. Motion's DOM `scroll` is fetched
+  // only after the load event (out of the LCP window) and only for visitors who allow motion; the transform is set through
+  // the CSSOM, which the strict CSP allows.
+  const img = document.querySelector<HTMLImageElement>('[data-parallax]');
+  const figure = img?.closest<HTMLElement>('[data-post-header]');
+  if (img && figure && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const start = () => import('motion').then(({ scroll }) => {
+      scroll((progress: number) => { img.style.transform = `translateY(${(progress * 18).toFixed(2)}%)`; }, { target: figure, offset: ['start start', 'end start'] });
+    });
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start, { once: true });
+  }
+</script>

@@ -1,0 +1,4 @@
+/* Loaded only inside <noscript>: without JavaScript the mobile menu cannot be closed by script, so it is shown in place. */
+@media (max-width: 720px) {
+  .nav__menu[open] > .nav__links { display: flex; position: static; }
+}

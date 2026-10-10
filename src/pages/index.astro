@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SkyStage from '../components/SkyStage.astro';
 import VerdictBadge from '../components/VerdictBadge.astro';
+import CaseStats from '../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
 import { SITE } from '../lib/site';
 import { localizedPath, routePath, type Locale } from '../i18n';
@@ -103,15 +104,43 @@ const websiteLd = {
       </div>
     </section>
 
-    <section id="siapa" class="home-section container home-pair">
-      <div class="glass stack">
+    {/* Placement follows the reader's questions: what happened (the case and its verdicts), how was it decided and about whom
+        (method, experts), how can I help, and finally the right of reply, so fairness is the last word on the page. */}
+    <section id="bukti" class="home-section container home-pair" data-reveal>
+      <div class="glass stack" data-reveal-item>
+        <h2>{T.caseH}</h2>
+        <p class="lead">{T.caseLead}</p>
+        <CaseStats locale={locale} pakar="abil-sudarman" />
+        <div class="btn-row"><a class="btn" href={routePath('caseHome', locale)}>{T.caseCta}</a></div>
+      </div>
+      <div class="glass stack" data-reveal-item>
+        <h2>{T.claimsH}</h2>
+        {claims.length === 0 ? (
+          <p class="muted">{T.noClaims}</p>
+        ) : (
+          <ul class="stack">
+            {claims.map((k) => (
+              <li>
+                <VerdictBadge verdict={k.data.verdict} locale={locale} />{' '}
+                <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
+                <span class="muted"> · {nameOf(k.data.pakar)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p><a href={routePath('claims', locale)}>{T.claimsAll} →</a></p>
+      </div>
+    </section>
+
+    <section id="siapa" class="home-section container home-pair" data-reveal>
+      <div class="glass stack" data-reveal-item>
         <h2>{T.howH}</h2>
         <ol class="stack">
           {T.steps.map(([h, p]) => <li><strong>{h}.</strong> {p}</li>)}
         </ol>
         <p><a href={routePath('method', locale)}>{T.methodLink} →</a></p>
       </div>
-      <div class="glass stack">
+      <div class="glass stack" data-reveal-item>
         <h2>{T.pakarH}</h2>
         {pakar.length === 0 ? (
           <p class="muted">{T.noPakar}</p>
@@ -124,30 +153,7 @@ const websiteLd = {
       </div>
     </section>
 
-    <section id="bukti" class="home-section container">
-      <div class="glass stack">
-        <h2>{T.claimsH}</h2>
-        {claims.length === 0 ? (
-          <p class="muted">{T.noClaims}</p>
-        ) : (
-          <ul class="stack">
-            {claims.map((k) => (
-              <li>
-                <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>{' '}
-                <VerdictBadge verdict={k.data.verdict} locale={locale} />
-                <span class="muted"> · {nameOf(k.data.pakar)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p><a href={routePath('claims', locale)}>{T.claimsAll} →</a></p>
-        <h3>{T.caseH}</h3>
-        <p>{T.caseLead}</p>
-        <a class="btn" href={routePath('caseHome', locale)}>{T.caseCta}</a>
-      </div>
-    </section>
-
-    <section id="kontribusi" class="home-section container">
+    <section id="kontribusi" class="home-section container" data-reveal>
       <div class="glass stack">
         <h2>{T.contribH}</h2>
         <p class="lead">{T.contribLead}</p>
@@ -161,7 +167,7 @@ const websiteLd = {
       </div>
     </section>
 
-    <section id="jawaban" class="home-section container">
+    <section id="jawaban" class="home-section container" data-reveal>
       <div class="glass stack">
         <h2>{T.answerH}</h2>
         <p class="lead">{T.answerLead}</p>

@@ -1,14 +1,16 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
-import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
+import ShareBar from '../../components/ShareBar.astro';
+import { getKlaim, getPakar, isGenerated, klaimForPakar } from '../../lib/pakar';
+import { claimOg } from '../../lib/og';
 import { getArsip, arsipPath } from '../../lib/arsip';
 import { getBukti } from '../../lib/content';
 import { truncateAtWord } from '../../lib/seo';
 import { claimReviewLd } from '../../lib/schema-org';
 import { PAGE_LASTMOD, SITE } from '../../lib/site';
 import { sourceLineFor } from '../../lib/bukti';
-import { confidenceLabel, replyStatusLabel, verdictLabel } from '../../lib/verdict';
+import { confidenceLabel, findingFor, replyLine, replyStatusLabel, verdictLabel } from '../../lib/verdict';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
 
 export async function getStaticPaths() {
@@ -29,28 +31,58 @@ const reviewedIso = klaim.data.reviewedAt?.toISOString().slice(0, 10) ?? PAGE_LA
 const canonicalUrl = new URL(path, SITE.url).toString();
 const ld = claimReviewLd({
   url: canonicalUrl, claim, pakarName: pakar.data.name, verdictLabel: verdictLabel(klaim.data.verdict, locale),
-  limits, datePublished: reviewedIso, pakarUrl: new URL(localizedPath('experts', locale, pakar.id), SITE.url).toString(), locale, claimMadeAt: klaim.data.madeAt?.toISOString().slice(0, 10),
+  limits, datePublished: klaim.data.publishedAt?.toISOString().slice(0, 10) ?? reviewedIso, dateModified: reviewedIso,
+  appearanceUrl: klaim.data.venueUrl, image: claimOg(id, locale, locale === 'id' ? klaim.data.claim : klaim.data.claimEn, verdictLabel(klaim.data.verdict, locale)).src, pakarUrl: new URL(localizedPath('experts', locale, pakar.id), SITE.url).toString(), locale, claimMadeAt: klaim.data.madeAt?.toISOString().slice(0, 10),
 });
-const description = truncateAtWord(`${verdictLabel(klaim.data.verdict, locale)}: ${claim} ${pakar.data.name}. ${limits}`, 160);
-const citation = `${SITE.name}, "${claim.replace(/"/g, "'")}", ${canonicalUrl}, ${locale === 'id' ? 'ditinjau' : 'reviewed'} ${reviewedIso}.`;
+const vLabel = verdictLabel(klaim.data.verdict, locale);
+const finding = findingFor({ ...klaim.data, evidenceCount: evidence.length }, locale);
+const fmt = (d: Date) => formatDateLocale(d, locale);
+const reply_ = replyLine(klaim.data, locale, fmt);
+const description = truncateAtWord(`${finding} ${claim} (${pakar.data.name}). ${limits}`, 160);
+const ogTitle = `${pakar.data.name}: ${vLabel} · ${claim}`;
+const shareText = `${vLabel}: ${claim} (${pakar.data.name}) · ${SITE.name}`;
+const citation = `${SITE.name}, "${claim.replace(/"/g, "'")}" (${vLabel}; ${replyStatusLabel(klaim.data.replyStatus, locale).toLowerCase()}), ${canonicalUrl}, ${locale === 'id' ? 'ditinjau' : 'reviewed'} ${reviewedIso}.`;
+const publishedIso = klaim.data.publishedAt?.toISOString().slice(0, 10) ?? reviewedIso;
+// Previous / next among the same expert's hand-made claims, so a reader landing on one claim can walk the rest of the case.
+const siblings = generated ? [] : (await klaimForPakar(pakar.id)).filter((k) => !isGenerated(k));
+const at = siblings.findIndex((k) => k.id === id);
+const prev = at > 0 ? siblings[at - 1] : undefined;
+const next = at >= 0 && at < siblings.length - 1 ? siblings[at + 1] : undefined;
+const claimText = (k: { data: { claim: string; claimEn: string } }) => (locale === 'id' ? k.data.claim : k.data.claimEn);
+const inCase = pakar.id === 'abil-sudarman';
+const feedHref = locale === 'en' ? '/en/rss.xml' : '/rss.xml';
 const reply = klaim.data.reply;
 const replyText = reply && (locale === 'en' && reply.textEn ? reply.textEn : reply.text);
 const T = {
-  id: { crumb: 'Cek klaim', by: 'Pakar', venue: 'Disampaikan di', madeAt: 'Tanggal', verdict: 'Putusan pemeriksaan', confidence: 'Tingkat keyakinan',
-    evidence: 'Bukti', reviewed: 'Terakhir ditinjau', cite: 'Kutip halaman ini', copy: 'Salin tautan', copied: 'Tautan disalin', medical: 'Catatan kesehatan: halaman ini memeriksa sebuah klaim, bukan memberi nasihat medis. Untuk keputusan kesehatan, tanyakan tenaga medis berizin.', replyReceived: 'Tanggapan diterima', replyAsReceived: 'Disajikan apa adanya, tanpa penyuntingan.', replyRequested: 'Tanggapan diminta', noEvidence: 'Belum ada bukti yang ditautkan.', doc: 'Dokumen', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
-  en: { crumb: 'Claim checks', by: 'Expert', venue: 'Made at', madeAt: 'Date', verdict: 'Verdict', confidence: 'Confidence',
-    evidence: 'Evidence', reviewed: 'Last reviewed', cite: 'Cite this page', copy: 'Copy link', copied: 'Link copied', medical: 'Health note: this page checks a claim; it is not medical advice. For health decisions, ask a licensed clinician.', replyReceived: 'Reply received', replyAsReceived: 'Shown as received, unedited.', replyRequested: 'Reply requested', noEvidence: 'No evidence linked yet.', doc: 'Document', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
+  id: { crumb: 'Cek klaim', by: 'Pakar', venue: 'Disampaikan di', madeAt: 'Tanggal', verdict: 'Hasil pemeriksaan', notRuling: 'Catatan dan pendapat penulis, bukan putusan.', finding: 'Temuan', image: 'gambar', edited: 'Disunting', prev: 'Klaim sebelumnya', next: 'Klaim berikutnya', caseAll: 'Kasus 001: semua klaim', follow: 'Ikuti pembaruan (RSS)', docNote: 'Dokumen arsip ini dicatat sebagai bahan, bukan klaim yang sudah diperiksa.', anchor: 'Tautan ke bagian ini', confidence: 'Tingkat keyakinan',
+    evidence: 'Bukti', reviewed: 'Terakhir ditinjau', cite: 'Kutip halaman ini', copy: 'Salin kutipan', copied: 'Kutipan disalin', medical: 'Catatan kesehatan: halaman ini memeriksa sebuah klaim, bukan memberi nasihat medis. Untuk keputusan kesehatan, tanyakan tenaga medis berizin.', replyReceived: 'Tanggapan diterima', replyAsReceived: 'Disajikan apa adanya, tanpa penyuntingan.', replyRequested: 'Tanggapan diminta', noEvidence: 'Belum ada bukti yang ditautkan.', doc: 'Dokumen', limits: 'Yang tidak dibuktikan', reply: 'Tanggapan', replyLink: 'Hak jawab' },
+  en: { crumb: 'Claim checks', by: 'Expert', venue: 'Made at', madeAt: 'Date', verdict: 'Result of the check', notRuling: "The author's notes and opinion, not a ruling.", finding: 'Finding', image: 'image', edited: 'Edited', prev: 'Previous claim', next: 'Next claim', caseAll: 'Case 001: all claims', follow: 'Follow updates (RSS)', docNote: 'This archive document is recorded as material, not as a checked claim.', anchor: 'Link to this section', confidence: 'Confidence',
+    evidence: 'Evidence', reviewed: 'Last reviewed', cite: 'Cite this page', copy: 'Copy citation', copied: 'Citation copied', medical: 'Health note: this page checks a claim; it is not medical advice. For health decisions, ask a licensed clinician.', replyReceived: 'Reply received', replyAsReceived: 'Shown as received, unedited.', replyRequested: 'Reply requested', noEvidence: 'No evidence linked yet.', doc: 'Document', limits: 'What this does not prove', reply: 'Reply', replyLink: 'Right of reply' },
 }[locale];
 ---
-<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} description={description} path={path} locale={locale} alternates={alternates} jsonLd={generated ? undefined : ld} noindex={generated}
-  breadcrumbs={[{ name: T.crumb, path: routePath('claims', locale) }, { name: claim, path }]}>
+<BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} ogTitle={ogTitle} description={description} path={path} locale={locale} alternates={alternates}
+  jsonLd={generated ? undefined : ld} noindex={generated} image={generated ? undefined : claimOg(id, locale, claim, vLabel)}
+  ogType="article" publishedTime={publishedIso} modifiedTime={reviewedIso} section={T.crumb}
+  breadcrumbs={[...(inCase ? [{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }] : []), { name: T.crumb, path: routePath('claims', locale) }, { name: claim, path }]}>
   <article class="reading">
     <h1>{claim}</h1>
+    {generated ? (
+      <p class="notice" role="note">{T.docNote} {T.reply}: {reply_}. <a href={routePath('reply', locale)}>{T.replyLink}</a>.</p>
+    ) : (
+      /* Verdict, finding, reply status and the not-a-ruling line sit together under the claim: one screen, one crop. */
+      <section aria-labelledby="putusan-h" id="putusan">
+        <h2 id="putusan-h">{T.verdict}<a class="anchor" href="#putusan" aria-label={T.anchor}>#</a></h2>
+        <p><VerdictBadge verdict={klaim.data.verdict} locale={locale} /> · {T.confidence}: {confidenceLabel(klaim.data.confidence, locale)}</p>
+        <p class="finding"><strong>{T.finding}:</strong> {finding}</p>
+        <p class="notice">{T.reply}: {reply_}. <a href={routePath('reply', locale)}>{T.replyLink}</a>. <span class="muted">{T.notRuling}</span></p>
+        <ShareBar url={canonicalUrl} text={shareText} locale={locale} />
+      </section>
+    )}
     <p>
       <strong>{T.by}:</strong> <a href={localizedPath('experts', locale, pakar.id)}>{pakar.data.name}</a><br />
-      <strong>{T.venue}:</strong> {klaim.data.venue}
-      {klaim.data.madeAt && <><br /><strong>{T.madeAt}:</strong> {formatDateLocale(klaim.data.madeAt, locale)}</>}
-      {klaim.data.reviewedAt && <><br /><strong>{T.reviewed}:</strong> <time datetime={reviewedIso}>{formatDateLocale(klaim.data.reviewedAt, locale)}</time></>}
+      <strong>{T.venue}:</strong> {klaim.data.venueUrl ? <a href={klaim.data.venueUrl} target="_blank" rel="noopener noreferrer nofollow">{klaim.data.venue}</a> : klaim.data.venue}
+      {klaim.data.madeAt && <><br /><strong>{T.madeAt}:</strong> {fmt(klaim.data.madeAt)}</>}
+      {klaim.data.reviewedAt && <><br /><strong>{T.reviewed}:</strong> <time datetime={reviewedIso}>{fmt(klaim.data.reviewedAt)}</time></>}
     </p>
     {klaim.data.topic === 'kesehatan' && <p class="notice" role="note">{T.medical}</p>}
 
@@ -58,25 +90,24 @@ const T = {
       <p><strong>{T.doc}:</strong> {docs.map((d, i) => <>{i > 0 && ', '}<a href={arsipPath(d.id, locale)}>{d.data.title}</a></>)}</p>
     )}
 
-    <section aria-labelledby="putusan-h">
-      <h2 id="putusan-h">{T.verdict}</h2>
-      <p><VerdictBadge verdict={klaim.data.verdict} locale={locale} /> · {T.confidence}: {confidenceLabel(klaim.data.confidence, locale)}</p>
-    </section>
-
-    <section aria-labelledby="bukti-h">
-      <h2 id="bukti-h">{T.evidence}</h2>
+    <section aria-labelledby="bukti-h" id="bukti" data-reveal>
+      <h2 id="bukti-h">{T.evidence}<a class="anchor" href="#bukti" aria-label={T.anchor}>#</a></h2>
       {evidence.length === 0 ? (
         <p class="muted">{T.noEvidence}</p>
       ) : (
         <ul class="stack">
           {evidence.map((b) => {
             const x = locale === 'en' && b.data.en ? b.data.en : b.data;
+            const edited = locale === 'en' ? b.data.en?.edited ?? b.data.edited : b.data.edited;
             return (
-              <li>
-                <a href={b.data.images[0].src} target="_blank" rel="noopener noreferrer">{x.title}</a>
+              <li id={`bukti-${b.id}`} data-reveal-item>
+                <a href={`${routePath('evidence', locale)}#${b.id}`}>{x.title}</a>
                 <span class="muted"> · {x.shows}</span>
+                <br /><span class="muted">{T.limits}: {x.limits}</span>
+                {edited && <><br /><span class="muted">{T.edited}: {edited}</span></>}
                 <br /><span class="muted">{sourceLineFor({ ...b.data, source: x.source }, locale)}</span>
-                {b.data.sourceUrl && <> <a href={b.data.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">{locale === 'id' ? 'sumber' : 'source'}</a></>}
+                {' '}<a href={b.data.images[0].src} target="_blank" rel="noopener noreferrer">{T.image}</a>
+                {b.data.sourceUrl && <> · <a href={b.data.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">{locale === 'id' ? 'sumber' : 'source'}</a></>}
               </li>
             );
           })}
@@ -85,27 +116,36 @@ const T = {
       <p><a href={routePath('evidence', locale)}>{T.evidence} →</a></p>
     </section>
 
-    <section aria-labelledby="batas-h">
-      <h2 id="batas-h">{T.limits}</h2>
+    <section aria-labelledby="batas-h" id="batas" data-reveal>
+      <h2 id="batas-h">{T.limits}<a class="anchor" href="#batas" aria-label={T.anchor}>#</a></h2>
       <p>{limits}</p>
     </section>
 
     {reply && (
-      <section aria-labelledby="reply-h">
+      <section aria-labelledby="reply-h" id="tanggapan">
         <h2 id="reply-h">{T.replyReceived}</h2>
-        <p class="muted">{formatDateLocale(reply.receivedAt, locale)} · {T.replyAsReceived}</p>
+        <p class="muted">{fmt(reply.receivedAt)} · {T.replyAsReceived}</p>
         <blockquote><p>{replyText}</p></blockquote>
       </section>
     )}
-    {klaim.data.replyRequestedAt && !reply && <p class="muted">{T.replyRequested}: {formatDateLocale(klaim.data.replyRequestedAt, locale)}</p>}
 
-    <section aria-labelledby="kutip-h" class="cite">
+    <section aria-labelledby="kutip-h" class="cite" id="kutip">
       <h2 id="kutip-h">{T.cite}</h2>
       <p><code data-cite>{citation}</code></p>
       <p><button type="button" data-copy={citation} data-done={T.copied}>{T.copy}</button> <span role="status" data-copy-status></span></p>
     </section>
 
-    <p class="notice">{T.reply}: {replyStatusLabel(klaim.data.replyStatus, locale)}. <a href={routePath('reply', locale)}>{T.replyLink}</a>.</p>
+    {!generated && (
+      <>
+        <ShareBar url={canonicalUrl} text={shareText} locale={locale} />
+        <p><a href={feedHref}>{T.follow}</a></p>
+        <nav class="linimasa-nav" aria-label={locale === 'id' ? 'Klaim lain' : 'Other claims'}>
+          {prev && <a rel="prev" href={localizedPath('claims', locale, prev.id)}>← {T.prev}: {claimText(prev)}</a>}
+          {next && <a rel="next" href={localizedPath('claims', locale, next.id)}>{T.next}: {claimText(next)} →</a>}
+          {inCase && <a href={routePath('caseHome', locale)}>{T.caseAll}</a>}
+        </nav>
+      </>
+    )}
   </article>
 </BaseLayout>
 <script>

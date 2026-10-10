@@ -16,16 +16,22 @@ export const GET: APIRoute = async () => {
   const postsEn = await getPostsEn();
   const allPakar = await getPakar();
   const allKlaim = await getKlaim();
-  // Generated entries make the /pakar and /klaim indexes noindex, and a noindex page does not belong in the sitemap.
-  const hasGenerated = allPakar.some(isGenerated) || allKlaim.some(isGenerated);
+  // The /pakar and /klaim hubs are indexable (generated entries live elsewhere); generated detail pages stay noindex and out.
   const pakar = allPakar.filter((p) => !isGenerated(p));
   const klaim = allKlaim.filter((k) => !isGenerated(k));
   const latest = posts.length ? iso(new Date(Math.max(...posts.map((p) => p.data.translationDate.getTime())))) : undefined;
+  // The updates page changes whenever a claim is reviewed or answered, or a post is published.
+  const updateTimes = [
+    ...posts.map((p) => p.data.translationDate.getTime()),
+    ...klaim.flatMap((k) => [k.data.reviewedAt, k.data.reply?.receivedAt].filter((d): d is Date => !!d).map((d) => d.getTime())),
+  ];
+  const updatesLastmod = updateTimes.length ? iso(new Date(Math.max(...updateTimes))) : undefined;
 
   const entries: SitemapEntry[] = [
     { path: '/', lastmod: latest },
     { path: '/pakar', lastmod: PAGE_LASTMOD['/pakar'] },
     { path: '/klaim', lastmod: PAGE_LASTMOD['/klaim'] },
+    { path: ROUTES.updates.id, lastmod: updatesLastmod },
     { path: '/metode', lastmod: PAGE_LASTMOD['/metode'] },
     { path: '/kasus/abil-sudarman', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman'] },
     ...pakar.map((p) => ({ path: `/pakar/${p.id}`, lastmod: PAGE_LASTMOD['/pakar'] })),
@@ -51,12 +57,6 @@ export const GET: APIRoute = async () => {
   ];
 
   // English counterparts: the paired pages, the translated timeline and the translated articles.
-  if (hasGenerated) {
-    for (const path of ['/pakar', '/klaim']) {
-      const i = entries.findIndex((e) => e.path === path);
-      if (i >= 0) entries.splice(i, 1);
-    }
-  }
   const paired = entries.flatMap((e) => {
     const route = Object.values(ROUTES).find((r) => r.id === e.path);
     return route ? [{ ...e, path: route.en }] : [];

@@ -1,0 +1,51 @@
+---
+import type { Locale } from '../i18n';
+
+// One-tap sharing for the pages people pass around. Plain links work without JavaScript; the native share sheet and copy
+// button are added by the script below. Each link carries utm_source so shares can be told apart in analytics.
+// The shared text is whatever the page passes, which always leads with the verdict label rather than the bare claim.
+interface Props { url: string; text: string; locale: Locale; campaign?: string }
+const { url, text, locale, campaign = 'kasus-001' } = Astro.props;
+const tagged = (source: string) => {
+  const u = new URL(url);
+  u.searchParams.set('utm_source', source);
+  u.searchParams.set('utm_medium', 'share');
+  u.searchParams.set('utm_campaign', campaign);
+  return u.toString();
+};
+const enc = encodeURIComponent;
+const links = [
+  ['WhatsApp', `https://wa.me/?text=${enc(`${text} ${tagged('whatsapp')}`)}`],
+  ['X', `https://x.com/intent/post?text=${enc(text)}&url=${enc(tagged('x'))}`],
+  ['Threads', `https://www.threads.net/intent/post?text=${enc(`${text} ${tagged('threads')}`)}`],
+  ['Telegram', `https://t.me/share/url?url=${enc(tagged('telegram'))}&text=${enc(text)}`],
+] as const;
+const T = {
+  id: { label: 'Bagikan', native: 'Bagikan…', copy: 'Salin tautan', copied: 'Tautan disalin' },
+  en: { label: 'Share', native: 'Share…', copy: 'Copy link', copied: 'Link copied' },
+}[locale];
+---
+<nav class="share-bar" aria-label={T.label} data-share-bar>
+  <span class="muted">{T.label}:</span>
+  <button type="button" class="share-bar__btn" hidden data-share-native data-url={tagged('native')} data-text={text}>{T.native}</button>
+  {links.map(([name, href]) => <a class="share-bar__btn" href={href} target="_blank" rel="noopener noreferrer">{name}</a>)}
+  <button type="button" class="share-bar__btn" data-share-copy={url} data-done={T.copied}>{T.copy}</button>
+  <span role="status" class="muted" data-share-status></span>
+</nav>
+<script>
+  for (const bar of document.querySelectorAll<HTMLElement>('[data-share-bar]')) {
+    const native = bar.querySelector<HTMLButtonElement>('[data-share-native]');
+    if (native && typeof navigator.share === 'function') {
+      native.hidden = false;
+      native.addEventListener('click', () => {
+        navigator.share({ url: native.dataset.url, text: native.dataset.text }).catch(() => {});
+      });
+    }
+    const copy = bar.querySelector<HTMLButtonElement>('[data-share-copy]');
+    copy?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(copy.dataset.shareCopy ?? ''); } catch { return; }
+      const s = bar.querySelector('[data-share-status]');
+      if (s) s.textContent = copy.dataset.done ?? '';
+    });
+  }
+</script>

@@ -26,7 +26,7 @@ const T = {
 const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
 const excerpt = (s: string) => (s.length > 220 ? `${s.slice(0, s.lastIndexOf(' ', 220))}…` : s);
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.h1, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.h1, path }]}>
   <article class="reading linimasa">
     <h1>{T.h1}</h1>
     <p class="muted">{DISCLAIMER}</p>

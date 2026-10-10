@@ -7,20 +7,23 @@
     {
       "title": "Computer Science (gelar)",
       "issuer": "University of London",
-      "status": "belum-diperiksa",
-      "checkedAt": "2026-10-09"
+      "status": "belum-terverifikasi",
+      "checkedAt": "2026-10-11",
+      "klaim": "abil-sudarman-gelar-university-of-london"
     },
     {
       "title": "Executive Director",
       "issuer": "KORIKA",
-      "status": "belum-diperiksa",
-      "checkedAt": "2026-10-09"
+      "status": "belum-terverifikasi",
+      "checkedAt": "2026-10-11",
+      "klaim": "abil-sudarman-jabatan-korika-unesco"
     },
     {
       "title": "Project Manager, AI Readiness Assessment",
       "issuer": "UNESCO",
-      "status": "belum-diperiksa",
-      "checkedAt": "2026-10-09"
+      "status": "belum-terverifikasi",
+      "checkedAt": "2026-10-11",
+      "klaim": "abil-sudarman-jabatan-korika-unesco"
     }
   ]
 }

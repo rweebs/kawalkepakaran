@@ -10,8 +10,9 @@ export interface Correction {
 /** Public log of corrections, newest first. Add an entry whenever a published page is corrected, annotated or taken down. */
 export const CORRECTIONS: readonly Correction[] = [];
 
-/** Corrections that concern a page, ignoring a trailing slash and the language prefix difference is left to the caller. */
-export function correctionsFor(path: string, log: readonly Correction[] = CORRECTIONS): Correction[] {
+/** Corrections that concern a page or its other-language twin (pass the alternates), ignoring a trailing slash. */
+export function correctionsFor(path: string, log: readonly Correction[] = CORRECTIONS, alternates: readonly string[] = []): Correction[] {
   const norm = (p: string) => (p.length > 1 ? p.replace(/\/+$/, '') : p);
-  return log.filter((c) => norm(c.path) === norm(path));
+  const paths = new Set([path, ...alternates].map(norm));
+  return log.filter((c) => paths.has(norm(c.path)));
 }

@@ -4,7 +4,7 @@ import { EVENTS } from '../../../../lib/linimasa';
 import { localizeEvent, localizedEvents, eventPath, formatDateFor, neighboursFor } from '../../../../lib/linimasa-locale';
 import { SITE } from '../../../../lib/site';
 import { UI } from '../../../../i18n/ui';
-import { localizedPath, type Locale } from '../../../../i18n';
+import { routePath, localizedPath, type Locale } from '../../../../i18n';
 
 export function getStaticPaths() {
   return EVENTS.map((event) => ({ params: { slug: event.slug }, props: { idSlug: event.slug } }));
@@ -34,7 +34,7 @@ const T = {
 const indexPath = localizedPath('timeline', locale);
 ---
 <BaseLayout title={event.title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
-  breadcrumbs={[{ name: T.crumb, path: indexPath }, { name: formatDateFor(event.date, locale), path }]}>
+  breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path: indexPath }, { name: formatDateFor(event.date, locale), path }]}>
   <article class="reading linimasa-post">
     <p class="linimasa-meta"><time datetime={event.date}>{formatDateFor(event.date, locale)}</time> · {event.channel}</p>
     <h1>{event.title}</h1>

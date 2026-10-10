@@ -1,42 +1,67 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { localizedPath, routePath, type Locale } from '../../../i18n';
+import VerdictBadge from '../../../components/VerdictBadge.astro';
+import CaseStats from '../../../components/CaseStats.astro';
+import ShareBar from '../../../components/ShareBar.astro';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../i18n';
+import { isGenerated, klaimForPakar } from '../../../lib/pakar';
+import { confidenceLabel, replyLine } from '../../../lib/verdict';
+import { caseOg } from '../../../lib/og';
+import { SITE } from '../../../lib/site';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('caseHome', locale);
-const T = {
+type Route = Parameters<typeof routePath>[0];
+const COPY = {
   id: { title: 'Kasus 001: Abil Sudarman', h1: 'Kasus 001: Abil Sudarman', crumb: 'Kasus 001',
-    description: 'Kasus pertama Kawal Kepakaran: klaim kredensial dan jabatan Abil Sudarman diperiksa terhadap bukti, lengkap dengan linimasa dan hak jawab.' },
+    description: 'Kasus pertama Kawal Kepakaran: klaim kredensial dan jabatan Abil Sudarman diperiksa terhadap bukti, lengkap dengan linimasa dan hak jawab.',
+    lead: 'Kasus 001 memeriksa klaim kredensial dan jabatan Abil Sudarman terhadap bukti yang tersedia. Semua isi adalah pendapat dan catatan penulis, bukan putusan.',
+    links: [['timeline', 'Linimasa'], ['abilTimeline', 'Linimasa Abil Sudarman'], ['evidence', 'Bukti'], ['articles', 'Artikel'], ['bowobharata', 'Bowobharata'], ['reply', 'Hak jawab']] },
   en: { title: 'Case 001: Abil Sudarman', h1: 'Case 001: Abil Sudarman', crumb: 'Case 001',
-    description: "Kawal Kepakaran's first case: Abil Sudarman's claimed credentials and roles checked against the evidence, with a timeline and the right of reply." },
+    description: "Kawal Kepakaran's first case: Abil Sudarman's claimed credentials and roles checked against the evidence, with a timeline and the right of reply.",
+    lead: "Case 001 checks Abil Sudarman's claimed credentials and roles against the available evidence. Everything here is the author's opinion and notes, not a ruling.",
+    links: [['timeline', 'Timeline'], ['abilTimeline', 'Abil Sudarman timeline'], ['evidence', 'Evidence'], ['articles', 'Articles'], ['bowobharata', 'Bowobharata'], ['reply', 'Right of reply']] },
+} satisfies Record<Locale, { title: string; h1: string; crumb: string; description: string; lead: string; links: [Route, string][] }>;
+const T = COPY[locale];
+const claims = (await klaimForPakar('abil-sudarman')).filter((k) => !isGenerated(k));
+const fmt = (d: Date) => formatDateLocale(d, locale);
+const L = {
+  id: { claimsH: 'Klaim yang diperiksa', claim: 'Klaim', verdict: 'Hasil', confidence: 'Keyakinan', reply: 'Tanggapan', reviewed: 'Ditinjau',
+    moreH: 'Telusuri kasus', follow: 'Ikuti pembaruan (RSS)', updates: 'Apa yang berubah', share: 'Kasus 001: klaim kredensial Abil Sudarman diperiksa terhadap bukti · Kawal Kepakaran' },
+  en: { claimsH: 'Claims checked', claim: 'Claim', verdict: 'Result', confidence: 'Confidence', reply: 'Reply', reviewed: 'Reviewed',
+    moreH: 'Explore the case', follow: 'Follow updates (RSS)', updates: 'What changed', share: "Case 001: Abil Sudarman's claimed credentials checked against the evidence · Kawal Kepakaran" },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]} image={caseOg(locale)}>
   <article class="reading">
     <h1>{T.h1}</h1>
-    {locale === 'id' ? (
-      <>
-        <p>Kasus 001 memeriksa klaim kredensial dan jabatan Abil Sudarman terhadap bukti yang tersedia. Semua isi adalah pendapat dan catatan penulis, bukan putusan.</p>
-        <ul>
-          <li><a href={routePath('articles', locale)}>Artikel</a></li>
-          <li><a href={routePath('evidence', locale)}>Bukti</a></li>
-          <li><a href={routePath('timeline', locale)}>Linimasa</a></li>
-          <li><a href={routePath('abilTimeline', locale)}>Linimasa Abil Sudarman</a></li>
-          <li><a href={routePath('bowobharata', locale)}>Bowobharata</a></li>
-          <li><a href={routePath('reply', locale)}>Hak jawab</a></li>
-        </ul>
-      </>
-    ) : (
-      <>
-        <p>Case 001 checks Abil Sudarman's claimed credentials and roles against the available evidence. Everything here is the author's opinion and notes, not a ruling.</p>
-        <ul>
-          <li><a href={routePath('articles', locale)}>Articles</a></li>
-          <li><a href={routePath('evidence', locale)}>Evidence</a></li>
-          <li><a href={routePath('timeline', locale)}>Timeline</a></li>
-          <li><a href={routePath('abilTimeline', locale)}>Abil Sudarman timeline</a></li>
-          <li><a href={routePath('bowobharata', locale)}>Bowobharata</a></li>
-          <li><a href={routePath('reply', locale)}>Right of reply</a></li>
-        </ul>
-      </>
-    )}
+    <p>{T.lead}</p>
+    <CaseStats locale={locale} pakar="abil-sudarman" />
+    {/* The measured verdicts come first, before the analysis and the allegory pages. */}
+    <h2 id="klaim">{L.claimsH}</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th scope="col">{L.claim}</th><th scope="col">{L.verdict}</th><th scope="col">{L.confidence}</th><th scope="col">{L.reply}</th><th scope="col">{L.reviewed}</th></tr></thead>
+        <tbody>
+          {claims.map((k) => (
+            <tr>
+              <td><a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a></td>
+              <td><VerdictBadge verdict={k.data.verdict} locale={locale} /></td>
+              <td>{confidenceLabel(k.data.confidence, locale)}</td>
+              <td>{replyLine(k.data, locale, fmt)}</td>
+              <td>{k.data.reviewedAt && <time datetime={k.data.reviewedAt.toISOString().slice(0, 10)}>{fmt(k.data.reviewedAt)}</time>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <ShareBar url={new URL(path, SITE.url).toString()} text={L.share} locale={locale} />
+    <h2>{L.moreH}</h2>
+    {/* Story order: what happened, the documents behind it, the analysis, then the right of reply last. */}
+    <ul class="grid case-hub" role="list" data-reveal>
+      {T.links.map(([route, label]) => (
+        <li data-reveal-item><a class="card card--link card-link" href={routePath(route, locale)}>{label} →</a></li>
+      ))}
+    </ul>
+    <p><a href={routePath('updates', locale)}>{L.updates}</a> · <a href={locale === 'en' ? '/en/rss.xml' : '/rss.xml'}>{L.follow}</a></p>
   </article>
 </BaseLayout>

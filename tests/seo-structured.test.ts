@@ -24,7 +24,7 @@ describe('claimReviewLd', () => {
     expect(ld['@type']).toBe('ClaimReview');
     expect(ld.claimReviewed).toBe('Gelar Computer Science dari University of London.');
     expect(ld.itemReviewed.author).toEqual({ '@type': 'Person', name: 'Abil Sudarman' });
-    expect(ld.reviewRating).toEqual({ '@type': 'Rating', alternateName: 'Belum bisa diverifikasi' });
+    expect(ld.reviewRating).toEqual({ '@type': 'Rating', name: 'Belum bisa diverifikasi', alternateName: 'Belum bisa diverifikasi' });
   });
   it('is authored by the site, not by a person, and never invents a numeric rating', () => {
     expect(ld.author).toMatchObject({ '@type': 'Organization', name: SITE.name, url: SITE.url });
@@ -60,7 +60,7 @@ describe('pages pass the structured data to the layout', () => {
     const manifesto = read('src/pages/manifesto.astro');
     expect(claim).toContain('claimReviewLd(');
     expect(claim).toMatch(/jsonLd=\{/);
-    expect(pakar).toContain('personLd(');
+    expect(pakar).toContain('profilePageLd(');
     expect(pakar).toMatch(/jsonLd=\{/);
     expect(manifesto).toContain('articleLd(');
     expect(manifesto).toMatch(/jsonLd=\{/);

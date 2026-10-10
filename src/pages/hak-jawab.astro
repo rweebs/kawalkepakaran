@@ -1,7 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { SITE } from '../lib/site';
-import { localizedPath, routePath, type Locale } from '../i18n';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../i18n';
+import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
+import { replyLine } from '../lib/verdict';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('reply', locale);
 const T = {
@@ -10,6 +12,11 @@ const T = {
   en: { title: 'Right of reply for experts named', h1: 'Right of reply', crumb: 'Right of reply',
     description: 'How any expert named can respond to this site: replies are sent by email and published as received, without editing, alongside the page concerned.' },
 }[locale];
+// Reply status of every checked claim, so the procedure above can be checked against what actually happened.
+const claimRows = (await getKlaim()).filter((k) => !isGenerated(k));
+const pakarList = await getPakar();
+const pname = (id: string) => pakarList.find((p) => p.id === id)?.data.name ?? id;
+const RS = { id: { h: 'Status tanggapan per klaim', claim: 'Klaim', who: 'Pakar', status: 'Status' }, en: { h: 'Reply status by claim', claim: 'Claim', who: 'Expert', status: 'Status' } }[locale];
 ---
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
@@ -31,5 +38,20 @@ const T = {
         <p class="muted">If there is no reply, the site draws no conclusion. The absence of a reply is not an admission of anything.</p>
       </>
     )}
+    <h2 id="status">{RS.h}</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th scope="col">{RS.claim}</th><th scope="col">{RS.who}</th><th scope="col">{RS.status}</th></tr></thead>
+        <tbody>
+          {claimRows.map((k) => (
+            <tr>
+              <td><a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a></td>
+              <td>{pname(k.data.pakar)}</td>
+              <td>{replyLine(k.data, locale, (d) => formatDateLocale(d, locale))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   </article>
 </BaseLayout>

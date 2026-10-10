@@ -115,6 +115,32 @@ export function findHreflangProblems(distDir, site = DEFAULT_SITE) {
   return problems;
 }
 
+export const OG_MAX_BYTES = 300_000;
+/** Every og:image a page names must exist in dist and stay under 300 KB (WhatsApp drops larger previews). */
+export function findOgImageProblems(distDir, site = DEFAULT_SITE, maxBytes = OG_MAX_BYTES) {
+  const dist = siteRoot(distDir);
+  const origin = new URL(site).origin;
+  const problems = [];
+  const sizes = new Map();
+  for (const file of htmlFiles(dist)) {
+    const html = readFileSync(file, 'utf8');
+    const base = new URL(pageUrl(dist, file), origin);
+    for (const m of html.matchAll(/<meta(?=\s)[^>]*property="og:image"[^>]*>/g)) {
+      const content = (m[0].match(/\scontent="([^"]*)"/) || [])[1];
+      if (!content) { problems.push(`${file}: og:image without content`); continue; }
+      let url;
+      try { url = new URL(content.replace(/&amp;/g, '&'), base); } catch { problems.push(`${file}: og:image is not a URL ${content}`); continue; }
+      if (url.origin !== origin) continue;
+      const path = join(dist, decodeURIComponent(url.pathname));
+      if (!sizes.has(path)) sizes.set(path, existsSync(path) && statSync(path).isFile() ? statSync(path).size : -1);
+      const size = sizes.get(path);
+      if (size < 0) problems.push(`${file}: og:image missing ${url.pathname}`);
+      else if (size > maxBytes) problems.push(`${file}: og:image ${url.pathname} is ${size} bytes (max ${maxBytes})`);
+    }
+  }
+  return problems;
+}
+
 const BUNDLE_BUDGET = { 'three.module': 700_000, default: 260_000 };
 /** No script chunk may grow past its budget (bytes, uncompressed). */
 export function findBundleProblems(distDir) {
@@ -174,7 +200,7 @@ export function findSitemapProblems(distDir, site = DEFAULT_SITE) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const dist = resolve(process.argv[2] ?? 'dist');
-  const problems = [...findProblems(dist), ...findSitemapProblems(dist), ...findHreflangProblems(dist), ...findBundleProblems(dist)];
+  const problems = [...findProblems(dist), ...findSitemapProblems(dist), ...findHreflangProblems(dist), ...findBundleProblems(dist), ...findOgImageProblems(dist)];
   if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
   console.log(`dist OK (${htmlFiles(dist).length} pages)`);
 }

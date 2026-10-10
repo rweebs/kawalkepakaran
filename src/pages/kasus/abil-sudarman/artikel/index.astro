@@ -2,37 +2,67 @@
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import ClassificationBadge from '../../../../components/ClassificationBadge.astro';
 import PostThumb from '../../../../components/PostThumb.astro';
-import TiltCard from '../../../../components/motion/TiltCard.tsx';
 import { firstImage } from '../../../../lib/header-image';
-import { getPosts } from '../../../../lib/content';
-import { localizedPath, type Locale } from '../../../../i18n';
+import { getPosts, getPostsEn } from '../../../../lib/content';
+import { routePath, formatDateLocale, localizedPath, type Locale } from '../../../../i18n';
 import { SITE } from '../../../../lib/site';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
-const posts = await getPosts();
+const en = locale === 'en';
+/** The explainer pinned as the first, full-width card ("Start here"). Ignored if no published post has this id. */
+const PINNED_POST = 'investigative-report-unpacking-the-credentials-of-abil-sudarman';
+const enDates = new Map((await getPostsEn()).map((e) => [e.id, e.data.publishedDate as Date]));
+const dateOf = (p: Awaited<ReturnType<typeof getPosts>>[number]): Date => (en ? enDates.get(p.id) : undefined) ?? p.data.translationDate;
+const sorted = (await getPosts()).slice().sort((a, b) => dateOf(b).getTime() - dateOf(a).getTime());
+const pinned = sorted.find((p) => p.id === PINNED_POST);
+const posts = pinned ? [pinned, ...sorted.filter((p) => p !== pinned)] : sorted;
 const T = {
   id: {
-    title: 'Artikel tentang Abil Sudarman', h1: 'Artikel tentang Abil Sudarman', empty: 'Belum ada artikel yang dipublikasikan.', from: 'Terjemahan dari:', crumb: 'Artikel',
+    title: 'Artikel tentang Abil Sudarman', h1: 'Artikel tentang Abil Sudarman', empty: 'Belum ada artikel yang dipublikasikan.', from: 'Terjemahan dari:', crumb: 'Artikel', start: 'Mulai di sini',
     description: 'Terjemahan Bahasa Indonesia dari artikel Rahmat Wibowo tentang klaim dan kredensial Abil Sudarman, dengan klasifikasi pendapat, fakta berbukti, dan aduan.',
   },
   en: {
-    title: 'Articles on Abil Sudarman', h1: 'Articles', empty: 'No articles have been published yet.', from: 'Indonesian title:', crumb: 'Articles',
+    title: 'Articles on Abil Sudarman', h1: 'Articles', empty: 'No articles have been published yet.', from: 'Indonesian title:', crumb: 'Articles', start: 'Start here',
     description: "Rahmat Wibowo's articles on Abil Sudarman's claims and credentials, in English, each labelled as opinion, fact with evidence, or report/complaint.",
   },
 }[locale];
 const path = localizedPath('articles', locale);
 const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: new URL(path, SITE.url).toString(), inLanguage: locale, description: T.description };
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
   <section class="container pad-block">
     <h1>{T.h1}</h1>
     {posts.length === 0
       ? <p class="muted">{T.empty}</p>
-      : <div class="grid">{posts.map((p) => (
-          <TiltCard client:visible href={localizedPath('articles', locale, p.id)}>
-            <PostThumb title={p.data.title} slug={p.id} image={firstImage(p.body ?? '')} />
-            <ClassificationBadge value={p.data.classification} locale={locale} />
-            <h2 class="card-title">{locale === 'en' ? p.data.originalTitle : p.data.title}</h2>
-            <p class="muted">{locale === 'en' ? `${T.from} ${p.data.title}` : `${T.from} ${p.data.originalTitle}`}</p>
-          </TiltCard>))}</div>}
+      : <ul class="grid post-list" role="list" data-reveal>{posts.map((p) => {
+          const date = dateOf(p);
+          const isPinned = p === pinned;
+          return (
+            <li class:list={[{ 'post-list__pinned': isPinned }]} data-reveal-item>
+              <a class="card card--link card-link" href={localizedPath('articles', locale, p.id)}>
+                <PostThumb title={p.data.title} slug={p.id} image={firstImage(p.body ?? '')} />
+                <div>
+                  {isPinned && <span class="badge badge--amber">{T.start}</span>} <ClassificationBadge value={p.data.classification} locale={locale} />
+                  <h2 class="card-title">{en ? p.data.originalTitle : p.data.title}</h2>
+                  <p class="muted"><time datetime={date.toISOString().slice(0, 10)}>{formatDateLocale(date, locale)}</time></p>
+                  <p class="muted">{en ? `${T.from} ${p.data.title}` : `${T.from} ${p.data.originalTitle}`}</p>
+                </div>
+              </a>
+            </li>);
+        })}</ul>}
   </section>
 </BaseLayout>
+
+<style>
+  .post-list { list-style: none; margin: 0; padding: 0; }
+  .post-list > li > a { height: 100%; transition: transform 0.2s ease, border-color 0.2s ease; }
+  .post-list > li > a:hover, .post-list > li > a:focus-visible { transform: translateY(-3px); }
+  .post-list__pinned { grid-column: 1 / -1; }
+  @media (min-width: 720px) {
+    .post-list__pinned > a { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.25rem; align-items: center; }
+    .post-list__pinned :global(.thumb) { margin-bottom: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .post-list > li > a { transition: none; }
+    .post-list > li > a:hover, .post-list > li > a:focus-visible { transform: none; }
+  }
+</style>

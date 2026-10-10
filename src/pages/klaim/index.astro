@@ -2,9 +2,10 @@
 import ListFilter from '../../components/ListFilter.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import VerdictBadge from '../../components/VerdictBadge.astro';
+import CaseStats from '../../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
-import { confidenceLabel } from '../../lib/verdict';
-import { localizedPath, routePath, type Locale } from '../../i18n';
+import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('claims', locale);
 const all = await getKlaim();
@@ -12,50 +13,49 @@ const claims = all.filter((k) => !isGenerated(k));
 const generated = all.filter(isGenerated);
 const pakar = await getPakar();
 const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
+// Grouped by expert (one group is one case), in the order the experts first appear.
+const groups = [...new Set(claims.map((k) => k.data.pakar))].map((id) => [id, claims.filter((k) => k.data.pakar === id)] as const);
 const T = {
   id: { title: 'Cek klaim para pakar', h1: 'Cek klaim', crumb: 'Cek klaim',
     description: 'Klaim para pakar yang telah diperiksa, masing-masing dengan putusan pemeriksaan, tingkat keyakinan, bukti, dan batas apa yang tidak dibuktikan.',
     lead: 'Setiap klaim diberi putusan pemeriksaan dan tingkat keyakinan, dengan bukti dan batas apa yang tidak dibuktikan.',
     empty: 'Belum ada klaim yang dimuat.', confidence: 'Keyakinan', method: 'Bagaimana putusan ditentukan',
-    genH: 'Dari dokumen arsip', genLead: 'Dibuat otomatis, satu per dokumen penulis. Entri ini hanya mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.' },
+    genH: 'Dari dokumen arsip', reviewed: 'ditinjau', caseLink: 'Ringkasan kasus', genLead: 'Dibuat otomatis, satu per dokumen penulis. Entri ini hanya mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.' },
   en: { title: 'Expert claim checks', h1: 'Claim checks', crumb: 'Claim checks',
     description: 'Expert claims we have checked, each with a verdict, a confidence level, the evidence, and the limits of what the evidence does not prove.',
     lead: 'Each claim gets a verdict and a confidence level, with the evidence and the limits of what it does not prove.',
     empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided',
-    genH: 'From archive documents', genLead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.' },
+    genH: 'From archive documents', reviewed: 'reviewed', caseLink: 'Case overview', genLead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.' },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex={generated.length > 0} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
-    <ListFilter locale={locale} />
     <p class="lead">{T.lead}</p>
+    <CaseStats locale={locale} />
+    <ListFilter locale={locale} />
     {claims.length === 0 ? (
       <p class="muted">{T.empty}</p>
-    ) : (
-      <ul class="stack">
-        {claims.map((k) => (
-          <li>
-            <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
-            {' '}<VerdictBadge verdict={k.data.verdict} locale={locale} />
-            <span class="muted"> · {nameOf(k.data.pakar)} · {T.confidence}: {confidenceLabel(k.data.confidence, locale)}</span>
-          </li>
-        ))}
-      </ul>
-    )}
+    ) : groups.map(([pid, list]) => (
+      <section aria-labelledby={`g-${pid}`} data-reveal>
+        <h2 id={`g-${pid}`}>{pid === 'abil-sudarman' ? (locale === 'id' ? 'Kasus 001: ' : 'Case 001: ') : ''}{nameOf(pid)}</h2>
+        {pid === 'abil-sudarman' && <p><a href={routePath('caseHome', locale)}>{T.caseLink} →</a></p>}
+        <ul class="stack">
+          {list.map((k) => (
+            <li data-reveal-item>
+              <VerdictBadge verdict={k.data.verdict} locale={locale} />{' '}
+              <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
+              <span class="muted"> · {T.confidence}: {confidenceLabel(k.data.confidence, locale)} · {replyStatusLabel(k.data.replyStatus, locale)}{k.data.reviewedAt && <> · {T.reviewed} <time datetime={k.data.reviewedAt.toISOString().slice(0, 10)}>{formatDateLocale(k.data.reviewedAt, locale)}</time></>}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
     {generated.length > 0 && (
       <section aria-labelledby="gen-h">
         <h2 id="gen-h">{T.genH} ({generated.length})</h2>
         <p class="muted">{T.genLead}</p>
-        <ul class="stack">
-          {generated.map((k) => (
-            <li>
-              <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
-              {' '}<VerdictBadge verdict={k.data.verdict} locale={locale} />
-              <span class="muted"> · {nameOf(k.data.pakar)}</span>
-            </li>
-          ))}
-        </ul>
+        <p><a href={routePath('claimsArchive', locale)}>{T.genH} →</a></p>
       </section>
     )}
     <p><a href={routePath('method', locale)}>{T.method} →</a></p>

@@ -52,7 +52,7 @@ export const UI: Record<Locale, UiStrings> = {
     license: 'Konten asli: CC BY 4.0. Arsip dan profil pihak: hak cipta dilindungi.',
     correctedOn: 'Dikoreksi pada',
     classification: { 'pendapat': 'Pendapat', 'fakta-dengan-bukti': 'Fakta dengan bukti', 'laporan-aduan': 'Laporan/aduan' },
-    ogImageAlt: 'Kawal Kepakaran: penjaga wayang menimbang klaim para pakar',
+    ogImageAlt: "Kawal Kepakaran: menguji klaim para pakar. Burung walet terbang di langit malam berbintang di samping lambang Kawal. Catatan dan pendapat penulis, bukan putusan.",
     nav: {},
     themeSong: {
       aria: 'Lagu tema', label: 'Lagu tema', playing: 'Memutar', song: 'Lagu', stop: 'Berhenti', openMusic: 'Buka di YouTube Music',
@@ -83,10 +83,10 @@ export const UI: Record<Locale, UiStrings> = {
     license: 'Original content: CC BY 4.0. Archive and party profiles: all rights reserved.',
     correctedOn: 'Corrected on',
     classification: { 'pendapat': 'Opinion', 'fakta-dengan-bukti': 'Fact with evidence', 'laporan-aduan': 'Report/complaint' },
-    ogImageAlt: "Kawal Kepakaran: a wayang guardian weighing experts' claims",
+    ogImageAlt: "Kawal Kepakaran: checking what experts claim. Swifts flying across a starry night sky beside the Kawal emblem. The author's notes and opinion, not a ruling.",
     nav: {
       '/pakar': 'Experts', '/klaim': 'Claim checks', '/metode': 'Method', Kasus: 'Cases',
-      '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', '/kasus/abil-sudarman/linimasa-abil': 'Abil timeline', '/arsip': 'Case archive', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
+      '/kasus/abil-sudarman': 'Case 001 overview', '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', '/kasus/abil-sudarman/linimasa-abil': 'Abil timeline', '/arsip': 'Case archive', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
       '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/manifesto': 'Manifesto', '/kasus/abil-sudarman/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
       '/disclaimer': 'Disclaimer', '/kebijakan': 'Policies', '/hak-jawab': 'Right of reply',
     },

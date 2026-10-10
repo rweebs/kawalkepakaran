@@ -123,9 +123,11 @@ describe('pages and policy', () => {
     expect(s).toContain('arsipStaticPaths');
     expect(s).toMatch(/replace\(\/&\/g/);
   });
-  it('the sitemap leaves out the /pakar and /klaim indexes while generated entries make them noindex', () => {
+  it('the sitemap lists the /pakar and /klaim hubs but leaves out generated detail pages', () => {
     const s = read('src/pages/sitemap.xml.ts');
-    expect(s).toContain('hasGenerated');
+    expect(s).toContain("{ path: '/pakar'");
+    expect(s).toContain("{ path: '/klaim'");
+    expect(s).toContain('!isGenerated(');
   });
   it('the privacy test also scans the archive folder', () => {
     expect(read('tests/privacy.test.ts')).toContain("'src/content/arsip'");

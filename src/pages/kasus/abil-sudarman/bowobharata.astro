@@ -2,9 +2,10 @@
 import { Image } from 'astro:assets';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import BowobharataStage from '../../../components/BowobharataStage.astro';
-import wide from '../../../assets/bowobharata/poster-wide.jpg';
-import krishna from '../../../assets/bowobharata/krishna.jpg';
-import sengkuni from '../../../assets/bowobharata/sengkuni.jpg';
+// The labelled copies carry the allegory/opinion footer burned into the pixels, so a saved or cropped poster keeps it.
+import wide from '../../../assets/bowobharata/labelled/poster-wide.jpg';
+import krishna from '../../../assets/bowobharata/labelled/krishna.jpg';
+import sengkuni from '../../../assets/bowobharata/labelled/sengkuni.jpg';
 import { FRAMING as FRAMING_ID, PAGE as PAGE_ID, PARVAS as PARVAS_ID, POSTERS as POSTERS_ID, parvaEvents } from '../../../lib/bowobharata';
 import { PAGE_EN, FRAMING_EN, POSTERS_EN, PARVAS_EN, BOWO_UI } from '../../../lib/bowobharata-en';
 import { CREDITS as CREDITS_ID, CREDITS_EN } from '../../../lib/bowobharata/model-credits';
@@ -12,7 +13,7 @@ import { eventUrl } from '../../../lib/linimasa';
 import { localizeEvent, eventPath, formatDateFor } from '../../../lib/linimasa-locale';
 import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
-import { localizedPath, type Locale } from '../../../i18n';
+import { routePath, localizedPath, type Locale } from '../../../i18n';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const en = locale === 'en';
@@ -25,7 +26,7 @@ const U = BOWO_UI[locale];
 const path = localizedPath('bowobharata', locale);
 const ld = { '@context': 'https://schema.org', '@type': 'WebPage', name: PAGE.title, url: `${SITE.url}${path}`, inLanguage: locale, description: PAGE.description };
 ---
-<BaseLayout title={PAGE.title} description={PAGE.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: 'Bowobharata', path }]}>
+<BaseLayout title={PAGE.title} description={PAGE.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: 'Bowobharata', path }]}>
   <BowobharataStage />
   <div class="bb-main">
     <header>

@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { CORRECTIONS } from '../lib/corrections';
+import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
+import { getPosts, getPostsEn } from '../lib/content';
+import { verdictLabel } from '../lib/verdict';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../i18n';
+
+// Everything that changed, newest first, built from the content itself: corrections, claim reviews, replies received and
+// articles published or updated. A reader who comes back can see what is new; a reader who doubts can see what was fixed.
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = routePath('updates', locale);
+const T = {
+  id: { title: 'Pembaruan', h1: 'Apa yang berubah', crumb: 'Pembaruan',
+    description: 'Catatan pembaruan Kawal Kepakaran: koreksi, peninjauan klaim, tanggapan yang diterima, dan artikel yang terbit atau diperbarui.',
+    lead: 'Semua perubahan pada situs ini, yang terbaru di atas: koreksi, peninjauan klaim, tanggapan yang diterima, dan artikel.',
+    correction: 'Koreksi', reviewed: 'Klaim ditinjau', reply: 'Tanggapan diterima', published: 'Artikel terbit', updated: 'Artikel diperbarui', empty: 'Belum ada pembaruan.', follow: 'Ikuti lewat RSS' },
+  en: { title: 'Updates', h1: 'What changed', crumb: 'Updates',
+    description: 'Kawal Kepakaran update log: corrections, claim reviews, replies received, and articles published or updated.',
+    lead: 'Every change on this site, newest first: corrections, claim reviews, replies received, and articles.',
+    correction: 'Correction', reviewed: 'Claim reviewed', reply: 'Reply received', published: 'Article published', updated: 'Article updated', empty: 'No updates yet.', follow: 'Follow by RSS' },
+}[locale];
+interface Item { date: Date; kind: string; text: string; href: string }
+const items: Item[] = [];
+for (const c of CORRECTIONS) items.push({ date: new Date(c.date), kind: T.correction, text: locale === 'en' ? c.en : c.id, href: c.path });
+const pakar = await getPakar();
+const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
+for (const k of (await getKlaim()).filter((k) => !isGenerated(k))) {
+  const claim = locale === 'en' ? k.data.claimEn : k.data.claim;
+  const href = localizedPath('claims', locale, k.id);
+  if (k.data.reviewedAt) items.push({ date: k.data.reviewedAt, kind: T.reviewed, text: `${nameOf(k.data.pakar)}: ${verdictLabel(k.data.verdict, locale)} · ${claim}`, href });
+  if (k.data.reply) items.push({ date: k.data.reply.receivedAt, kind: T.reply, text: `${nameOf(k.data.pakar)} · ${claim}`, href: `${href}#tanggapan` });
+}
+const posts = locale === 'en' ? await getPostsEn() : await getPosts();
+for (const p of posts) {
+  const published: Date = locale === 'en' ? (p.data as any).publishedDate : (p.data as any).translationDate;
+  const href = localizedPath('articles', locale, p.id);
+  items.push({ date: published, kind: T.published, text: p.data.title, href });
+  if (p.data.updatedDate) items.push({ date: p.data.updatedDate, kind: T.updated, text: p.data.title, href });
+}
+items.sort((a, b) => b.date.getTime() - a.date.getTime());
+const feedHref = locale === 'en' ? '/en/rss.xml' : '/rss.xml';
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}
+  alternates={{ id: routePath('updates', 'id'), en: routePath('updates', 'en') }}>
+  <article class="reading">
+    <h1>{T.h1}</h1>
+    <p class="lead">{T.lead}</p>
+    <p><a href={feedHref}>{T.follow}</a></p>
+    {items.length === 0 ? <p class="muted">{T.empty}</p> : (
+      <ol class="stack" data-reveal>
+        {items.map((i) => (
+          <li data-reveal-item>
+            <time datetime={i.date.toISOString().slice(0, 10)}>{formatDateLocale(i.date, locale)}</time> · <strong>{i.kind}</strong>:{' '}
+            <a href={i.href}>{i.text}</a>
+          </li>
+        ))}
+      </ol>
+    )}
+  </article>
+</BaseLayout>

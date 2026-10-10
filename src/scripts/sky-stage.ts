@@ -11,6 +11,14 @@ if (root && canvas) {
   const lastId = sectionIds[sectionIds.length - 1];
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const forceFallback = new URLSearchParams(window.location.search).has('nowebgl');
+  // Phones, slow or metered connections and low-memory devices keep the static SVG sky: three.js is ~half a megabyte of JS
+  // and a GPU-bound loop, which costs those visitors more than the animation gives them.
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  const liteDevice = Boolean(conn?.saveData)
+    || ['slow-2g', '2g', '3g'].includes(conn?.effectiveType ?? '')
+    || (typeof memory === 'number' && memory < 4)
+    || window.matchMedia('(max-width: 720px)').matches;
 
   const IDLE_FALLBACK_MS = 8000;
   const WAKE_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart', 'wheel'] as const;
@@ -35,7 +43,7 @@ if (root && canvas) {
 
   (async () => {
     try {
-      if (forceFallback) return;
+      if (forceFallback || liteDevice) { root.dataset.mode = 'fallback'; return; }
       await whenSettled();
       const { createScene } = await import('../lib/sky/AbabilScene');
       const scene: AbabilScene = createScene({ canvas, reducedMotion: reduced });

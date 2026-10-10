@@ -27,7 +27,7 @@ describe('states', () => {
     expect(stateForSection('???')).toBe('circle');
   });
   it('knows exactly the four home sections, each with a state and a camera pose', () => {
-    expect([...HOME_SECTIONS]).toEqual(['operasi', 'siapa', 'bukti', 'kontribusi', 'jawaban']);
+    expect([...HOME_SECTIONS]).toEqual(['operasi', 'bukti', 'siapa', 'kontribusi', 'jawaban']);
     for (const id of HOME_SECTIONS) expect(CAMERA_POSES[SECTION_STATE[id]]).toBeDefined();
   });
 });

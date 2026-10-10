@@ -12,3 +12,7 @@ docs/superpowers/plans/
 .wrangler
 public/thumb/
 
+
+# Social cards are rendered by scripts/make-og.mjs on every build; only the legacy card is tracked.
+public/og/*
+!public/og/kawal-og.png

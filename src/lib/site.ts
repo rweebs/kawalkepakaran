@@ -9,6 +9,9 @@ export const SITE = {
   correctionsEmail: 'rahmat.wibowo21@gmail.com',
   // Search Console token for the new domain; empty until the owner registers kawalkepakaran.org.
   googleVerification: '',
+  // Bing Webmaster token and the X handle (with @); both empty until the owner sets them, and their tags are left out until then.
+  bingVerification: '',
+  x: '',
 } as const;
 
 export const DISCLAIMER =
@@ -33,6 +36,7 @@ export const NAV_GROUPS: readonly NavEntry[] = [
   { href: '/klaim', label: 'Cek klaim' },
   { href: '/metode', label: 'Metode' },
   { label: 'Kasus', items: [
+    { href: '/kasus/abil-sudarman', label: 'Ringkasan Kasus 001' },
     { href: '/kasus/abil-sudarman/artikel', label: 'Artikel' },
     { href: '/kasus/abil-sudarman/bukti', label: 'Bukti' },
     { href: '/kasus/abil-sudarman/linimasa', label: 'Linimasa' },
@@ -61,5 +65,8 @@ export const NAV: readonly NavLink[] = NAV_GROUPS.flatMap((e) => ('items' in e ?
 /** Exact match or a child path, so /artikel is active on /artikel/x but /buku is not active on /bukti. Anchors are never active. */
 export function isActive(path: string, href: string): boolean {
   if (href.includes('#')) return false;
+  // The case overview sits in the same menu group as its own child pages, so it is only current on itself.
+  if (EXACT_ONLY.has(href)) return path === href;
   return path === href || path.startsWith(`${href}/`);
 }
+const EXACT_ONLY = new Set(['/kasus/abil-sudarman', '/en/cases/abil-sudarman']);
