@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { arsipSchema, klaimSchema, pakarSchema } from '../src/lib/schemas';
 import {
-  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, trimMedical, releaseByTrimming, statusFor, slugify, frontmatter, pakarFromParty, klaimFromDocument, klaimId, imageName,
+  parseSlugs, parseRules, partiesFor, kindFor, langFor, titleFrom, stripTitle, rewriteImages, holdFlags, trimMentions, trimMedical, releaseByTrimming, statusFor, slugify, frontmatter, pakarFromParty, klaimFromDocument, klaimId, imageName, rewriteLinks,
 } from '../scripts/arsip-lib.mjs';
 
 const SLUGS_SRC = `export const professionalBlacklistSlugs = new Set<string>([
@@ -147,6 +147,40 @@ describe('trimMentions', () => {
   it('leaves a text with no mention exactly as it was', () => {
     expect(trimMentions('Nothing here.\n').text).toBe('Nothing here.\n');
     expect(trimMentions('Nothing here.\n').removed).toBe(0);
+  });
+});
+
+describe('links inside copied posts', () => {
+  const known = new Set(['known-post']);
+  it('sends a /blog link to the archive copy when the post was copied, and to the original blog when it was not', () => {
+    const r = rewriteLinks('See [a](/blog/known-post) and [b](/blog/other-post).', known);
+    expect(r).toContain('[a](/arsip/artikel/known-post)');
+    expect(r).toContain('[b](https://www.infraloka.co.id/blog/other-post)');
+  });
+  it('turns a /in/ link into a LinkedIn address', () => {
+    expect(rewriteLinks('[p](/in/jeff-johnson-0b6a341a/)', known)).toBe('[p](https://www.linkedin.com/in/jeff-johnson-0b6a341a/)');
+  });
+  it('sends any other root-relative link to the original site', () => {
+    expect(rewriteLinks('[x](/somewhere/else)', known)).toBe('[x](https://www.infraloka.co.id/somewhere/else)');
+  });
+  it('leaves images, external links, anchors, mail links and plain relative links alone', () => {
+    const t = '![i](/img/arsip-x.webp) [e](https://example.org/a) [h](#top) [m](mailto:a@b.co) [r](notes.md)';
+    expect(rewriteLinks(t, known)).toBe(t);
+  });
+});
+
+describe('publishing', () => {
+  it('writes draft: false only when asked, and draft: true otherwise', () => {
+    const base = { title: 'T', slug: 's', lang: 'en', kind: 'somasi', status: 'dikirim', parties: [], trimmed: false, archivedAt: '2026-10-10' };
+    expect(frontmatter(base)).toContain('draft: true');
+    expect(frontmatter({ ...base, draft: false })).toContain('draft: false');
+  });
+  it('lets the profile and the claim be published too, and keeps them drafts by default', () => {
+    expect(pakarFromParty({ name: 'X', kind: 'Company', articles: ['a'] }).draft).toBe(true);
+    expect(pakarFromParty({ name: 'X', kind: 'Company', articles: ['a'], draft: false }).draft).toBe(false);
+    const art = { slug: 's', title: 'T', kind: 'somasi' };
+    expect(klaimFromDocument({ party: 'x', article: art }).draft).toBe(true);
+    expect(klaimFromDocument({ party: 'x', article: art, draft: false }).draft).toBe(false);
   });
 });
 

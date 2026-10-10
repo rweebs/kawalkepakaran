@@ -3,7 +3,7 @@ import { render } from 'astro:content';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getArsip, arsipPath, KIND_LABEL, STATUS_LABEL } from '../../../lib/arsip';
 import { getPakar } from '../../../lib/pakar';
-import { descriptionFromMarkdown } from '../../../lib/seo';
+import { descriptionFromMarkdown, truncateAtWord } from '../../../lib/seo';
 import { UI } from '../../../i18n/ui';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../i18n';
 
@@ -16,6 +16,8 @@ const p = entry.data;
 const { Content } = await render(entry);
 const path = arsipPath(entry.id, locale);
 const description = descriptionFromMarkdown(entry.body ?? '') || p.title;
+// A short title without characters that grow in HTML (& becomes &amp;), so the page title stays within the 65-character limit.
+const shortTitle = truncateAtWord(p.title.replace(/&/g, 'and').replace(/["“”]/g, ''), 48);
 const parties = (await getPakar()).filter((x) => p.parties.includes(x.id));
 const T = {
   id: { crumb: 'Arsip', marker: 'Arsip Infraloka: salinan tulisan dari blog Infraloka, disalin pada', original: 'Lihat tulisan aslinya',
@@ -28,7 +30,7 @@ const T = {
     reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply' },
 }[locale];
 ---
-<BaseLayout title={p.title} description={description} path={path} locale={locale} noindex
+<BaseLayout title={shortTitle} description={description} path={path} locale={locale} noindex
   breadcrumbs={[{ name: T.crumb, path: localizedPath('archive', locale) }, { name: p.title, path }]}>
   <article class="reading">
     <h1>{p.title}</h1>

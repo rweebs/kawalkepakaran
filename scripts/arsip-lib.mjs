@@ -146,7 +146,7 @@ export function trimMentions(text) {
 }
 
 /** Frontmatter of an archived post. Values are JSON, which is valid YAML, so quotes and colons in a title are safe. */
-export function frontmatter({ title, slug, lang, kind, status, parties, trimmed, archivedAt }) {
+export function frontmatter({ title, slug, lang, kind, status, parties, trimmed, archivedAt, draft = true }) {
   return [
     '---',
     `title: ${JSON.stringify(title)}`,
@@ -157,7 +157,7 @@ export function frontmatter({ title, slug, lang, kind, status, parties, trimmed,
     `status: ${JSON.stringify(status)}`,
     `parties: ${JSON.stringify(parties)}`,
     `trimmed: ${trimmed ? 'true' : 'false'}`,
-    'draft: true',
+    `draft: ${draft ? 'true' : 'false'}`,
     '---',
     '',
   ].join('\n');
@@ -270,7 +270,7 @@ const GENERATED_LIMITS = 'Halaman ini hanya merangkum tulisan penulis. Ia tidak 
 const GENERATED_LIMITS_EN = 'This page only summarises the author\'s posts. It does not prove what those posts say, the status comes from the source and not from a ruling, and the absence of a reply from this party is not an admission of anything.';
 
 /** The profile of a party named in the archive, for /pakar. Generated, so it says so, states the author's interest, and is a draft. */
-export function pakarFromParty({ name, kind, articles }) {
+export function pakarFromParty({ name, kind, articles, draft = true }) {
   const n = articles.length;
   return {
     name,
@@ -284,7 +284,7 @@ export function pakarFromParty({ name, kind, articles }) {
     interestEn: 'The author of this site (Rahmat Wibowo) is a party to the matters described in these posts.',
     limits: GENERATED_LIMITS,
     limitsEn: GENERATED_LIMITS_EN,
-    draft: true,
+    draft,
   };
 }
 
@@ -292,7 +292,7 @@ export function pakarFromParty({ name, kind, articles }) {
  * One claim per party and formal document. It records that the author's document exists; it does not say the party made a claim and it
  * does not say the content was checked. The fixed limits text states exactly that.
  */
-export function klaimFromDocument({ party, article }) {
+export function klaimFromDocument({ party, article, draft = true }) {
   return {
     pakar: party,
     claim: `Dokumen penulis: ${article.title}`,
@@ -306,8 +306,22 @@ export function klaimFromDocument({ party, article }) {
     replyStatus: 'belum-ada',
     articles: [article.slug],
     source: 'arsip',
-    draft: true,
+    draft,
   };
 }
 
 export const klaimId = (party, articleSlug) => `${party}--${articleSlug}`;
+
+/**
+ * Root-relative links in a copied post point at the Infraloka blog's own address space, which does not exist on this site. A /blog link
+ * goes to the archive copy when that post was copied (`copied` holds the slugs) and to the original blog otherwise; /in/ links are
+ * LinkedIn profiles; anything else root-relative goes to the original site. Images, external links, anchors and mail links stay.
+ */
+export function rewriteLinks(md, copied) {
+  return md.replace(/(?<!!)\[([^\]]*)\]\((\/[^)\s]*)\)/g, (whole, text, href) => {
+    const blog = href.match(/^\/blog\/([a-z0-9-]+)\/?(?:[?#].*)?$/);
+    if (blog) return copied.has(blog[1]) ? `[${text}](/arsip/artikel/${blog[1]})` : `[${text}](https://www.infraloka.co.id/blog/${blog[1]})`;
+    if (href.startsWith('/in/')) return `[${text}](https://www.linkedin.com${href})`;
+    return `[${text}](https://www.infraloka.co.id${href})`;
+  });
+}

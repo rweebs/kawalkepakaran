@@ -14,8 +14,12 @@ export const GET: APIRoute = async () => {
   const posts = await getPosts();
   const bukti = await getBukti();
   const postsEn = await getPostsEn();
-  const pakar = (await getPakar()).filter((p) => !isGenerated(p));
-  const klaim = (await getKlaim()).filter((k) => !isGenerated(k));
+  const allPakar = await getPakar();
+  const allKlaim = await getKlaim();
+  // Generated entries make the /pakar and /klaim indexes noindex, and a noindex page does not belong in the sitemap.
+  const hasGenerated = allPakar.some(isGenerated) || allKlaim.some(isGenerated);
+  const pakar = allPakar.filter((p) => !isGenerated(p));
+  const klaim = allKlaim.filter((k) => !isGenerated(k));
   const latest = posts.length ? iso(new Date(Math.max(...posts.map((p) => p.data.translationDate.getTime())))) : undefined;
 
   const entries: SitemapEntry[] = [
@@ -46,6 +50,12 @@ export const GET: APIRoute = async () => {
   ];
 
   // English counterparts: the paired pages, the translated timeline and the translated articles.
+  if (hasGenerated) {
+    for (const path of ['/pakar', '/klaim']) {
+      const i = entries.findIndex((e) => e.path === path);
+      if (i >= 0) entries.splice(i, 1);
+    }
+  }
   const paired = entries.flatMap((e) => {
     const route = Object.values(ROUTES).find((r) => r.id === e.path);
     return route ? [{ ...e, path: route.en }] : [];

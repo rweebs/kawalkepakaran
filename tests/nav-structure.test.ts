@@ -14,7 +14,7 @@ describe('menu structure', () => {
     const group = (label: string) => NAV_GROUPS.find((e) => e.label === label) as { items: { href: string }[] };
     expect(group('Media').items.map((i) => i.href)).toEqual(['/videos', '/tiktok', '/buku']);
     expect(group('Kasus').items.map((i) => i.href)).toEqual([
-      '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/kasus/abil-sudarman/linimasa', '/kasus/abil-sudarman/linimasa-abil', '/kasus/abil-sudarman/bowobharata',
+      '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/bukti', '/kasus/abil-sudarman/linimasa', '/kasus/abil-sudarman/linimasa-abil', '/arsip', '/kasus/abil-sudarman/bowobharata',
     ]);
     expect(group('Tentang').items.map((i) => i.href)).toEqual(['/tentang', '/manifesto', '/#kontribusi', '/disclaimer']);
     for (const e of NAV_GROUPS) if ('items' in e) expect(e.items.length, e.label).toBeGreaterThan(0);

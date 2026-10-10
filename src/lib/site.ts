@@ -37,6 +37,7 @@ export const NAV_GROUPS: readonly NavEntry[] = [
     { href: '/kasus/abil-sudarman/bukti', label: 'Bukti' },
     { href: '/kasus/abil-sudarman/linimasa', label: 'Linimasa' },
     { href: '/kasus/abil-sudarman/linimasa-abil', label: 'Linimasa Abil' },
+    { href: '/arsip', label: 'Arsip Perkara' },
     { href: '/kasus/abil-sudarman/bowobharata', label: 'Bowobharata' },
   ] },
   { label: 'Media', items: [

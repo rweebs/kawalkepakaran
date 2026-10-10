@@ -1,0 +1,17 @@
+{
+  "pakar": "traveloka",
+  "claim": "Dokumen penulis: SOMASI TERAKHIR — Study Case of Traveloka Company",
+  "claimEn": "Author's document: SOMASI TERAKHIR — Study Case of Traveloka Company",
+  "venue": "Dokumen penulis",
+  "verdict": "belum-terverifikasi",
+  "confidence": "rendah",
+  "evidence": [],
+  "limits": "Entri ini dibuat otomatis dari dokumen penulis. Ia mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.",
+  "limitsEn": "This entry was generated automatically from the author's document. It records that the document exists, not that its content has been checked or proven.",
+  "replyStatus": "belum-ada",
+  "articles": [
+    "somasi-terakhir-study-case-of-traveloka-company"
+  ],
+  "source": "arsip",
+  "draft": false
+}

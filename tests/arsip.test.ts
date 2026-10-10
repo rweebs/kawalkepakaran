@@ -112,10 +112,19 @@ describe('pages and policy', () => {
   });
   it('generated content stays out of git until the owner publishes it, and out of the CC BY license', () => {
     const ignore = read('.gitignore');
-    for (const k of ['src/content/arsip/*.md', 'src/content/pakar/generated/*.json', 'src/content/klaim/generated/*.json', 'public/img/arsip-*']) expect(ignore, k).toContain(k);
+    for (const k of ['src/content/arsip/*.md', 'src/content/pakar/generated/*.json', 'src/content/klaim/generated/*.json', 'public/img/arsip-*']) expect(ignore, k).not.toContain(k);
     expect(ignore).not.toContain('src/content/pihak');
     expect(read('LICENSE-CONTENT.md')).toMatch(/arsip|archive/i);
     expect(read('LICENSE-CONTENT.md')).toMatch(/all rights reserved|seluruh hak/i);
+  });
+  it('the archive article page keeps its title short and free of characters that grow in HTML, so the title stays within 65', () => {
+    const s = read('src/pages/arsip/artikel/[slug].astro');
+    expect(s).toContain('truncateAtWord(');
+    expect(s).toMatch(/replace\(\/&\/g/);
+  });
+  it('the sitemap leaves out the /pakar and /klaim indexes while generated entries make them noindex', () => {
+    const s = read('src/pages/sitemap.xml.ts');
+    expect(s).toContain('hasGenerated');
   });
   it('the privacy test also scans the archive folder', () => {
     expect(read('tests/privacy.test.ts')).toContain("'src/content/arsip'");

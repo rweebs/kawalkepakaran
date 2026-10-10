@@ -1,13 +1,14 @@
 // Archive importer. Reads the Infraloka blog's Professional Blacklist posts and decides what may be copied.
 // Run: node scripts/import-arsip.mjs --source /path/to/infraloka
 // Mode "report" (the default) writes tmp/arsip-hold-report.md and copies nothing.
+// Add --publish to write the entries as published (draft: false); the default is draft.
 // Mode "--write" also copies into src/content/arsip, src/content/{pakar,klaim}/generated and public/img (all git-ignored). A post held back for medical
 // content is released only by trimming the medical parts (personal data is never trimmed); what was removed is listed in
 // tmp/arsip-trim-review.md for the owner. A lone diagnosis mention is trimmed too. Images are compressed to WebP (1600 px at most).
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, imageName, klaimFromDocument, klaimId, pakarFromParty, releaseByTrimming, rewriteImages, statusFor, stripTitle, titleFrom, trimMentions,
+  frontmatter, holdFlags, kindFor, langFor, parseRules, parseSlugs, partiesFor, imageName, klaimFromDocument, klaimId, pakarFromParty, releaseByTrimming, rewriteImages, rewriteLinks, statusFor, stripTitle, titleFrom, trimMentions,
 } from './arsip-lib.mjs';
 
 const args = process.argv.slice(2);
@@ -84,6 +85,9 @@ if (args.includes('--write')) {
     return { r, text, copy: true, trimmed: false, removed: [], fromHold: false };
   });
   const eligible = planned.filter((x) => x.copy);
+  const copiedSlugs = new Set(eligible.map((x) => x.r.slug));
+  // --publish writes draft: false (published); without it every entry is a draft.
+  const draft = !args.includes('--publish');
 
   // Start from a clean slate so a re-run never leaves a post that has since been held back.
   for (const [dir, ext] of [['src/content/arsip', '.md'], ['src/content/pakar/generated', '.json'], ['src/content/klaim/generated', '.json']]) {
@@ -98,9 +102,10 @@ if (args.includes('--write')) {
   for (const x of eligible) {
     const { r } = x;
     const rewritten = rewriteImages(stripTitle(x.text), available);
+    rewritten.md = rewriteLinks(rewritten.md, copiedSlugs);
     for (const img of rewritten.images) images.add(img);
     for (const d of rewritten.dropped) droppedImages.push(`${r.slug}: ${d}`);
-    const fm = frontmatter({ title: r.title, slug: r.slug, lang: r.lang, kind: r.kind, status: r.status, parties: r.parties.map((p) => p.slug), trimmed: x.trimmed, archivedAt });
+    const fm = frontmatter({ title: r.title, slug: r.slug, lang: r.lang, kind: r.kind, status: r.status, parties: r.parties.map((p) => p.slug), trimmed: x.trimmed, archivedAt, draft });
     writeFileSync(join('src/content/arsip', `${r.slug}.md`), `${fm}${rewritten.md}`);
     for (const p of r.parties) {
       const entry = partyMap.get(p.slug) ?? { name: p.name, kind: p.kind, articles: [] };
@@ -114,12 +119,12 @@ if (args.includes('--write')) {
   let claimsWritten = 0;
   for (const [slug, party] of partyMap) {
     if (CURATED.has(slug)) continue;
-    writeFileSync(join('src/content/pakar/generated', `${slug}.json`), `${JSON.stringify(pakarFromParty(party), null, 2)}\n`);
+    writeFileSync(join('src/content/pakar/generated', `${slug}.json`), `${JSON.stringify(pakarFromParty({ ...party, draft }), null, 2)}\n`);
   }
   for (const x of eligible.filter((e) => ['somasi', 'aduan'].includes(e.r.kind))) {
     for (const party of x.r.parties.filter((q) => !CURATED.has(q.slug))) {
       const article = { slug: x.r.slug, title: x.r.title, kind: x.r.kind };
-      writeFileSync(join('src/content/klaim/generated', `${klaimId(party.slug, x.r.slug)}.json`), `${JSON.stringify(klaimFromDocument({ party: party.slug, article }), null, 2)}\n`);
+      writeFileSync(join('src/content/klaim/generated', `${klaimId(party.slug, x.r.slug)}.json`), `${JSON.stringify(klaimFromDocument({ party: party.slug, article, draft }), null, 2)}\n`);
       claimsWritten += 1;
     }
   }

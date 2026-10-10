@@ -1,0 +1,17 @@
+{
+  "pakar": "aurelia-vizal",
+  "claim": "Dokumen penulis: Letter of Demand No. 042/SOMASI/RW/VIII/2026: Aurelia Vizal (English + 中文 律師函)",
+  "claimEn": "Author's document: Letter of Demand No. 042/SOMASI/RW/VIII/2026: Aurelia Vizal (English + 中文 律師函)",
+  "venue": "Dokumen penulis",
+  "verdict": "belum-terverifikasi",
+  "confidence": "rendah",
+  "evidence": [],
+  "limits": "Entri ini dibuat otomatis dari dokumen penulis. Ia mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.",
+  "limitsEn": "This entry was generated automatically from the author's document. It records that the document exists, not that its content has been checked or proven.",
+  "replyStatus": "belum-ada",
+  "articles": [
+    "somasi-042-aurelia-vizal-letter-of-demand-english-chinese"
+  ],
+  "source": "arsip",
+  "draft": false
+}
