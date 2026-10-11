@@ -2,7 +2,7 @@
 import { findPersonalData } from '../src/lib/privacy.ts';
 
 // The author's own address, and an institutional address that the posts quote from a document (not a person's contact).
-const ALLOWED_EMAILS = new Set(['rahmat.wibowo21@gmail.com', 'rektor@itb.ac.id']);
+const ALLOWED_EMAILS = new Set(['rahmat.wibowo21@gmail.com', 'rektor@itb.ac.id', 'admin@infraloka.co.id']);
 
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"])\/\/.*$/gm, '$1');
 
