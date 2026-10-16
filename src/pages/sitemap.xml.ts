@@ -5,11 +5,10 @@ import { SITE } from '../lib/site';
 
 /**
  * When true, /sitemap.xml is a <sitemapindex> over /sitemap-pages.xml, /sitemap-claims.xml and /sitemap-articles.xml.
- * It stays a flat <urlset> of every URL until the readers of dist/sitemap.xml follow an index: scripts/check-dist.mjs
- * (findSitemapProblems wants <urlset>), scripts/indexnow.mjs (submit reads <url><loc>) and the '<urlset' greps in
- * .github/workflows/monitor.yml. The child sitemaps are published either way, so flipping this is the only change here.
+ * Every reader of dist/sitemap.xml follows an index: scripts/check-dist.mjs (findSitemapProblems), scripts/indexnow.mjs
+ * (readSitemap) and the '<urlset|<sitemapindex' greps in the workflows. Set false to go back to one flat <urlset>.
  */
-export const SITEMAP_AS_INDEX = false;
+export const SITEMAP_AS_INDEX = true;
 
 export const GET: APIRoute = async () => {
   const entries = await sitemapEntries();

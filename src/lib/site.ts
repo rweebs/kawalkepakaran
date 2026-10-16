@@ -32,7 +32,7 @@ export const SAME_AS: { author: readonly string[]; organization: readonly string
   ],
   organization: [
     SITE.repo,
-    'https://www.tiktok.com/@rweebs_', // src/lib/tiktok.ts TIKTOK_AUTHOR: the account the site's video series is published on
+    // The TikTok account is the author's personal one, so it stays on the Person only.
   ],
 };
 

@@ -1,5 +1,5 @@
 ---
-title: "Mengapa Abil Sudarman Disebut dalam Aduan No. 068/ADUAN/RW/09/2026 (Edisi Bahasa Inggris)"
+title: "Mengapa Abil Sudarman Disebut dalam Aduan No. 068/ADUAN/RW/09/2026"
 originalTitle: "Why Abil Sudarman Is Named in Complaint No. 068/ADUAN/RW/09/2026 (English Edition)"
 author: "Rahmat Wibowo"
 translationDate: 2026-10-04

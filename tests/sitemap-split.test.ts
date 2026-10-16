@@ -28,8 +28,8 @@ describe('sitemap index', () => {
     expect(src).toMatch(/artikel\/\$\{p\.id\}`[^\n]*group: 'articles'/);
     expect(read('src/pages/sitemap-[group].xml.ts')).toContain('SITEMAP_GROUPS.map');
   });
-  it('keeps /sitemap.xml a <urlset> until check-dist, indexnow and the monitor read an index', () => {
-    expect(read('src/pages/sitemap.xml.ts')).toContain('export const SITEMAP_AS_INDEX = false;');
+  it('serves /sitemap.xml as a <sitemapindex> now that check-dist, indexnow and the monitor read an index', () => {
+    expect(read('src/pages/sitemap.xml.ts')).toContain('export const SITEMAP_AS_INDEX = true;');
   });
   it('serves every sitemap file as XML and keeps it out of the search index', () => {
     const headers = read('public/_headers');
