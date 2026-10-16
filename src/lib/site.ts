@@ -25,7 +25,7 @@ export const CLASSIFICATION_LABEL = {
 } as const;
 
 // Date each static page's content last changed (used for sitemap lastmod; update when the text changes).
-export const PAGE_LASTMOD = { '/pakar': '2026-10-09', '/klaim': '2026-10-09', '/metode': '2026-10-10', '/kasus/abil-sudarman': '2026-10-09', '/hak-jawab': '2026-10-10', '/kebijakan': '2026-10-10', '/disclaimer': '2026-10-04', '/kasus/abil-sudarman/bukti': '2026-10-04', '/videos': '2026-10-04', '/buku': '2026-10-04', '/tiktok': '2026-10-05', '/tentang': '2026-10-05', '/manifesto': '2026-10-09', '/kasus/abil-sudarman/linimasa': '2026-10-05', '/kasus/abil-sudarman/linimasa-abil': '2026-10-09', '/kasus/abil-sudarman/bowobharata': '2026-10-05' } as const;
+export const PAGE_LASTMOD = { '/pakar': '2026-10-09', '/klaim': '2026-10-09', '/metode': '2026-10-10', '/kasus/abil-sudarman': '2026-10-09', '/hak-jawab': '2026-10-10', '/kebijakan': '2026-10-10', '/disclaimer': '2026-10-04', '/kasus/abil-sudarman/bukti': '2026-10-04', '/videos': '2026-10-04', '/buku': '2026-10-04', '/tiktok': '2026-10-05', '/tentang': '2026-10-05', '/manifesto': '2026-10-09', '/kasus/abil-sudarman/linimasa': '2026-10-05', '/kasus/abil-sudarman/linimasa-abil': '2026-10-09', '/kasus/abil-sudarman/bowobharata': '2026-10-05', '/usulkan': '2026-10-16' } as const;
 
 export interface NavLink { href: string; label: string }
 export type NavEntry = NavLink | { label: string; items: readonly NavLink[] };

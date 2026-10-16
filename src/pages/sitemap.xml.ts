@@ -48,6 +48,7 @@ export const GET: APIRoute = async () => {
     { path: '/kasus/abil-sudarman/bowobharata', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata'] },
     ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date })),
     { path: '/hak-jawab', lastmod: PAGE_LASTMOD['/hak-jawab'] },
+    { path: ROUTES.suggest.id, lastmod: PAGE_LASTMOD['/usulkan'] },
     { path: '/disclaimer', lastmod: PAGE_LASTMOD['/disclaimer'] },
     { path: '/kebijakan', lastmod: PAGE_LASTMOD['/kebijakan'] },
     ...posts.map((p) => {

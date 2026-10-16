@@ -205,6 +205,21 @@ export function articleSvg({ slug, locale, title }) {
   ${urlLine(`${HOST}${path}`, 580)}`, SMALL_FLOCK);
 }
 
+const day = (iso, locale) => new Intl.DateTimeFormat(locale === 'id' ? 'id-ID' : 'en-US', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+
+/** A case timeline entry (src/lib/linimasa.ts): the author's own dated record, so the card says so. */
+export function timelineSvg({ slug, locale, title, date, channel }) {
+  const kicker = locale === 'id' ? 'LINIMASA PENULIS · KASUS 001' : "AUTHOR'S TIMELINE · CASE 001";
+  const titleLines = wrapText(title, 44, 3);
+  const path = locale === 'id' ? `/kasus/abil-sudarman/linimasa/${slug}` : `/en/cases/abil-sudarman/timeline/${slug}`;
+  return frame(`${header()}
+  ${text(74, 200, 22, '#e3b341', kicker, { spacing: 2 })}
+  ${text(74, 246, 26, '#9fb0d0', `${day(date, locale)} · ${channel}`)}
+  ${lines(70, 316, 42, 54, '#f1f5f9', titleLines, { font: SERIF, weight: 700 })}
+  ${text(74, 524, 22, '#94a3b8', DISCLAIMER[locale])}
+  ${urlLine(`${HOST}${path}`, 580)}`, SMALL_FLOCK);
+}
+
 // ---- content readers ----
 
 const jsonFiles = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.json')).sort() : []);
@@ -244,8 +259,11 @@ export function articles(dir) {
   });
 }
 
-/** Every card to render: { file (relative to public/), svg }. */
-export function allCards(root = 'src/content') {
+/**
+ * Every card to render: { file (relative to public/), svg }. `timeline` holds the case timeline entries
+ * ({ idSlug, slug, locale, title, date, channel }); they live in TypeScript (src/lib/linimasa*.ts), so make-og.mjs loads them.
+ */
+export function allCards(root = 'src/content', timeline = []) {
   const cards = [];
   for (const locale of ['id', 'en']) {
     cards.push({ file: `og/site-${locale}.jpg`, svg: siteSvg(locale) });
@@ -270,5 +288,6 @@ export function allCards(root = 'src/content') {
   }
   for (const a of articles(join(root, 'posts'))) cards.push({ file: `og/artikel/${a.slug}-id.jpg`, svg: articleSvg({ slug: a.slug, locale: 'id', title: a.title }) });
   for (const a of articles(join(root, 'posts-en'))) cards.push({ file: `og/artikel/${a.slug}-en.jpg`, svg: articleSvg({ slug: a.slug, locale: 'en', title: a.title }) });
+  for (const e of timeline) cards.push({ file: `og/linimasa/${e.idSlug}-${e.locale}.jpg`, svg: timelineSvg(e) });
   return cards;
 }

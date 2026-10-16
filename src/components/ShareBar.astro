@@ -2,7 +2,8 @@
 import type { Locale } from '../i18n';
 
 // One-tap sharing for the pages people pass around. Plain links work without JavaScript; the native share sheet and copy
-// button are added by the script below. Each link carries utm_source so shares can be told apart in analytics.
+// button start hidden and are shown by the script below only when the browser supports them. Every link, including the copied
+// one, carries utm_source / utm_medium=share / utm_campaign so shares can be told apart in analytics.
 // The shared text is whatever the page passes, which always leads with the verdict label rather than the bare claim.
 interface Props { url: string; text: string; locale: Locale; campaign?: string }
 const { url, text, locale, campaign = 'kasus-001' } = Astro.props;
@@ -29,7 +30,7 @@ const T = {
   <span class="muted">{T.label}:</span>
   <button type="button" class="share-bar__btn" hidden data-share-native data-url={tagged('native')} data-text={text}>{T.native}</button>
   {links.map(([name, href]) => <a class="share-bar__btn" href={href} target="_blank" rel="noopener noreferrer">{name}</a>)}
-  <button type="button" class="share-bar__btn" data-share-copy={url} data-done={T.copied}>{T.copy}</button>
+  <button type="button" class="share-bar__btn" hidden data-share-copy={tagged('copy')} data-done={T.copied}>{T.copy}</button>
   <span role="status" class="muted" data-share-status></span>
 </nav>
 <script>
@@ -42,6 +43,7 @@ const T = {
       });
     }
     const copy = bar.querySelector<HTMLButtonElement>('[data-share-copy]');
+    if (copy && navigator.clipboard) copy.hidden = false;
     copy?.addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(copy.dataset.shareCopy ?? ''); } catch { return; }
       const s = bar.querySelector('[data-share-status]');

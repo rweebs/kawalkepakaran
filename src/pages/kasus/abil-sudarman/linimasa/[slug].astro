@@ -3,6 +3,7 @@ import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import { EVENTS } from '../../../../lib/linimasa';
 import { localizeEvent, localizedEvents, eventPath, formatDateFor, neighboursFor } from '../../../../lib/linimasa-locale';
 import { SITE } from '../../../../lib/site';
+import { timelineOg } from '../../../../lib/og';
 import { UI } from '../../../../i18n/ui';
 import { routePath, localizedPath, type Locale } from '../../../../i18n';
 
@@ -33,7 +34,7 @@ const T = {
 }[locale];
 const indexPath = localizedPath('timeline', locale);
 ---
-<BaseLayout title={event.title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
+<BaseLayout title={event.title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld} image={timelineOg(idSlug, locale, event.title)}
   breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path: indexPath }, { name: formatDateFor(event.date, locale), path }]}>
   <article class="reading linimasa-post">
     <p class="linimasa-meta"><time datetime={event.date}>{formatDateFor(event.date, locale)}</time> · {event.channel}</p>
