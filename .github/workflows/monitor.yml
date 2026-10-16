@@ -41,11 +41,11 @@ jobs:
   domains:
     # Separate from `live` so the core checks still report on their own. These fail until the owner fixes the
     # Cloudflare settings named in each error; that is intended, so the problem stays visible.
-    name: Redirect domains (www and legacy abilsudarman.my.id)
+    name: www redirect
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: www and the legacy domain must 301 to kawalkepakaran.org
+      - name: www must 301 to kawalkepakaran.org
         run: |
           set -uo pipefail
           failed=0
@@ -61,12 +61,8 @@ jobs:
             fi
           }
           WWW_FIX="in the Cloudflare zone kawalkepakaran.org add a proxied DNS record for www (for example CNAME www -> kawalkepakaran.org, orange cloud) and a Redirect Rule: hostname equals www.kawalkepakaran.org -> 301 to concat(\"https://kawalkepakaran.org\", http.request.uri.path) with the query string kept. A 522 means the www record points at an origin that does not answer."
-          LEGACY_FIX="deploy redirect-worker/ (npx wrangler deploy -c redirect-worker/wrangler.jsonc) so its route abilsudarman.my.id/* is bound, and remove the old site's custom domain or Pages project from abilsudarman.my.id so it stops serving the old copy."
           expect_redirect "https://www.kawalkepakaran.org/" "$SITE_URL/" "$WWW_FIX"
           expect_redirect "https://www.kawalkepakaran.org/en?ref=monitor" "$SITE_URL/en?ref=monitor" "$WWW_FIX"
-          # Targets follow legacyTarget() in src/lib/legacy-redirects.ts.
-          expect_redirect "https://abilsudarman.my.id/" "$SITE_URL/" "$LEGACY_FIX"
-          expect_redirect "https://abilsudarman.my.id/blog" "$SITE_URL/kasus/abil-sudarman/artikel" "$LEGACY_FIX"
           exit $failed
 
   alert:

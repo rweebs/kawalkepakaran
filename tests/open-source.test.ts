@@ -43,7 +43,7 @@ describe('open source packaging', () => {
     for (const f of ['.github/ISSUE_TEMPLATE/submit-claim.yml', '.github/ISSUE_TEMPLATE/correction-or-reply.yml', '.github/pull_request_template.md', 'docs/redirects.md']) {
       expect(existsSync(f), f).toBe(true);
     }
-    expect(read('docs/redirects.md')).toContain('redirect-worker');
-    expect(read('docs/redirects.md')).toMatch(/Search Console/);
+    expect(read('docs/redirects.md')).toContain('LEGACY_MOVES');
+    expect(read('docs/redirects.md')).not.toContain('abilsudarman.my.id');
   });
 });

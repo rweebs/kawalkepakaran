@@ -97,7 +97,7 @@ Pribadi). Lihat [Panduan bisnis](docs/business-guide.id.md#6-aturan-hukum-dan-ke
 ## Lisensi
 
 Kode: [MIT](LICENSE). Konten tulisan asli: [CC BY 4.0](LICENSE-CONTENT.md) (materi pihak ketiga seperti tangkapan layar bukti
-tetap tunduk pada ketentuan pemiliknya). Perpindahan dari domain lama dijelaskan di [docs/redirects.md](docs/redirects.md).
+tetap tunduk pada ketentuan pemiliknya). Path lama dan pengalihannya dijelaskan di [docs/redirects.md](docs/redirects.md).
 
 ## Kontak
 

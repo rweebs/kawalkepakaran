@@ -39,14 +39,12 @@ describe('live monitor', () => {
   it('accepts a urlset or a sitemap index', () => {
     expect(job(m, 'live')).toContain("grep -Eq '<urlset|<sitemapindex'");
   });
-  it('checks www and the legacy domain in their own job, with a fix in the error', () => {
+  it('checks www in its own job, with a fix in the error', () => {
     const d = job(m, 'domains');
     expect(job(m, 'live')).not.toContain('www.kawalkepakaran.org');
     expect(d).toContain('https://www.kawalkepakaran.org/');
-    expect(d).toContain('"https://abilsudarman.my.id/" "$SITE_URL/"');
-    expect(d).toContain('"https://abilsudarman.my.id/blog" "$SITE_URL/kasus/abil-sudarman/artikel"');
+    expect(d).not.toContain('abilsudarman');
     expect(d).toContain('Redirect Rule');
-    expect(d).toContain('redirect-worker');
   });
 });
 

@@ -1,4 +1,4 @@
-/** Paths of the old abilsudarman.my.id site that moved under the Kasus 001 case path. Everything else keeps its path. */
+/** Old paths that moved under the Kasus 001 case path; public/_redirects 301s them on kawalkepakaran.org. Everything else keeps its path. */
 export const LEGACY_MOVES = [
   ['/en/parties', '/en/experts'],
   ['/pihak', '/pakar'],

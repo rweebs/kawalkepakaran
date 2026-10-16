@@ -2,7 +2,6 @@ export const SITE = {
   name: 'Kawal Kepakaran',
   description: 'Kawal terbuka atas klaim para pakar: kredensial, bukti, dan hak jawab.',
   url: 'https://kawalkepakaran.org',
-  legacyUrl: 'https://abilsudarman.my.id',
   repo: 'https://github.com/rweebs/kawalkepakaran',
   author: 'Rahmat Wibowo',
   replyEmail: 'rahmat.wibowo21@gmail.com',

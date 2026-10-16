@@ -102,7 +102,7 @@ Code, and the personal data protection law). See the [Business guide](docs/busin
 ## Licenses
 
 Code: [MIT](LICENSE). Original written content: [CC BY 4.0](LICENSE-CONTENT.md) (third-party material such as evidence
-screenshots stays under its owners' terms). The move from the old domain is described in [docs/redirects.md](docs/redirects.md).
+screenshots stays under its owners' terms). Old paths and their redirects are described in [docs/redirects.md](docs/redirects.md).
 
 ## Contact
 
