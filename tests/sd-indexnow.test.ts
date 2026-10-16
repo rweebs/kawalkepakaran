@@ -35,16 +35,23 @@ describe('indexnow script', () => {
     const out = execFileSync(process.execPath, ['scripts/indexnow.mjs', 'submit', 'does-not-exist'], { env, encoding: 'utf8' });
     expect(out).toMatch(/not set/);
   });
-  it('runs in the deploy job only when the secret exists, writing the key before deploy and pinging after', () => {
+  it('writes the key file in the build itself, so both deploy paths serve it', () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+    const build: string = pkg.scripts.build;
+    expect(build).toContain('node scripts/indexnow.mjs write-key dist');
+    expect(build.indexOf('indexnow.mjs write-key')).toBeGreaterThan(build.indexOf('astro build'));
     const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
-    const job = ci.slice(ci.indexOf('  deploy:'), ci.indexOf('  smoke:'));
-    expect(job).toContain('INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}');
-    const write = job.indexOf('indexnow.mjs write-key');
-    const deploy = job.indexOf('command: deploy');
-    const submit = job.indexOf('indexnow.mjs submit');
-    expect(write).toBeGreaterThan(0);
-    expect(write).toBeLessThan(deploy);
-    expect(submit).toBeGreaterThan(deploy);
-    expect((job.match(/if: env\.INDEXNOW_KEY != ''/g) ?? []).length).toBe(2);
+    const verify = ci.slice(ci.indexOf('  verify:'), ci.indexOf('  deploy:'));
+    expect(verify).toMatch(/run: npm run build\n\s+env:\n\s+INDEXNOW_KEY: \$\{\{ secrets\.INDEXNOW_KEY \}\}/);
+  });
+  it('pings from the smoke job (any deploy path), after the live checks and only when the secret exists', () => {
+    const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+    const deploy = ci.slice(ci.indexOf('  deploy:'), ci.indexOf('  smoke:'));
+    expect(deploy).not.toContain('indexnow.mjs submit');
+    const smoke = ci.slice(ci.indexOf('  smoke:'), ci.indexOf('  rollback:'));
+    expect(smoke).toContain('INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}');
+    expect(smoke).toMatch(/if: env\.INDEXNOW_KEY != ''\n\s+continue-on-error: true\n\s+run: node scripts\/indexnow\.mjs submit dist/);
+    expect(smoke.indexOf('indexnow.mjs submit')).toBeGreaterThan(smoke.indexOf('missing header'));
+    expect(smoke).toContain("INDEXNOW_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.all && 'true' || 'false' }}");
   });
 });

@@ -1,11 +1,33 @@
 name: CI/CD
 
+# The site reaches Cloudflare (Workers static assets) one of two ways. Use one, not both:
+#
+#  1. Cloudflare's Git integration (Workers Builds), the current setup. Cloudflare builds every push to main
+#     with `npm run build` and deploys dist/ itself; nothing here deploys. `verify` still runs on every push to
+#     main (and every PR), and `smoke` checks the live site after giving Cloudflare time to publish.
+#     Enabled in the Cloudflare dashboard, not by any secret here.
+#  2. The `deploy` job below (wrangler). Runs only when the repo variable CLOUDFLARE_DEPLOY is 'true', with the
+#     secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Turn off the Git integration's auto-deploy first.
+#     Only this path is rolled back automatically when the smoke test fails (`rollback`).
+#
+# IndexNow (optional, both paths): set the secret INDEXNOW_KEY. `npm run build` then writes dist/<key>.txt.
+# With path 1 the key must ALSO be set as a build variable in the Cloudflare dashboard, because Cloudflare runs
+# its own build. After the smoke test passes, `smoke` submits the recently changed URLs, but only once
+# https://kawalkepakaran.org/<key>.txt serves the key. Run this workflow by hand with `all` to submit every URL.
+#
+# A failing smoke test on main opens (or comments on) the `site-down` issue; see scripts/site-alert.mjs.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      all:
+        description: Submit every sitemap URL to IndexNow, not only the recently changed ones
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +46,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history: the sitemap lastmod comes from the last commit date of each source file
+          # (a shallow clone falls back to a hand-kept map, which would make IndexNow miss changes).
+          fetch-depth: 0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -44,10 +70,12 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # Runs thumbnails, the Astro build, image pruning and the dist checker
-      # (disclaimer banner, links, hreflang pairs, sitemap, canonicals).
+      # Runs thumbnails, the Astro build, image pruning, the IndexNow key file (only when INDEXNOW_KEY is set)
+      # and the dist checker (disclaimer, links, hreflang, sitemap, canonicals, the noindex legal guard).
       - name: Build
         run: npm run build
+        env:
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
 
       - name: Upload dist
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -60,16 +88,13 @@ jobs:
   deploy:
     name: Deploy to Cloudflare
     needs: verify
-    # Skipped when the repo has no Cloudflare token: the site is then deployed by Cloudflare's own Git integration.
+    # Path 2 only. Skipped while CLOUDFLARE_DEPLOY is unset: the site is then deployed by Cloudflare's Git integration.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_DEPLOY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: production
       url: ${{ env.SITE_URL }}
-    env:
-      # Job-level so the IndexNow steps can test it in their `if` (secrets cannot be read there directly).
-      INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -80,17 +105,12 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # The verified build already holds the IndexNow key file when the secret is set (see the Build step).
       - name: Download the verified build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: dist
           path: dist
-
-      # IndexNow is optional: both steps run only when the INDEXNOW_KEY secret exists.
-      # The key file has to be in dist before the deploy so it is served at /<key>.txt.
-      - name: Write the IndexNow key file
-        if: env.INDEXNOW_KEY != ''
-        run: node scripts/indexnow.mjs write-key dist
 
       - name: Deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
@@ -99,26 +119,27 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
 
-      - name: Notify IndexNow
-        if: env.INDEXNOW_KEY != ''
-        # A failed ping must not mark a good deploy as failed.
-        continue-on-error: true
-        run: node scripts/indexnow.mjs submit dist
-
   smoke:
     name: Post-deploy smoke test
-    # Runs after a push to main whichever way the site is deployed (Cloudflare's Git integration or the job above).
-    needs: verify
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # Runs after a push to main whichever way the site is deployed: after `deploy` when it runs, or on its own
+    # (deploy skipped) when Cloudflare's Git integration deploys.
+    needs: [verify, deploy]
+    if: >-
+      !cancelled() && needs.verify.result == 'success' && needs.deploy.result != 'failure'
+      && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
+    env:
+      # Job-level so the IndexNow step can test it in its `if` (secrets cannot be read there directly).
+      INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+      INDEXNOW_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.all && 'true' || 'false' }}
     steps:
       - name: Check both language versions and the sitemap
         run: |
           set -euo pipefail
           sleep 90
           for path in / /en /kasus/abil-sudarman/artikel /en/cases/abil-sudarman/articles /pakar /klaim /arsip /metode /hak-jawab /sitemap.xml /robots.txt; do
-            for attempt in 1 2 3 4 5; do
+            for _ in 1 2 3 4 5; do
               code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL$path" || true)
               [ "$code" = "200" ] && break
               sleep 10
@@ -131,8 +152,93 @@ jobs:
           grep -q '<html lang="en"' <<< "$en_page"
           home_page=$(curl -fsS "$SITE_URL/")
           grep -q 'hreflang="en"' <<< "$home_page"
+          sitemap=$(curl -fsS "$SITE_URL/sitemap.xml")
+          grep -Eq '<urlset|<sitemapindex' <<< "$sitemap"
           # A bad _headers edit must not ship silently: the live security headers have to be present.
           headers=$(curl -fsSI "$SITE_URL/")
           for h in strict-transport-security content-security-policy x-content-type-options x-frame-options; do
             echo "$headers" | grep -qi "^$h:" || { echo "missing header: $h"; exit 1; }
           done
+
+      # Everything below is best effort: a failed ping or snapshot must not mark a good deploy as failed.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      # Same commit as the live site; the scripts read the changed URLs (recent <lastmod>) from its sitemap.
+      - name: Download the verified build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Notify IndexNow
+        if: env.INDEXNOW_KEY != ''
+        continue-on-error: true
+        run: node scripts/indexnow.mjs submit dist
+
+      # WebSub: tell feed readers subscribed through the hub that both RSS feeds may have new items.
+      - name: Ping WebSub
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          for feed in "$SITE_URL/rss.xml" "$SITE_URL/en/rss.xml"; do
+            code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' -X POST https://pubsubhubbub.appspot.com/ \
+              --data-urlencode 'hub.mode=publish' --data-urlencode "hub.url=$feed" || true)
+            echo "websub $feed -> $code"
+            [ "$code" = "204" ] || [ "$code" = "202" ] || [ "$code" = "200" ]
+          done
+
+      - name: Wayback Machine snapshots
+        continue-on-error: true
+        timeout-minutes: 8
+        run: node scripts/wayback.mjs dist
+
+  rollback:
+    name: Roll back the failed deploy
+    # Path 2 only: this run deployed with wrangler, so the previous Worker version is the last good one.
+    # Not attempted for the Git-integration path: this workflow neither deploys there nor holds a Cloudflare token,
+    # and it cannot tell which Worker version Cloudflare published for this commit (a later push may already have
+    # replaced it), so an automatic rollback could undo the wrong deploy. Roll back from the Cloudflare dashboard
+    # (Workers & Pages > kawalkepakaran > Deployments) instead.
+    needs: [deploy, smoke]
+    if: failure() && needs.deploy.result == 'success' && needs.smoke.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: ${{ env.SITE_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Roll back to the previous Worker version
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: rollback --yes --message smoke-test-failed-${{ github.sha }}
+
+  alert:
+    name: Open the site-down issue
+    needs: smoke
+    if: failure() && needs.smoke.result == 'failure' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: node scripts/site-alert.mjs open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
