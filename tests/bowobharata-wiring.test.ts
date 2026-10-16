@@ -10,7 +10,7 @@ describe('bowobharata page', () => {
     expect(existsSync('src/pages/kasus/abil-sudarman/bowobharata.astro')).toBe(true);
     expect(NAV.map((n) => n.href)).toContain('/kasus/abil-sudarman/bowobharata');
     expect(PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata' as keyof typeof PAGE_LASTMOD]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/kasus/abil-sudarman/bowobharata'");
+    expect(read('src/lib/sitemap-entries.ts')).toContain("path: '/kasus/abil-sudarman/bowobharata'");
   });
   it('shows the framing note before the posters, with links to the facts and the right of reply', () => {
     const p = page();

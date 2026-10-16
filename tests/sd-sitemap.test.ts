@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-const src = readFileSync('src/pages/sitemap.xml.ts', 'utf8');
+const src = readFileSync('src/lib/sitemap-entries.ts', 'utf8');
 
 describe('sitemap route', () => {
   it('always lists the /pakar and /klaim hubs (their English twins come from ROUTES)', () => {

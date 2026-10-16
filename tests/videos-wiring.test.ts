@@ -11,7 +11,7 @@ describe('videos wiring', () => {
   });
   it('has a YYYY-MM-DD lastmod and a sitemap entry', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/videos']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/videos'");
+    expect(read('src/lib/sitemap-entries.ts')).toContain("path: '/videos'");
   });
   it('registers the videos collection', () => {
     expect(read('src/content.config.ts')).toMatch(/videos:\s*defineCollection/);

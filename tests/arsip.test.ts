@@ -87,7 +87,7 @@ describe('parties live inside /pakar', () => {
   });
   it('the home page and the sitemap list only the hand-made entries', () => {
     expect(read('src/pages/index.astro')).toContain('isGenerated');
-    expect(read('src/pages/sitemap.xml.ts')).toContain('isGenerated');
+    expect(read('src/lib/sitemap-entries.ts')).toContain('isGenerated');
   });
   it('the indexes group the generated entries apart from the checked ones', () => {
     expect(read('src/pages/pakar/index.astro')).toContain('isGenerated');
@@ -124,7 +124,7 @@ describe('pages and policy', () => {
     expect(s).toMatch(/replace\(\/&\/g/);
   });
   it('the sitemap lists the /pakar and /klaim hubs but leaves out generated detail pages', () => {
-    const s = read('src/pages/sitemap.xml.ts');
+    const s = read('src/lib/sitemap-entries.ts');
     expect(s).toContain("{ path: '/pakar'");
     expect(s).toContain("{ path: '/klaim'");
     expect(s).toContain('!isGenerated(');

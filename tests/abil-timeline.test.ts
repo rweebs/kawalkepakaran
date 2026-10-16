@@ -76,7 +76,7 @@ describe('Abil Sudarman timeline pages', () => {
   });
   it('is in the Kasus menu, the sitemap and the case landing page', () => {
     expect(NAV.map((n) => n.href)).toContain('/kasus/abil-sudarman/linimasa-abil');
-    expect(read('src/pages/sitemap.xml.ts')).toContain('/kasus/abil-sudarman/linimasa-abil');
+    expect(read('src/lib/sitemap-entries.ts')).toContain('/kasus/abil-sudarman/linimasa-abil');
     expect(read('src/pages/kasus/abil-sudarman/index.astro')).toMatch(/\['abilTimeline', '[^']+'\]/);
   });
   it('shows the undated section, the limits and the right of reply', () => {

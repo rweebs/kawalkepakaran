@@ -11,7 +11,7 @@ describe('buku wiring', () => {
   });
   it('has a YYYY-MM-DD lastmod and a sitemap entry', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/buku']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/buku'");
+    expect(read('src/lib/sitemap-entries.ts')).toContain("path: '/buku'");
   });
   it('registers the buku collection', () => {
     expect(read('src/content.config.ts')).toMatch(/buku:\s*defineCollection/);

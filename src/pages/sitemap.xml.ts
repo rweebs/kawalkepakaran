@@ -1,92 +1,23 @@
-import { EVENTS, eventUrl } from '../lib/linimasa';
 import type { APIRoute } from 'astro';
-import { getBukti, getPosts, getPostsEn } from '../lib/content';
-import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
-import { ROUTES } from '../i18n';
-import { localizedEvents, localizeEvent, eventPath } from '../lib/linimasa-locale';
-import { firstImage } from '../lib/header-image';
-import { buildSitemap, type SitemapEntry } from '../lib/sitemap';
-import { PAGE_LASTMOD, SITE } from '../lib/site';
+import { sitemapEntries } from '../lib/sitemap-entries';
+import { buildSitemap, buildSitemapIndex, newestDay, sitemapFile, SITEMAP_GROUPS } from '../lib/sitemap';
+import { SITE } from '../lib/site';
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
+/**
+ * When true, /sitemap.xml is a <sitemapindex> over /sitemap-pages.xml, /sitemap-claims.xml and /sitemap-articles.xml.
+ * It stays a flat <urlset> of every URL until the readers of dist/sitemap.xml follow an index: scripts/check-dist.mjs
+ * (findSitemapProblems wants <urlset>), scripts/indexnow.mjs (submit reads <url><loc>) and the '<urlset' greps in
+ * .github/workflows/monitor.yml. The child sitemaps are published either way, so flipping this is the only change here.
+ */
+export const SITEMAP_AS_INDEX = false;
 
 export const GET: APIRoute = async () => {
-  const posts = await getPosts();
-  const bukti = await getBukti();
-  const postsEn = await getPostsEn();
-  const allPakar = await getPakar();
-  const allKlaim = await getKlaim();
-  // The /pakar and /klaim hubs are indexable (generated entries live elsewhere); generated detail pages stay noindex and out.
-  const pakar = allPakar.filter((p) => !isGenerated(p));
-  const klaim = allKlaim.filter((k) => !isGenerated(k));
-  const latest = posts.length ? iso(new Date(Math.max(...posts.map((p) => p.data.translationDate.getTime())))) : undefined;
-  // The updates page changes whenever a claim is reviewed or answered, or a post is published.
-  const updateTimes = [
-    ...posts.map((p) => p.data.translationDate.getTime()),
-    ...klaim.flatMap((k) => [k.data.reviewedAt, k.data.reply?.receivedAt].filter((d): d is Date => !!d).map((d) => d.getTime())),
-  ];
-  const updatesLastmod = updateTimes.length ? iso(new Date(Math.max(...updateTimes))) : undefined;
-
-  const entries: SitemapEntry[] = [
-    { path: '/', lastmod: latest },
-    { path: '/pakar', lastmod: PAGE_LASTMOD['/pakar'] },
-    { path: '/klaim', lastmod: PAGE_LASTMOD['/klaim'] },
-    { path: ROUTES.updates.id, lastmod: updatesLastmod },
-    { path: '/metode', lastmod: PAGE_LASTMOD['/metode'] },
-    { path: '/kasus/abil-sudarman', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman'] },
-    ...pakar.map((p) => ({ path: `/pakar/${p.id}`, lastmod: PAGE_LASTMOD['/pakar'] })),
-    ...klaim.map((k) => ({ path: `/klaim/${k.id}`, lastmod: k.data.reviewedAt?.toISOString().slice(0, 10) ?? PAGE_LASTMOD['/klaim'] })),
-    { path: '/kasus/abil-sudarman/artikel', lastmod: latest },
-    { path: '/kasus/abil-sudarman/bukti', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bukti'], images: bukti.flatMap((e) => e.data.images.map((i) => i.src)) },
-    { path: '/videos', lastmod: PAGE_LASTMOD['/videos'] },
-    { path: '/tiktok', lastmod: PAGE_LASTMOD['/tiktok'] },
-    { path: '/buku', lastmod: PAGE_LASTMOD['/buku'] },
-    { path: '/tentang', lastmod: PAGE_LASTMOD['/tentang'] },
-    { path: '/manifesto', lastmod: PAGE_LASTMOD['/manifesto'] },
-    { path: '/kasus/abil-sudarman/linimasa', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/linimasa'] },
-    { path: '/kasus/abil-sudarman/linimasa-abil', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/linimasa-abil'] },
-    { path: '/kasus/abil-sudarman/bowobharata', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman/bowobharata'] },
-    ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date })),
-    { path: '/hak-jawab', lastmod: PAGE_LASTMOD['/hak-jawab'] },
-    { path: '/disclaimer', lastmod: PAGE_LASTMOD['/disclaimer'] },
-    { path: '/kebijakan', lastmod: PAGE_LASTMOD['/kebijakan'] },
-    ...posts.map((p) => {
-      const header = firstImage(p.body ?? '');
-      return { path: `/kasus/abil-sudarman/artikel/${p.id}`, lastmod: iso(p.data.translationDate), images: header ? [header.src] : [] };
-    }),
-  ];
-
-  // English counterparts: the paired pages, the translated timeline and the translated articles.
-  const paired = entries.flatMap((e) => {
-    const route = Object.values(ROUTES).find((r) => r.id === e.path);
-    return route ? [{ ...e, path: route.en }] : [];
-  });
-  const english: SitemapEntry[] = [
-    ...paired,
-    ...pakar.map((p) => ({ path: `/en/experts/${p.id}`, lastmod: PAGE_LASTMOD['/pakar'] })),
-    ...klaim.map((k) => ({ path: `/en/claims/${k.id}`, lastmod: k.data.reviewedAt?.toISOString().slice(0, 10) ?? PAGE_LASTMOD['/klaim'] })),
-    ...localizedEvents('en').map((e) => ({ path: eventPath(e, 'en'), lastmod: e.date })),
-    ...postsEn.map((p) => {
-      const header = firstImage(p.body ?? '');
-      return { path: `/en/cases/abil-sudarman/articles/${p.id}`, lastmod: iso(p.data.publishedDate), images: header ? [header.src] : [] };
-    }),
-  ];
-  entries.push(...english);
-
-  // Tie each page to its other-language twin so the sitemap carries hreflang too.
-  const pair = new Map<string, string>();
-  for (const r of Object.values(ROUTES)) pair.set(r.id, r.en);
-  for (const p of pakar) pair.set(`/pakar/${p.id}`, `/en/experts/${p.id}`);
-  for (const k of klaim) pair.set(`/klaim/${k.id}`, `/en/claims/${k.id}`);
-  for (const e of EVENTS) pair.set(eventUrl(e), eventPath(localizeEvent(e, 'en'), 'en'));
-  for (const p of postsEn) pair.set(`/kasus/abil-sudarman/artikel/${p.id}`, `/en/cases/abil-sudarman/articles/${p.id}`);
-  const reverse = new Map([...pair].map(([id, en]) => [en, id]));
-  for (const e of entries) {
-    const en = pair.get(e.path);
-    const id = reverse.get(e.path);
-    if (en) e.alternates = { id: e.path, en };
-    else if (id) e.alternates = { id, en: e.path };
-  }
-
-  return new Response(buildSitemap(entries, SITE.url), { headers: { 'Content-Type': 'application/xml; charset=utf-8' } });
+  const entries = await sitemapEntries();
+  const xml = SITEMAP_AS_INDEX
+    ? buildSitemapIndex(SITEMAP_GROUPS.map((g) => ({
+        path: sitemapFile(g),
+        lastmod: newestDay(entries.filter((e) => (e.group ?? 'pages') === g).map((e) => e.lastmod)),
+      })), SITE.url)
+    : buildSitemap(entries, SITE.url);
+  return new Response(xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8' } });
 };
