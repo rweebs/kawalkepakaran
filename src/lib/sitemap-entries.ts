@@ -93,6 +93,7 @@ async function collect(): Promise<SitemapEntry[]> {
     { path: '/kasus/abil-sudarman/bowobharata', lastmod: pageLastmod('/kasus/abil-sudarman/bowobharata') },
     ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date, group: 'articles' as const })),
     { path: '/hak-jawab', lastmod: pageLastmod('/hak-jawab') },
+    { path: ROUTES.suggest.id, lastmod: pageLastmod('/usulkan') },
     { path: '/disclaimer', lastmod: pageLastmod('/disclaimer') },
     { path: '/kebijakan', lastmod: pageLastmod('/kebijakan') },
     ...posts.map((p) => {

@@ -35,6 +35,7 @@ export const ROUTES = {
   updates: { id: '/pembaruan', en: '/en/updates' },
   disclaimer: { id: '/disclaimer', en: '/en/disclaimer' },
   policy: { id: '/kebijakan', en: '/en/policy' },
+  suggest: { id: '/usulkan', en: '/en/suggest' },
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 

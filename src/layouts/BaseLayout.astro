@@ -14,7 +14,7 @@ import { buildTitle, truncateAtWord, breadcrumbLd } from '../lib/seo';
 import { siteOg, type OgImage } from '../lib/og';
 
 interface Crumb { name: string; path: string }
-const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrumbs, author, locale: localeProp, alternates: alternatesProp, image: imageProp, ogTitle, publishedTime, modifiedTime, section } = Astro.props as {
+const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrumbs, author, locale: localeProp, alternates: alternatesProp, image: imageProp, ogTitle, publishedTime, modifiedTime, section, feeds = [] } = Astro.props as {
   title: string; description: string; path: string; jsonLd?: object | object[]; noindex?: boolean;
   ogType?: 'website' | 'article'; breadcrumbs?: Crumb[]; author?: string;
   locale?: Locale; alternates?: Partial<Record<Locale, string>>;
@@ -24,6 +24,8 @@ const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrum
   ogTitle?: string;
   /** ISO dates for article:published_time / article:modified_time. */
   publishedTime?: string; modifiedTime?: string; section?: string;
+  /** Extra RSS feeds for this page (e.g. one expert's feed), linked after the site feed. */
+  feeds?: { title: string; href: string }[];
 };
 const locale: Locale = localeProp ?? pathLocale(path);
 const ui = UI[locale];
@@ -76,6 +78,7 @@ const lds = [
     <noscript><link rel="stylesheet" href="/nojs.css" /></noscript>
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="alternate" type="application/rss+xml" title={SITE.name} href={feedHref} />
+    {feeds.map((f) => <link rel="alternate" type="application/rss+xml" title={f.title} href={f.href} />)}
     <link rel="alternate" type="application/json" title="Kawal Kepakaran claims" href="/klaim.json" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     <meta property="og:type" content={ogType} />

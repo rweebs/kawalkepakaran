@@ -1,0 +1,37 @@
+---
+import type { Locale } from '../i18n';
+import type { Verdict } from '../lib/schemas';
+import { SITE } from '../lib/site';
+import { badgePath, embedSnippet, verdictBadge } from '../lib/badge';
+
+// "Embed" box on a hand-made claim page: the verdict badge and the HTML to paste it elsewhere, linking back to the claim.
+// Works without JavaScript (a read-only textarea to select from); the copy button is added by a bundled script.
+interface Props { id: string; verdict: Verdict; claim: string; claimUrl: string; locale: Locale }
+const { id, verdict, claim, claimUrl, locale } = Astro.props;
+const badge = verdictBadge(verdict, locale);
+const src = badgePath(id, locale);
+const alt = `${badge.label}: ${claim} — ${SITE.name}`;
+const snippet = embedSnippet({ claimUrl, badgeUrl: new URL(src, SITE.url).toString(), alt, width: badge.width, height: badge.height });
+const fieldId = `embed-${id}`;
+const T = {
+  id: { summary: 'Sematkan', lead: 'Tempel kode ini di situs atau blog Anda untuk menampilkan hasil pemeriksaan, dengan tautan ke halaman ini.', label: 'Kode HTML', preview: 'Pratinjau', copy: 'Salin kode', copied: 'Kode disalin', fallback: 'Kode sudah dipilih; tekan Ctrl+C atau Cmd+C untuk menyalin', note: 'Lencana hanya memuat nama situs dan hasil pemeriksaan yang tercatat. Hasil ini adalah catatan dan pendapat penulis, bukan putusan.' },
+  en: { summary: 'Embed', lead: 'Paste this code into your site or blog to show the result of the check, linked to this page.', label: 'HTML code', preview: 'Preview', copy: 'Copy code', copied: 'Code copied', fallback: 'Code selected; press Ctrl+C or Cmd+C to copy', note: "The badge shows only the site name and the recorded result. The result is the author's notes and opinion, not a ruling." },
+}[locale];
+---
+<details class="embed" id="sematkan">
+  <summary>{T.summary}</summary>
+  <p class="muted">{T.lead}</p>
+  <p><span class="muted">{T.preview}:</span> <img src={src} alt={alt} width={badge.width} height={badge.height} loading="lazy" decoding="async" /></p>
+  <label for={fieldId}>{T.label}</label>
+  <textarea id={fieldId} class="embed__code" readonly rows="4" spellcheck="false">{snippet}</textarea>
+  <p><button type="button" class="share-bar__btn" hidden data-copy-field={fieldId} data-done={T.copied} data-fallback={T.fallback}>{T.copy}</button> <span role="status" class="muted" data-copy-field-status></span></p>
+  <p class="muted">{T.note}</p>
+</details>
+<script>import '../scripts/copy-field';</script>
+<style>
+  .embed { margin: 1rem 0; }
+  .embed summary { cursor: pointer; font-weight: 600; }
+  .embed label { display: block; margin-bottom: 0.25rem; color: var(--text-secondary); }
+  .embed__code { display: block; width: 100%; box-sizing: border-box; padding: 0.6rem 0.8rem; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); font-family: var(--mono); font-size: 0.85rem; resize: vertical; }
+  .embed img { vertical-align: middle; }
+</style>

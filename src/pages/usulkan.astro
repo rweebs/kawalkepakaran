@@ -1,0 +1,121 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SITE } from '../lib/site';
+import { ISSUE_FORM_URL, mailtoUrl } from '../lib/suggest';
+import { localizedPath, routePath, type Locale } from '../i18n';
+
+// Indonesian page. The English page (src/pages/en/suggest.astro) passes locale="en".
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('suggest', locale);
+const T = {
+  id: {
+    title: 'Usulkan klaim pakar untuk diperiksa', h1: 'Usulkan klaim', crumb: 'Usulkan klaim',
+    description: 'Usulkan klaim seorang pakar untuk diperiksa: klaim yang disampaikan di depan publik, dengan sumber yang dapat diperiksa. Pakar yang disebut berhak menjawab.',
+    lead: 'Tahu klaim seorang pakar yang perlu diuji? Isi formulir ini, lalu lanjutkan ke GitHub atau email. Tidak ada yang dikirim ke situs ini.',
+    rulesH: 'Sebelum mengusulkan',
+    rules: [
+      'Hanya klaim yang disampaikan di depan publik: unggahan, wawancara, profil, atau materi yang bisa dilihat siapa pun.',
+      'Sertakan sumber yang dapat diperiksa: tautan ke tempat klaim disampaikan dan ke bukti, dengan tanggal pengambilan tangkapan layar.',
+      'Tanpa rumor, dan tutup NIK, nomor telepon, serta data pribadi orang yang tidak terkait.',
+      'Pakar yang disebut berhak menjawab. Usulan bukan tuduhan dan tidak otomatis dimuat; setiap klaim diperiksa dulu menurut metode situs ini.',
+    ],
+    method: 'Metode', reply: 'Hak jawab',
+    pakar: 'Nama pakar', pakarHint: 'Nama lengkap seperti yang dipakai di depan publik.',
+    claim: 'Klaim', claimHint: 'Kutip persis, beserta kapan disampaikan bila tahu.',
+    venueUrl: 'Di mana klaim disampaikan (URL)', venueHint: 'Tautan ke unggahan, video, atau halaman tempat klaim itu ada.',
+    evidence: 'Tautan bukti', evidenceHint: 'Satu tautan per baris, baik yang memperkuat maupun yang membantah.',
+    email: 'Email Anda (opsional)', emailHint: 'Hanya disertakan bila Anda mengirim lewat email. Tidak dimasukkan ke issue GitHub, yang bersifat publik.',
+    consent: 'Saya menyatakan klaim ini disampaikan di depan publik, sumbernya dapat diperiksa, data pribadi orang yang tidak terkait sudah ditutup, dan pakar yang disebut berhak menjawab.',
+    github: 'Lanjutkan ke GitHub', mail: 'Kirim lewat email',
+    githubNote: 'GitHub membuka formulir issue yang sudah terisi; Anda masih bisa menyuntingnya, menambahkan apa yang ditunjukkan dan tidak dibuktikan oleh bukti, lalu mengirimnya. Issue di GitHub dapat dibaca siapa pun.',
+    altH: 'Tanpa JavaScript, atau lebih suka cara lain',
+    altMail: 'Kirim email dengan templat', altGithub: 'Buka formulir issue di GitHub',
+  },
+  en: {
+    title: 'Suggest an expert claim to check', h1: 'Suggest a claim', crumb: 'Suggest a claim',
+    description: 'Suggest an expert claim for us to check: a claim made in public, with sources that can be checked. The expert named has the right of reply.',
+    lead: 'Know of an expert claim that should be tested? Fill in this form, then continue to GitHub or email. Nothing is sent to this site.',
+    rulesH: 'Before you suggest',
+    rules: [
+      'Only claims made in public: posts, interviews, profiles or material anyone can see.',
+      'Include sources that can be checked: links to where the claim was made and to the evidence, with the date any screenshot was taken.',
+      'No rumours, and mask ID numbers, phone numbers and other personal data of unrelated people.',
+      'The expert named has the right of reply. A suggestion is not an accusation and is not published automatically; every claim is checked first under this site\'s method.',
+    ],
+    method: 'Method', reply: 'Right of reply',
+    pakar: 'Expert name', pakarHint: 'Full name as used in public.',
+    claim: 'Claim', claimHint: 'Quote it exactly, with when it was made if you know.',
+    venueUrl: 'Where the claim was made (URL)', venueHint: 'A link to the post, video or page where the claim appears.',
+    evidence: 'Evidence links', evidenceHint: 'One link per line, whether it supports or contradicts the claim.',
+    email: 'Your email (optional)', emailHint: 'Only included if you send by email. It is not added to the GitHub issue, which is public.',
+    consent: 'I confirm this claim was made in public, its sources can be checked, personal data of unrelated people is masked, and the expert named has the right of reply.',
+    github: 'Continue to GitHub', mail: 'Send by email',
+    githubNote: 'GitHub opens a prefilled issue form; you can still edit it, add what the evidence shows and does not prove, then submit it. GitHub issues can be read by anyone.',
+    altH: 'Without JavaScript, or if you prefer another way',
+    altMail: 'Send an email from a template', altGithub: 'Open the issue form on GitHub',
+  },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading suggest">
+    <h1>{T.h1}</h1>
+    <p class="lead">{T.lead}</p>
+
+    <section aria-labelledby="aturan-h" class="notice">
+      <h2 id="aturan-h">{T.rulesH}</h2>
+      <ul>{T.rules.map((r) => <li>{r}</li>)}</ul>
+      <p><a href={routePath('method', locale)}>{T.method}</a> · <a href={routePath('reply', locale)}>{T.reply}</a></p>
+    </section>
+
+    <form class="suggest__form" data-suggest-form data-locale={locale}>
+      <label for="s-pakar">{T.pakar}</label>
+      <input id="s-pakar" name="pakar" type="text" required autocomplete="off" maxlength="200" aria-describedby="s-pakar-hint" />
+      <p id="s-pakar-hint" class="muted">{T.pakarHint}</p>
+
+      <label for="s-claim">{T.claim}</label>
+      <textarea id="s-claim" name="claim" required rows="4" maxlength="2000" aria-describedby="s-claim-hint"></textarea>
+      <p id="s-claim-hint" class="muted">{T.claimHint}</p>
+
+      <label for="s-venue">{T.venueUrl}</label>
+      <input id="s-venue" name="venueUrl" type="url" required inputmode="url" placeholder="https://" aria-describedby="s-venue-hint" />
+      <p id="s-venue-hint" class="muted">{T.venueHint}</p>
+
+      <label for="s-evidence">{T.evidence}</label>
+      <textarea id="s-evidence" name="evidence" required rows="4" maxlength="2000" placeholder="https://" aria-describedby="s-evidence-hint"></textarea>
+      <p id="s-evidence-hint" class="muted">{T.evidenceHint}</p>
+
+      <label for="s-email">{T.email}</label>
+      <input id="s-email" name="email" type="email" autocomplete="email" aria-describedby="s-email-hint" />
+      <p id="s-email-hint" class="muted">{T.emailHint}</p>
+
+      <p class="suggest__consent"><input id="s-consent" name="consent" type="checkbox" required /> <label for="s-consent">{T.consent}</label></p>
+
+      <p class="btn-row">
+        <button type="submit" class="btn" data-target="github" hidden disabled>{T.github}</button>
+        <button type="submit" class="btn" data-target="email" hidden disabled>{T.mail}</button>
+      </p>
+      <p class="muted">{T.githubNote}</p>
+    </form>
+
+    <section aria-labelledby="alt-h">
+      <h2 id="alt-h">{T.altH}</h2>
+      <ul>
+        <li><a href={mailtoUrl(undefined, locale)}>{T.altMail}</a> ({SITE.correctionsEmail})</li>
+        <li><a href={ISSUE_FORM_URL} rel="noopener noreferrer" target="_blank">{T.altGithub}</a></li>
+      </ul>
+    </section>
+  </article>
+</BaseLayout>
+<script>import '../scripts/suggest-form';</script>
+<style>
+  .suggest__form { display: grid; gap: 0.25rem; margin: 1.5rem 0; }
+  .suggest__form label { font-weight: 600; margin-top: 0.75rem; }
+  .suggest__form p.muted { margin: 0; font-size: 0.9rem; }
+  .suggest__form input[type='text'], .suggest__form input[type='url'], .suggest__form input[type='email'], .suggest__form textarea {
+    width: 100%; box-sizing: border-box; padding: 0.6rem 0.8rem; background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); font: inherit;
+  }
+  .suggest__consent { margin-top: 1rem; }
+  .suggest__consent label { font-weight: 400; }
+  .suggest .notice ul { margin: 0.5rem 0; padding-left: 1.2rem; }
+</style>
