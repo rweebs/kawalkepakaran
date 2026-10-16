@@ -28,8 +28,8 @@ describe('claimReviewLd, extended', () => {
   });
   it('ties author and publisher to the source repository', () => {
     const ld = claimReviewLd({ ...base, datePublished: '2026-10-01' });
-    expect(ld.author.sameAs).toEqual([SITE.repo]);
-    expect(ld.publisher.sameAs).toEqual([SITE.repo]);
+    expect(ld.author.sameAs).toContain(SITE.repo);
+    expect(ld.publisher.sameAs).toContain(SITE.repo);
     expect(ld.author['@type']).toBe('Organization');
   });
   it('caps the headline at 110 characters', () => {

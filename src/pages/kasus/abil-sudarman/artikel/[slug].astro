@@ -13,6 +13,7 @@ import { firstImage } from '../../../../lib/header-image';
 import { getPosts, getPostsEn } from '../../../../lib/content';
 import { SITE, CLASSIFICATION_LABEL } from '../../../../lib/site';
 import { descriptionFromMarkdown } from '../../../../lib/seo';
+import { articleHeadline, organizationLd, postAuthorLd } from '../../../../lib/schema-org';
 import { UI } from '../../../../i18n/ui';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../../i18n';
 
@@ -49,12 +50,13 @@ const L = {
 }[locale];
 const fmt = (iso: string) => formatDateLocale(new Date(iso), locale);
 const jsonLd = {
-  '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: title.slice(0, 110),
+  '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: articleHeadline(title, locale),
   description,
   datePublished: date,
-  dateModified: (p.updatedDate ?? (en ? p.publishedDate : p.translationDate)).toISOString().slice(0, 10),
-  author: { '@type': 'Person', name: p.author },
-  publisher: { '@type': 'Organization', name: SITE.name, url: SITE.url, logo: { '@type': 'ImageObject', url: new URL('/apple-touch-icon.png', SITE.url).toString() } },
+  // updatedDate (posts schema) when the post was revised; until then the page has not changed since it was published.
+  dateModified: modified,
+  author: postAuthorLd(p.author, locale),
+  publisher: organizationLd(locale),
   isAccessibleForFree: true,
   image: [new URL(og.src, SITE.url).toString()],
   url,

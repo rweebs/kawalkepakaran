@@ -3,6 +3,7 @@ import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import { EVENTS } from '../../../../lib/linimasa';
 import { localizeEvent, localizedEvents, eventPath, formatDateFor, neighboursFor } from '../../../../lib/linimasa-locale';
 import { SITE } from '../../../../lib/site';
+import { authorLd, organizationLd } from '../../../../lib/schema-org';
 import { UI } from '../../../../i18n/ui';
 import { routePath, localizedPath, type Locale } from '../../../../i18n';
 
@@ -23,7 +24,7 @@ const description = plain.length > 155 ? `${plain.slice(0, plain.lastIndexOf(' '
 const ld = {
   '@context': 'https://schema.org', '@type': 'Article', inLanguage: locale, headline: event.title.slice(0, 110), description,
   datePublished: event.date, dateModified: event.date,
-  author: { '@type': 'Person', name: SITE.author }, publisher: { '@type': 'Person', name: SITE.author },
+  author: authorLd(locale), publisher: organizationLd(locale),
   mainEntityOfPage: `${SITE.url}${path}`,
 };
 const replyPath = localizedPath('reply', locale);

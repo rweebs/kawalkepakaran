@@ -14,6 +14,28 @@ export const SITE = {
   x: '',
 } as const;
 
+// The author as one schema.org Person, named by every Article and the WebSite. Its @id lives on the about page.
+export const AUTHOR = {
+  name: SITE.author,
+  '@id': `${SITE.url}/tentang#person`,
+  url: `${SITE.url}/tentang`,
+  urlEn: `${SITE.url}/en/about`,
+} as const;
+
+// Profiles for schema.org sameAs. Only URLs already linked from this repository (source in each comment); never guessed.
+// The owner may add more verified profiles here; an empty list is fine and is left out of the output.
+export const SAME_AS: { author: readonly string[]; organization: readonly string[] } = {
+  author: [
+    'https://github.com/rweebs', // owner of SITE.repo
+    'https://www.tiktok.com/@rweebs_', // src/lib/tiktok.ts TIKTOK_AUTHOR
+    'https://www.linkedin.com/in/rahmatwi/', // src/lib/tentang.ts LINKEDIN_URL
+  ],
+  organization: [
+    SITE.repo,
+    'https://www.tiktok.com/@rweebs_', // src/lib/tiktok.ts TIKTOK_AUTHOR: the account the site's video series is published on
+  ],
+};
+
 export const DISCLAIMER =
   'Situs ini memuat pendapat dan catatan pribadi Rahmat Wibowo. Isinya bukan temuan kepolisian maupun putusan pengadilan, ' +
   'dan tidak menyatakan bahwa siapa pun yang disebut bersalah. Setiap orang berhak atas praduga tak bersalah dan hak jawab.';

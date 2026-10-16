@@ -5,6 +5,7 @@ import { localizedEvents, groupByMonthFor, formatDateFor, eventPath } from '../.
 import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
 import { localizedPath, routePath, type Locale } from '../../../i18n';
+import { pageLd } from '../../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const events = localizedEvents(locale);
@@ -23,7 +24,7 @@ const T = {
     description: "A chronological record of what Rahmat Wibowo wrote, sent and did regarding Abil Sudarman's claims, including harshly worded posts. Every entry has its own page and source links.",
   },
 }[locale];
-const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
+const ld = pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description });
 const excerpt = (s: string) => (s.length > 220 ? `${s.slice(0, s.lastIndexOf(' ', 220))}…` : s);
 ---
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.h1, path }]}>
