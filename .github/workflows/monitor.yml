@@ -8,23 +8,27 @@ on:
 permissions:
   contents: read
 
+env:
+  SITE_URL: https://kawalkepakaran.org
+
 jobs:
   live:
     name: Check the live site
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Pages, sitemap, robots and www redirect
+      - name: Pages, sitemap, robots and headers
         run: |
           set -euo pipefail
-          S=https://kawalkepakaran.org
+          S="$SITE_URL"
           for path in / /en /pakar /klaim /metode /kebijakan /sitemap.xml /rss.xml /robots.txt /manifest.webmanifest; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$S$path")
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$S$path" || true)
             echo "$path -> $code"; [ "$code" = "200" ]
           done
           # Download first, then search: grep -q exits on the first match, which kills curl mid-transfer (exit 23 under pipefail).
+          # /sitemap.xml may be a single <urlset> or a <sitemapindex> of child sitemaps.
           sitemap=$(curl -fsS -m 20 "$S/sitemap.xml")
-          grep -q '<urlset' <<< "$sitemap"
+          grep -Eq '<urlset|<sitemapindex' <<< "$sitemap"
           robots=$(curl -fsS -m 20 "$S/robots.txt")
           grep -q 'Sitemap: https://kawalkepakaran.org/sitemap.xml' <<< "$robots"
           hdrs=$(curl -sI -m 20 "$S/" | tr -d '\r')
@@ -33,5 +37,66 @@ jobs:
           done
           ct=$(curl -sI -m 20 "$S/sitemap.xml" | tr -d '\r' | grep -i '^content-type:')
           echo "$ct" | grep -qi xml
-          wwwcode=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "https://www.kawalkepakaran.org/sitemap.xml")
-          echo "www -> $wwwcode"; [ "$wwwcode" = "301" ] || [ "$wwwcode" = "200" ]
+
+  domains:
+    # Separate from `live` so the core checks still report on their own. These fail until the owner fixes the
+    # Cloudflare settings named in each error; that is intended, so the problem stays visible.
+    name: Redirect domains (www and legacy abilsudarman.my.id)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: www and the legacy domain must 301 to kawalkepakaran.org
+        run: |
+          set -uo pipefail
+          failed=0
+          # expect_redirect URL EXPECTED_LOCATION FIX_HINT
+          expect_redirect() {
+            local out code loc
+            out=$(curl -s -o /dev/null -m 20 -w '%{http_code} %{redirect_url}' "$1" || true)
+            code=${out%% *}; loc=${out#* }
+            echo "$1 -> $code $loc"
+            if { [ "$code" != "301" ] && [ "$code" != "308" ]; } || [ "$loc" != "$2" ]; then
+              echo "::error title=Redirect broken::$1 returned $code ${loc:-(no Location)}; expected 301 to $2. Fix: $3"
+              failed=1
+            fi
+          }
+          WWW_FIX="in the Cloudflare zone kawalkepakaran.org add a proxied DNS record for www (for example CNAME www -> kawalkepakaran.org, orange cloud) and a Redirect Rule: hostname equals www.kawalkepakaran.org -> 301 to concat(\"https://kawalkepakaran.org\", http.request.uri.path) with the query string kept. A 522 means the www record points at an origin that does not answer."
+          LEGACY_FIX="deploy redirect-worker/ (npx wrangler deploy -c redirect-worker/wrangler.jsonc) so its route abilsudarman.my.id/* is bound, and remove the old site's custom domain or Pages project from abilsudarman.my.id so it stops serving the old copy."
+          expect_redirect "https://www.kawalkepakaran.org/" "$SITE_URL/" "$WWW_FIX"
+          expect_redirect "https://www.kawalkepakaran.org/en?ref=monitor" "$SITE_URL/en?ref=monitor" "$WWW_FIX"
+          # Targets follow legacyTarget() in src/lib/legacy-redirects.ts.
+          expect_redirect "https://abilsudarman.my.id/" "$SITE_URL/" "$LEGACY_FIX"
+          expect_redirect "https://abilsudarman.my.id/blog" "$SITE_URL/kasus/abil-sudarman/artikel" "$LEGACY_FIX"
+          exit $failed
+
+  alert:
+    name: Open the site-down issue
+    needs: [live, domains]
+    if: failure() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: node scripts/site-alert.mjs open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+
+  recovered:
+    name: Close the site-down issue
+    needs: [live, domains]
+    if: success() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: node scripts/site-alert.mjs close
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
