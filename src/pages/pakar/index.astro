@@ -3,7 +3,10 @@ import ListFilter from '../../components/ListFilter.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
 import { PAKAR_KIND_LABEL } from '../../lib/arsip';
-import { localizedPath, routePath, type Locale } from '../../i18n';
+import VerdictBadge from '../../components/VerdictBadge.astro';
+import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
+import { SITE } from '../../lib/site';
+import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
 import { itemListLd, pageLd } from '../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('experts', locale);
@@ -12,18 +15,39 @@ const pakar = all.filter((p) => !isGenerated(p));
 const generated = all.filter(isGenerated);
 const klaim = await getKlaim();
 const count = (id: string) => klaim.filter((k) => k.data.pakar === id).length;
+const nameOf = (id: string) => all.find((p) => p.id === id)?.data.name ?? id;
+// Latest verdicts: hand-made claim checks only (archive-generated ones are left out), most recently reviewed first.
+const latest = klaim.filter((k) => !isGenerated(k))
+  .sort((a, b) => (b.data.reviewedAt?.getTime() ?? 0) - (a.data.reviewedAt?.getTime() ?? 0) || a.id.localeCompare(b.id))
+  .slice(0, 5);
 const KINDS = ['Person', 'Company', 'Group'] as const;
 const T = {
   id: { title: 'Daftar pakar yang diperiksa', h1: 'Pakar', crumb: 'Pakar',
     description: 'Profil para pakar yang klaimnya diperiksa Kawal Kepakaran: kredensial yang diverifikasi, klaim yang dicek, dan tanggapan mereka.',
     lead: 'Setiap pakar punya halaman sendiri: kredensial yang diperiksa, klaim yang diuji, dan tanggapannya.',
     empty: 'Belum ada pakar yang dimuat.', claims: 'klaim diperiksa', method: 'Lihat metode kami',
-    archiveH: 'Pihak dalam arsip', archiveLead: 'Pihak yang disebut dalam tulisan penulis di Arsip Perkara. Halaman mereka hanya merangkum tulisan itu, dengan batas dan hak jawab, dan bukan hasil pemeriksaan kredensial.', posts: 'tulisan' },
+    archiveH: 'Pihak dalam arsip', archiveLead: 'Pihak yang disebut dalam tulisan penulis di Arsip Perkara. Halaman mereka hanya merangkum tulisan itu, dengan batas dan hak jawab, dan bukan hasil pemeriksaan kredensial.', posts: 'tulisan',
+    profileH: 'Isi sebuah profil',
+    profile: ['Bidang yang dikaitkan dengan pakar itu dan ringkasan singkat kasusnya.', 'Kredensial yang diklaim, masing-masing dengan status pemeriksaan dan sumbernya.', 'Klaim yang sudah diperiksa, masing-masing dengan putusan, tingkat keyakinan, dan status hak jawab.', 'Tautan ke bukti, dan bagian "yang tidak dibuktikan" di setiap klaim.'],
+    chosenH: 'Siapa yang diperiksa',
+    chosen: 'Kawal Kepakaran menguji orang yang menjual kepakarannya kepada publik beserta klaimnya. Yang diuji adalah apa yang dikatakan dan dilakukan di depan umum, dengan sumber yang bisa dilacak. Siapa pun boleh mengirim bukti yang memperkuat atau membantah sebuah klaim lewat GitHub.',
+    chosenNote: 'Isi profil adalah catatan dan pendapat penulis, bukan putusan pengadilan. Setiap pakar yang disebut berhak menanggapi, dan tanggapannya dimuat apa adanya.',
+    methodFull: 'Metode lengkap', replyLink: 'Hak jawab', glossary: 'Arti setiap putusan',
+    latestH: 'Putusan terbaru', latestLead: 'Klaim yang paling baru ditinjau. Setiap putusan menautkan ke artinya di glosarium.', reviewed: 'ditinjau', confidence: 'Keyakinan', allClaims: 'Semua cek klaim',
+    listH: 'Daftar pakar' },
   en: { title: 'Experts we have checked', h1: 'Experts', crumb: 'Experts',
     description: "Profiles of the experts whose claims Kawal Kepakaran has checked: verified credentials, claims checked, and the experts' replies.",
     lead: 'Each expert has a page of their own: the credentials checked, the claims tested, and their reply.',
     empty: 'No experts have been listed yet.', claims: 'claims checked', method: 'See our method',
-    archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts' },
+    archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts',
+    profileH: 'What a profile contains',
+    profile: ['The field the expert is associated with and a short summary of the case.', 'The credentials claimed, each with its check status and source.', 'The claims checked, each with a verdict, a confidence level and its right-of-reply status.', 'Links to the evidence, and the "what this does not prove" part of every claim.'],
+    chosenH: 'Who is checked',
+    chosen: 'Kawal Kepakaran checks people who sell their expertise to the public, together with their claims. What is checked is what they say and do in public, with sources that can be traced. Anyone can send evidence that supports or contradicts a claim through GitHub.',
+    chosenNote: "A profile holds the author's notes and opinion, not a court ruling. Every expert named has the right to reply, and replies are published as received.",
+    methodFull: 'Full method', replyLink: 'Right of reply', glossary: 'What each verdict means',
+    latestH: 'Latest verdicts', latestLead: 'The claims reviewed most recently. Each verdict links to its meaning in the glossary.', reviewed: 'reviewed', confidence: 'Confidence', allClaims: 'All claim checks',
+    listH: 'Expert list' },
 }[locale];
 // Curated profiles only: generated archive parties are noindex and never listed in structured data.
 const ld = [
@@ -36,18 +60,45 @@ const ld = [
     <h1>{T.h1}</h1>
     <ListFilter locale={locale} />
     <p class="lead">{T.lead}</p>
+    <section aria-labelledby="profil-h">
+      <h2 id="profil-h">{T.profileH}</h2>
+      <ul>{T.profile.map((x) => <li>{x}</li>)}</ul>
+    </section>
+    <section aria-labelledby="dipilih-h">
+      <h2 id="dipilih-h">{T.chosenH}</h2>
+      <p>{T.chosen}</p>
+      <p class="muted">{T.chosenNote}</p>
+      <p><a href={routePath('method', locale)}>{T.methodFull} →</a> · <a href={routePath('reply', locale)}>{T.replyLink} →</a> · <a href={routePath('glossary', locale)}>{T.glossary} →</a> · <a href={`${SITE.repo}/blob/main/CONTRIBUTING.md`} rel="noopener noreferrer" target="_blank">GitHub</a></p>
+    </section>
+    <h2>{T.listH}</h2>
     {pakar.length === 0 ? (
       <p class="muted">{T.empty}</p>
     ) : (
       <div class="grid">
         {pakar.map((p) => (
           <a class="card card--link" href={localizedPath('experts', locale, p.id)}>
-            <h2 class="card-title">{p.data.name}</h2>
+            <h3 class="card-title">{p.data.name}</h3>
             <p>{p.data.field}</p>
             <p class="muted">{count(p.id)} {T.claims}</p>
           </a>
         ))}
       </div>
+    )}
+    {latest.length > 0 && (
+      <section aria-labelledby="terbaru-h">
+        <h2 id="terbaru-h">{T.latestH}</h2>
+        <p class="muted">{T.latestLead}</p>
+        <ul class="stack">
+          {latest.map((k) => (
+            <li>
+              <VerdictBadge verdict={k.data.verdict} locale={locale} />{' '}
+              <a href={localizedPath('claims', locale, k.id)}>{locale === 'id' ? k.data.claim : k.data.claimEn}</a>
+              <span class="muted"> · <a href={localizedPath('experts', locale, k.data.pakar)}>{nameOf(k.data.pakar)}</a> · {T.confidence}: {confidenceLabel(k.data.confidence, locale)} · {replyStatusLabel(k.data.replyStatus, locale)}{k.data.reviewedAt && <> · {T.reviewed} <time datetime={k.data.reviewedAt.toISOString().slice(0, 10)}>{formatDateLocale(k.data.reviewedAt, locale)}</time></>}</span>
+            </li>
+          ))}
+        </ul>
+        <p><a href={routePath('claims', locale)}>{T.allClaims} →</a></p>
+      </section>
     )}
     {generated.length > 0 && (
       <section aria-labelledby="arsip-h">

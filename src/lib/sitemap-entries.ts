@@ -77,6 +77,7 @@ async function collect(): Promise<SitemapEntry[]> {
     { path: '/klaim', lastmod: newestDay([pageLastmod('/klaim'), claimsLastmod]) },
     { path: ROUTES.updates.id, lastmod: updatesLastmod },
     { path: '/metode', lastmod: pageLastmod('/metode') },
+    { path: '/glosarium', lastmod: pageLastmod('/glosarium') },
     { path: '/kasus/abil-sudarman', lastmod: pageLastmod('/kasus/abil-sudarman') },
     ...pakar.map((p) => ({ path: `/pakar/${p.id}`, lastmod: expertLastmod(p), group: 'claims' as const })),
     ...klaim.map((k) => ({ path: `/klaim/${k.id}`, lastmod: claimLastmod(k), group: 'claims' as const })),

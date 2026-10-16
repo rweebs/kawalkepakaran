@@ -1,0 +1,134 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { confidenceLabel, replyStatusLabel, verdictLabel } from '../lib/verdict';
+import { UI } from '../i18n/ui';
+import { localizedPath, routePath, type Locale } from '../i18n';
+import type { Verdict } from '../lib/schemas';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const path = localizedPath('glossary', locale);
+const labels = UI[locale].classification;
+// Anchors are the same in both languages (the data keys), so a badge links to #putusan-<verdict> whatever the page language.
+// Definitions repeat the wording of the Method and Disclaimer pages; nothing here is a finding about anyone.
+const VERDICTS: Array<[Verdict, Record<Locale, string>]> = [
+  ['dikonfirmasi', { id: 'Penerbit kredensial atau sumber primer menguatkan klaim.', en: 'The credential issuer or a primary source supports the claim.' }],
+  ['sebagian', { id: 'Sebagian klaim terkuatkan, sebagian lain tidak atau berbeda dari yang dinyatakan.', en: 'Part of the claim is supported, part is not or differs from what was stated.' }],
+  ['tidak-terbukti', { id: 'Sumber yang semestinya ada sudah dicari dan tidak menguatkan klaim. Ini bukan pernyataan bahwa klaim itu pasti salah, dan hanya dipakai setelah penerbit kredensial atau sumber primer dihubungi.', en: 'The sources that should exist were sought and do not support the claim. This is not a statement that the claim is certainly false, and it is used only after the credential issuer or a primary source has been contacted.' }],
+  ['belum-terverifikasi', { id: 'Belum ada sumber yang bisa dihubungi atau ditemukan; kami menunggu konfirmasi. Klaim juga tetap pada putusan ini selama belum ada peninjau kedua.', en: 'No source could yet be reached or found; we are waiting for confirmation. A claim also stays at this verdict until a second reviewer is available.' }],
+];
+const CONFIDENCE: Array<['rendah' | 'sedang' | 'tinggi', Record<Locale, string>]> = [
+  ['rendah', { id: 'Sedikit sumber atau hanya sumber tidak langsung.', en: 'Few sources or only indirect ones.' }],
+  ['sedang', { id: 'Beberapa sumber yang saling sejalan.', en: 'Several sources that agree.' }],
+  ['tinggi', { id: 'Sumber primer dan konfirmasi langsung.', en: 'Primary sources and direct confirmation.' }],
+];
+const CLASSES: Array<['pendapat' | 'fakta-dengan-bukti' | 'laporan-aduan', Record<Locale, string>]> = [
+  ['pendapat', { id: 'Penilaian pribadi penulis.', en: "The author's personal assessment." }],
+  ['fakta-dengan-bukti', { id: 'Pernyataan faktual yang disertai sumber atau bukti yang dapat diperiksa.', en: 'A factual statement accompanied by a source or evidence that can be checked.' }],
+  ['laporan-aduan', { id: 'Laporan atau surat resmi yang disampaikan penulis; bukan temuan lembaga yang menerimanya.', en: 'A report or official letter submitted by the author; not a finding of the body that received it.' }],
+];
+const REPLY: Array<['belum-ada' | 'diterima' | 'dipublikasikan', Record<Locale, string>]> = [
+  ['belum-ada', { id: 'Situs ini belum menerima tanggapan dari pihak yang disebut atas klaim tersebut.', en: 'This site has not received a reply from the party named about the claim.' }],
+  ['diterima', { id: 'Situs ini sudah menerima tanggapan dari pihak yang disebut.', en: 'This site has received a reply from the party named.' }],
+  ['dipublikasikan', { id: 'Tanggapan dimuat apa adanya, tanpa penyuntingan, di halaman klaim.', en: 'The reply is published as received, unedited, on the claim page.' }],
+];
+const T = {
+  id: {
+    title: 'Glosarium: putusan, keyakinan, dan label', h1: 'Glosarium', crumb: 'Glosarium',
+    description: 'Arti istilah di Kawal Kepakaran: empat putusan, tingkat keyakinan, label klasifikasi tulisan, dan status hak jawab, masing-masing dengan tautan sendiri.',
+    lead: 'Arti setiap label yang dipakai di halaman klaim, profil pakar, dan artikel. Setiap istilah punya tautan sendiri, jadi lencana putusan di halaman lain mengarah langsung ke artinya.',
+    verdictsH: 'Empat putusan', verdictsLead: 'Putusan adalah hasil pemeriksaan sebuah klaim menurut metode situs ini. Isinya catatan dan pendapat penulis, bukan putusan pengadilan.',
+    confidenceH: 'Tingkat keyakinan', confidenceLead: 'Setiap putusan disertai tingkat keyakinan, yang menunjukkan seberapa kuat sumber di baliknya.',
+    classH: 'Label klasifikasi tulisan', classLead: 'Setiap artikel diberi satu label, agar pembaca tahu jenis tulisan yang sedang dibaca.',
+    replyH: 'Status hak jawab', replyLead: 'Setiap klaim mencatat apakah pihak yang disebut sudah menanggapi.',
+    otherH: 'Istilah lain',
+    limitsT: 'Yang tidak dibuktikan', limits: 'Bagian di setiap klaim dan bukti yang menulis batas: apa yang tidak dapat disimpulkan dari bukti itu.',
+    reviewedT: 'Terakhir ditinjau', reviewed: 'Tanggal terakhir kali sebuah klaim diperiksa ulang oleh penulis.',
+    replyT: 'Hak jawab', reply: 'Hak setiap pihak yang disebut untuk menanggapi, mengoreksi, atau menambahkan konteks.',
+    anchor: 'Tautan ke istilah ini', method: 'Metode lengkap', disclaimer: 'Disclaimer', claims: 'Lihat klaim yang sudah diperiksa',
+  },
+  en: {
+    title: 'Glossary: verdicts, confidence and labels', h1: 'Glossary', crumb: 'Glossary',
+    description: 'What the terms on Kawal Kepakaran mean: the four verdicts, confidence levels, article classification labels and right-of-reply status, each with its own link.',
+    lead: 'The meaning of every label used on claim pages, expert profiles and articles. Each term has its own link, so a verdict badge elsewhere on the site leads straight to its meaning.',
+    verdictsH: 'The four verdicts', verdictsLead: "A verdict is the result of checking a claim under this site's method. It is the author's notes and opinion, not a court ruling.",
+    confidenceH: 'Confidence levels', confidenceLead: 'Every verdict carries a confidence level, which shows how strong the sources behind it are.',
+    classH: 'Article classification labels', classLead: 'Every article carries one label, so readers know what kind of writing they are reading.',
+    replyH: 'Right-of-reply status', replyLead: 'Every claim records whether the party named has replied.',
+    otherH: 'Other terms',
+    limitsT: 'What this does not prove', limits: 'The part of every claim and evidence item that states its limits: what cannot be concluded from that evidence.',
+    reviewedT: 'Last reviewed', reviewed: 'The date the author last checked a claim again.',
+    replyT: 'Right of reply', reply: 'The right of every party named to respond, correct or add context.',
+    anchor: 'Link to this term', method: 'Full method', disclaimer: 'Disclaimer', claims: 'See the claims already checked',
+  },
+}[locale];
+---
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+  <article class="reading glosarium">
+    <h1>{T.h1}</h1>
+    <p class="lead">{T.lead}</p>
+    <nav aria-label={T.h1}>
+      <ul>
+        <li><a href="#putusan">{T.verdictsH}</a></li>
+        <li><a href="#keyakinan">{T.confidenceH}</a></li>
+        <li><a href="#klasifikasi">{T.classH}</a></li>
+        <li><a href="#hak-jawab">{T.replyH}</a></li>
+        <li><a href="#lainnya">{T.otherH}</a></li>
+      </ul>
+    </nav>
+
+    <section aria-labelledby="putusan-h" id="putusan">
+      <h2 id="putusan-h">{T.verdictsH}</h2>
+      <p>{T.verdictsLead}</p>
+      <dl>
+        {VERDICTS.map(([k, d]) => (
+          <><dt id={`putusan-${k}`}><span class="badge badge--blue verdict" data-verdict={k}>{verdictLabel(k, locale)}</span><a class="anchor" href={`#putusan-${k}`} aria-label={T.anchor}>#</a></dt><dd>{d[locale]}</dd></>
+        ))}
+      </dl>
+    </section>
+
+    <section aria-labelledby="keyakinan-h" id="keyakinan">
+      <h2 id="keyakinan-h">{T.confidenceH}</h2>
+      <p>{T.confidenceLead}</p>
+      <dl>
+        {CONFIDENCE.map(([k, d]) => (
+          <><dt id={`keyakinan-${k}`}><strong>{confidenceLabel(k, locale)}</strong><a class="anchor" href={`#keyakinan-${k}`} aria-label={T.anchor}>#</a></dt><dd>{d[locale]}</dd></>
+        ))}
+      </dl>
+    </section>
+
+    <section aria-labelledby="klasifikasi-h" id="klasifikasi">
+      <h2 id="klasifikasi-h">{T.classH}</h2>
+      <p>{T.classLead}</p>
+      <dl>
+        {CLASSES.map(([k, d]) => (
+          <><dt id={`klasifikasi-${k}`}><span class="badge badge--blue">{labels[k]}</span><a class="anchor" href={`#klasifikasi-${k}`} aria-label={T.anchor}>#</a></dt><dd>{d[locale]}</dd></>
+        ))}
+      </dl>
+    </section>
+
+    <section aria-labelledby="hak-jawab-h" id="hak-jawab">
+      <h2 id="hak-jawab-h">{T.replyH}</h2>
+      <p>{T.replyLead} <a href={routePath('reply', locale)}>{T.replyT} →</a></p>
+      <dl>
+        {REPLY.map(([k, d]) => (
+          <><dt id={`hak-jawab-${k}`}><strong>{replyStatusLabel(k, locale)}</strong><a class="anchor" href={`#hak-jawab-${k}`} aria-label={T.anchor}>#</a></dt><dd>{d[locale]}</dd></>
+        ))}
+      </dl>
+    </section>
+
+    <section aria-labelledby="lainnya-h" id="lainnya">
+      <h2 id="lainnya-h">{T.otherH}</h2>
+      <dl>
+        <dt id="yang-tidak-dibuktikan"><strong>{T.limitsT}</strong><a class="anchor" href="#yang-tidak-dibuktikan" aria-label={T.anchor}>#</a></dt><dd>{T.limits}</dd>
+        <dt id="terakhir-ditinjau"><strong>{T.reviewedT}</strong><a class="anchor" href="#terakhir-ditinjau" aria-label={T.anchor}>#</a></dt><dd>{T.reviewed}</dd>
+        <dt id="hak-jawab-istilah"><strong>{T.replyT}</strong><a class="anchor" href="#hak-jawab-istilah" aria-label={T.anchor}>#</a></dt><dd>{T.reply} <a href={routePath('reply', locale)}>{T.replyT} →</a></dd>
+      </dl>
+    </section>
+
+    <p><a href={routePath('method', locale)}>{T.method} →</a> · <a href={routePath('disclaimer', locale)}>{T.disclaimer} →</a> · <a href={routePath('claims', locale)}>{T.claims} →</a></p>
+  </article>
+</BaseLayout>
+<style>
+  .glosarium dt { margin-top: 1rem; }
+  .glosarium dd { margin: 0.25rem 0 0; }
+  .glosarium dt:target { outline: 1px dashed var(--text-accent); outline-offset: 4px; }
+</style>

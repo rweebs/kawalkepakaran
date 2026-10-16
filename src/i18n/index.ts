@@ -18,6 +18,7 @@ export const ROUTES = {
   claimsArchive: { id: '/klaim/arsip', en: '/en/claims/archive' },
   expertsArchive: { id: '/pakar/arsip', en: '/en/experts/archive' },
   method: { id: '/metode', en: '/en/method' },
+  glossary: { id: '/glosarium', en: '/en/glossary' },
   caseHome: { id: '/kasus/abil-sudarman', en: '/en/cases/abil-sudarman' },
   articles: { id: '/kasus/abil-sudarman/artikel', en: '/en/cases/abil-sudarman/articles' },
   evidence: { id: '/kasus/abil-sudarman/bukti', en: '/en/cases/abil-sudarman/evidence' },

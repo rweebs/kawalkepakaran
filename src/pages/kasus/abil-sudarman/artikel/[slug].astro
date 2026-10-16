@@ -8,11 +8,11 @@ import VerdictBadge from '../../../../components/VerdictBadge.astro';
 import ShareBar from '../../../../components/ShareBar.astro';
 import { articleOg } from '../../../../lib/og';
 import { isGenerated, klaimForPakar } from '../../../../lib/pakar';
-import { replyStatusLabel, verdictLabel } from '../../../../lib/verdict';
+import { confidenceLabel, replyStatusLabel, verdictLabel } from '../../../../lib/verdict';
 import { firstImage } from '../../../../lib/header-image';
 import { getPosts, getPostsEn } from '../../../../lib/content';
 import { SITE, CLASSIFICATION_LABEL } from '../../../../lib/site';
-import { descriptionFromMarkdown } from '../../../../lib/seo';
+import { descriptionFromMarkdown, distinctDescriptions, distinctTitles } from '../../../../lib/seo';
 import { articleHeadline, organizationLd, postAuthorLd } from '../../../../lib/schema-org';
 import { UI } from '../../../../i18n/ui';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../../../i18n';
@@ -28,10 +28,15 @@ const header = firstImage(entry.body ?? '');
 const en = locale === 'en';
 const title: string = p.title;
 const originalTitle: string = en ? p.title : p.originalTitle;
-const description = descriptionFromMarkdown(entry.body ?? '')
+const describe = (e: any) => descriptionFromMarkdown(e.body ?? '')
   || (en
-    ? `${p.title}, by ${p.author}. ${UI.en.classification[p.classification as keyof typeof UI.en.classification]}.`
-    : `Terjemahan Bahasa Indonesia dari “${p.originalTitle}” oleh ${p.author}. ${CLASSIFICATION_LABEL[p.classification as keyof typeof CLASSIFICATION_LABEL]}.`);
+    ? `${e.data.title}, by ${e.data.author}. ${UI.en.classification[e.data.classification as keyof typeof UI.en.classification]}.`
+    : `Terjemahan Bahasa Indonesia dari “${e.data.originalTitle}” oleh ${e.data.author}. ${CLASSIFICATION_LABEL[e.data.classification as keyof typeof CLASSIFICATION_LABEL]}.`);
+// Two posts can open with the same paragraph or share a title up to the cut, so the <title> and description are made unique
+// across the posts of this language (a number on colliding titles, the title in front of a shared description).
+const siblings = (en ? await getPostsEn() : await getPosts()).map((e: any) => ({ id: e.id, title: e.data.title as string, description: describe(e) }));
+const pageTitle = distinctTitles(siblings, SITE.name).get(entry.id) ?? title;
+const description = distinctDescriptions(siblings).get(entry.id) ?? describe(entry);
 const path = localizedPath('articles', locale, entry.id);
 const url = new URL(path, SITE.url).toString();
 const date = (en ? p.publishedDate : p.translationDate).toISOString().slice(0, 10);
@@ -40,12 +45,16 @@ const date = (en ? p.publishedDate : p.translationDate).toISOString().slice(0, 1
 const og = articleOg(entry.id, locale, title);
 const modified = (p.updatedDate ?? (en ? p.publishedDate : p.translationDate)).toISOString().slice(0, 10);
 const aboutAbil = (p.subjects ?? []).includes('Abil Sudarman');
-const related = aboutAbil ? (await klaimForPakar('abil-sudarman')).filter((k) => !isGenerated(k)) : [];
+// The case's hand-made claim checks (generated archive claims are left out); listed under every article in the case.
+const caseClaims = (await klaimForPakar('abil-sudarman')).filter((k) => !isGenerated(k));
+const related = aboutAbil ? caseClaims : [];
 const authorIsParty = (p.subjects ?? []).includes('Rahmat Wibowo') || aboutAbil;
 const L = {
   id: { interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara ini.', claims: 'Hasil cek klaim terkait', reply: 'Setiap pihak yang disebut berhak menjawab lewat', replyLabel: 'hak jawab',
+    relatedClaims: 'Klaim terkait', relatedClaimsLead: 'Klaim dalam Kasus 001 yang sudah diperiksa, masing-masing dengan putusan, tingkat keyakinan, dan status hak jawab.', confidence: 'Keyakinan', expert: 'Profil pakar',
     published: 'Terbit', updated: 'Diperbarui', next: 'Lanjut', caseHub: 'Kasus 001: ringkasan dan semua klaim', evidence: 'Bukti', claimsAll: 'Cek klaim', share: 'Kawal Kepakaran' },
   en: { interest: 'The author of this site (Rahmat Wibowo) is a party to this matter.', claims: 'Related claim checks', reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply',
+    relatedClaims: 'Related claims', relatedClaimsLead: 'Claims in Case 001 that have been checked, each with a verdict, a confidence level and its right-of-reply status.', confidence: 'Confidence', expert: 'Expert profile',
     published: 'Published', updated: 'Updated', next: 'Continue', caseHub: 'Case 001: overview and all claims', evidence: 'Evidence', claimsAll: 'Claim checks', share: 'Kawal Kepakaran' },
 }[locale];
 const fmt = (iso: string) => formatDateLocale(new Date(iso), locale);
@@ -68,7 +77,7 @@ const crumbName = en ? 'Articles' : 'Artikel';
 const caseCrumb = { name: en ? 'Case 001' : 'Kasus 001', path: routePath('caseHome', locale) };
 const alternates = { id: localizedPath('articles', 'id', entry.id), en: localizedPath('articles', 'en', entry.id) };
 ---
-<BaseLayout title={title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} image={og} ogType="article" publishedTime={date} modifiedTime={modified} section={crumbName} author={p.author} breadcrumbs={[caseCrumb, { name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
+<BaseLayout title={pageTitle} ogTitle={pageTitle !== title ? title : undefined} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} image={og} ogType="article" publishedTime={date} modifiedTime={modified} section={crumbName} author={p.author} breadcrumbs={[caseCrumb, { name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>
   <article class="reading has-header">
     <PostHeader title={title} slug={entry.id} image={header} />
     <ClassificationBadge value={p.classification} locale={locale} />
@@ -84,6 +93,22 @@ const alternates = { id: localizedPath('articles', 'id', entry.id), en: localize
     </aside>
     <TranslationNotice originalTitle={originalTitle} originalUrl={p.originalUrl} author={p.author} locale={locale} slug={entry.id} original={en ? p.original : true} />
     <div class="prose"><Content /></div>
+    {caseClaims.length > 0 && (
+      <section aria-labelledby="klaim-terkait-h" id="klaim-terkait">
+        <h2 id="klaim-terkait-h">{L.relatedClaims}</h2>
+        <p class="muted">{L.relatedClaimsLead}</p>
+        <ul class="stack">
+          {caseClaims.map((k) => (
+            <li>
+              <a href={localizedPath('claims', locale, k.id)}>{en ? k.data.claimEn : k.data.claim}</a>
+              {' '}<VerdictBadge verdict={k.data.verdict} locale={locale} />
+              <span class="muted"> · {L.confidence}: {confidenceLabel(k.data.confidence, locale)} · {replyStatusLabel(k.data.replyStatus, locale)}</span>
+            </li>
+          ))}
+        </ul>
+        <p><a href={localizedPath('experts', locale, 'abil-sudarman')}>{L.expert}: Abil Sudarman →</a></p>
+      </section>
+    )}
     <ShareBar url={url} text={`${title} · ${L.share}`} locale={locale} />
     <p class="notice">{L.reply} <a href={routePath('reply', locale)}>{L.replyLabel}</a>.</p>
     <nav aria-label={L.next}>
