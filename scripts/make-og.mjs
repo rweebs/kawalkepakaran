@@ -4,6 +4,9 @@ import sharp from 'sharp';
 import { mkdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { allCards, siteSvg, MAX_BYTES } from './og-lib.mjs';
+// The case timeline is TypeScript without runtime imports; Node 22 strips the types on import.
+import { EVENTS } from '../src/lib/linimasa.ts';
+import { CHANNEL_EN, EVENTS_EN } from '../src/lib/linimasa-en.ts';
 
 const OUT = 'public';
 
@@ -11,7 +14,11 @@ const OUT = 'public';
 mkdirSync('public/og', { recursive: true });
 await sharp(Buffer.from(siteSvg('id'))).png({ compressionLevel: 9 }).toFile('public/og/kawal-og.png');
 
-const cards = allCards();
+const timeline = EVENTS.flatMap((e) => [
+  { idSlug: e.slug, slug: e.slug, locale: 'id', title: e.title, date: e.date, channel: e.channel },
+  { idSlug: e.slug, slug: EVENTS_EN[e.slug].slug, locale: 'en', title: EVENTS_EN[e.slug].title, date: e.date, channel: CHANNEL_EN[e.channel] ?? e.channel },
+]);
+const cards = allCards('src/content', timeline);
 let max = 0;
 const tooBig = [];
 for (const { file, svg } of cards) {

@@ -2,7 +2,6 @@ export const SITE = {
   name: 'Kawal Kepakaran',
   description: 'Kawal terbuka atas klaim para pakar: kredensial, bukti, dan hak jawab.',
   url: 'https://kawalkepakaran.org',
-  legacyUrl: 'https://abilsudarman.my.id',
   repo: 'https://github.com/rweebs/kawalkepakaran',
   author: 'Rahmat Wibowo',
   replyEmail: 'rahmat.wibowo21@gmail.com',
@@ -14,6 +13,28 @@ export const SITE = {
   x: '',
 } as const;
 
+// The author as one schema.org Person, named by every Article and the WebSite. Its @id lives on the about page.
+export const AUTHOR = {
+  name: SITE.author,
+  '@id': `${SITE.url}/tentang#person`,
+  url: `${SITE.url}/tentang`,
+  urlEn: `${SITE.url}/en/about`,
+} as const;
+
+// Profiles for schema.org sameAs. Only URLs already linked from this repository (source in each comment); never guessed.
+// The owner may add more verified profiles here; an empty list is fine and is left out of the output.
+export const SAME_AS: { author: readonly string[]; organization: readonly string[] } = {
+  author: [
+    'https://github.com/rweebs', // owner of SITE.repo
+    'https://www.tiktok.com/@rweebs_', // src/lib/tiktok.ts TIKTOK_AUTHOR
+    'https://www.linkedin.com/in/rahmatwi/', // src/lib/tentang.ts LINKEDIN_URL
+  ],
+  organization: [
+    SITE.repo,
+    // The TikTok account is the author's personal one, so it stays on the Person only.
+  ],
+};
+
 export const DISCLAIMER =
   'Situs ini memuat pendapat dan catatan pribadi Rahmat Wibowo. Isinya bukan temuan kepolisian maupun putusan pengadilan, ' +
   'dan tidak menyatakan bahwa siapa pun yang disebut bersalah. Setiap orang berhak atas praduga tak bersalah dan hak jawab.';
@@ -24,8 +45,9 @@ export const CLASSIFICATION_LABEL = {
   'laporan-aduan': 'Laporan/aduan',
 } as const;
 
-// Date each static page's content last changed (used for sitemap lastmod; update when the text changes).
-export const PAGE_LASTMOD = { '/pakar': '2026-10-09', '/klaim': '2026-10-09', '/metode': '2026-10-10', '/kasus/abil-sudarman': '2026-10-09', '/hak-jawab': '2026-10-10', '/kebijakan': '2026-10-10', '/disclaimer': '2026-10-04', '/kasus/abil-sudarman/bukti': '2026-10-04', '/videos': '2026-10-04', '/buku': '2026-10-04', '/tiktok': '2026-10-05', '/tentang': '2026-10-05', '/manifesto': '2026-10-09', '/kasus/abil-sudarman/linimasa': '2026-10-05', '/kasus/abil-sudarman/linimasa-abil': '2026-10-09', '/kasus/abil-sudarman/bowobharata': '2026-10-05' } as const;
+// Date each static page's content last changed. The sitemap now takes the git date of each page's source files
+// (src/lib/sitemap-entries.ts) and uses these only as a floor and as the fallback when git is missing or the clone is shallow.
+export const PAGE_LASTMOD = { '/pakar': '2026-10-09', '/klaim': '2026-10-09', '/metode': '2026-10-10', '/glosarium': '2026-10-16', '/kasus/abil-sudarman': '2026-10-09', '/hak-jawab': '2026-10-10', '/kebijakan': '2026-10-10', '/disclaimer': '2026-10-04', '/kasus/abil-sudarman/bukti': '2026-10-04', '/videos': '2026-10-04', '/buku': '2026-10-04', '/tiktok': '2026-10-05', '/tentang': '2026-10-05', '/manifesto': '2026-10-09', '/kasus/abil-sudarman/linimasa': '2026-10-05', '/kasus/abil-sudarman/linimasa-abil': '2026-10-09', '/kasus/abil-sudarman/bowobharata': '2026-10-05', '/usulkan': '2026-10-16' } as const;
 
 export interface NavLink { href: string; label: string }
 export type NavEntry = NavLink | { label: string; items: readonly NavLink[] };

@@ -23,5 +23,8 @@ export const pakarOg = (id: string, locale: Locale, name: string): OgImage =>
 export const caseOg = (locale: Locale): OgImage =>
   card(`/og/kasus-001-${locale}.jpg`, locale === 'id' ? 'Kasus 001: Abil Sudarman. Catatan dan pendapat penulis, bukan putusan.' : "Case 001: Abil Sudarman. The author's notes and opinion, not a ruling.");
 
+/** Case timeline entries get a text card with their date and title, keyed by the Indonesian slug in both languages. */
+export const timelineOg = (idSlug: string, locale: Locale, title: string): OgImage => card(`/og/linimasa/${idSlug}-${locale}.jpg`, title);
+
 /** Articles get a text card with their title; the in-page header image is never reused as the preview. */
 export const articleOg = (slug: string, locale: Locale, title: string): OgImage => card(`/og/artikel/${slug}-${locale}.jpg`, title);

@@ -50,7 +50,7 @@ describe('tiktok wiring', () => {
   });
   it('has a lastmod, a sitemap entry and a registered collection', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/tiktok']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/tiktok'");
+    expect(read('src/lib/sitemap-entries.ts')).toContain("path: '/tiktok'");
     expect(read('src/content.config.ts')).toMatch(/tiktok:\s*defineCollection/);
   });
   it('allows only the exact tiktok.com frame source, with no wildcard', () => {

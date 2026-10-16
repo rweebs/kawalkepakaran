@@ -67,7 +67,7 @@ describe('linimasa wiring', () => {
   });
   it('has a lastmod and lists the index and every entry in the sitemap', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/kasus/abil-sudarman/linimasa']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    const sitemap = read('src/pages/sitemap.xml.ts');
+    const sitemap = read('src/lib/sitemap-entries.ts');
     expect(sitemap).toContain("path: '/kasus/abil-sudarman/linimasa'");
     expect(sitemap).toContain('EVENTS.map');
   });

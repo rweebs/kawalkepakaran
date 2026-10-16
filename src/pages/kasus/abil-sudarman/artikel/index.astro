@@ -5,6 +5,7 @@ import PostThumb from '../../../../components/PostThumb.astro';
 import { firstImage } from '../../../../lib/header-image';
 import { getPosts, getPostsEn } from '../../../../lib/content';
 import { routePath, formatDateLocale, localizedPath, type Locale } from '../../../../i18n';
+import { pageLd } from '../../../../lib/schema-org';
 import { SITE } from '../../../../lib/site';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const en = locale === 'en';
@@ -26,7 +27,7 @@ const T = {
   },
 }[locale];
 const path = localizedPath('articles', locale);
-const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: new URL(path, SITE.url).toString(), inLanguage: locale, description: T.description };
+const ld = pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description });
 ---
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
   <section class="container pad-block">

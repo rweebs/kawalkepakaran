@@ -93,6 +93,8 @@ export const videoSchema = z.object({
   title: z.string().min(1),
   start: z.number().int().min(0).optional(),
   order: z.number().int(),
+  /** Upload date on YouTube (YYYY-MM-DD). Needed for the video's VideoObject; a video without one gets none. */
+  uploadDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export const verdict = z.enum(['dikonfirmasi', 'sebagian', 'tidak-terbukti', 'belum-terverifikasi']);

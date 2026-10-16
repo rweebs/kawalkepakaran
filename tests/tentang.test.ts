@@ -37,7 +37,7 @@ describe('tentang wiring', () => {
   });
   it('has a lastmod and a sitemap entry', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/tentang']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(read('src/pages/sitemap.xml.ts')).toContain("path: '/tentang'");
+    expect(read('src/lib/sitemap-entries.ts')).toContain("path: '/tentang'");
   });
   it('links the original story and ships the photo', () => {
     expect(SOURCE_URL).toBe('https://www.infraloka.co.id/story');

@@ -44,7 +44,7 @@ describe('manifesto page', () => {
     expect(existsSync('src/pages/manifesto.astro')).toBe(true);
     expect(existsSync('src/pages/en/manifesto.astro')).toBe(true);
     expect(NAV.map((n) => n.href)).toContain('/manifesto');
-    expect(read('src/pages/sitemap.xml.ts')).toContain("'/manifesto'");
+    expect(read('src/lib/sitemap-entries.ts')).toContain("'/manifesto'");
   });
   it('states the seven principles in both languages', () => {
     const s = page();

@@ -6,6 +6,7 @@ import { thumbFor, thumbSrcset, CARD_THUMB_SIZES } from '../lib/bukti';
 import { SITE } from '../lib/site';
 import { UI } from '../i18n/ui';
 import { localizedPath, type Locale } from '../i18n';
+import { pageLd, videoLd } from '../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const videos = sortVideos(await getVideos());
@@ -15,7 +16,11 @@ const T = {
 }[locale];
 const path = localizedPath('videos', locale);
 const DESCRIPTION = T.description;
-const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: DESCRIPTION };
+// A VideoObject per video that has every required value; one without an upload date in its data is skipped, not guessed.
+const ld = [
+  pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: DESCRIPTION }),
+  ...videos.map((v) => videoLd({ name: v.data.title, thumbnail: thumbSrc(v.data.youtubeId), uploadDate: v.data.uploadDate, embedUrl: `https://www.youtube-nocookie.com/embed/${v.data.youtubeId}`, url: watchUrl(v.data.youtubeId) })).filter((x) => !!x),
+];
 ---
 <BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.h1, path }]}>
   <section class="container pad-block">

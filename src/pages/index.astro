@@ -6,6 +6,7 @@ import VerdictBadge from '../components/VerdictBadge.astro';
 import CaseStats from '../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
 import { SITE } from '../lib/site';
+import { authorLd, organizationLd } from '../lib/schema-org';
 import { localizedPath, routePath, type Locale } from '../i18n';
 import { HOME_SECTIONS } from '../lib/sky/states';
 
@@ -37,7 +38,7 @@ const T = {
     contribH: 'Ikut menguji klaim',
     contribLead: 'Kode situs ini open source. Punya dokumen, tangkapan layar, atau sumber yang dapat diperiksa tentang klaim seorang pakar, baik yang memperkuat maupun yang membantah? Kirim lewat GitHub.',
     rules: ['Sertakan sumber yang dapat diperiksa dan tanggal pengambilan.', 'Tutup NIK, NIM, nomor telepon, dan data pribadi lain.', 'Tulis apa yang ditunjukkan dan apa yang tidak dibuktikan.', 'Tanpa rumor, tanpa data pribadi orang yang tidak terkait.'],
-    how: 'Cara berkontribusi', send: 'Kirim bukti atau klaim (Issue)',
+    how: 'Cara berkontribusi', send: 'Kirim bukti atau klaim (Issue)', suggest: 'Usulkan klaim',
     answerH: 'Jawaban', answerLead: 'Setiap pakar yang disebut berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman di sini.',
     answerMuted: 'Tanggapan yang diterima dimuat apa adanya. Belum adanya tanggapan bukan pengakuan atas apa pun.', replyCta: 'Hak jawab',
     alt: { name: SITE.name, alternateName: 'Kawal Pakar' },
@@ -64,7 +65,7 @@ const T = {
     contribH: 'Help check claims',
     contribLead: 'This site\'s code is open source. Do you have documents, screenshots or sources that can be checked about an expert\'s claim, whether they support or contradict it? Send them through GitHub.',
     rules: ['Include a checkable source and the date it was captured.', 'Mask ID numbers, student numbers, phone numbers and other personal data.', 'Write what the item shows and what it does not prove.', 'No rumours, and no personal data of unrelated people.'],
-    how: 'How to contribute', send: 'Submit evidence or a claim (Issue)',
+    how: 'How to contribute', send: 'Submit evidence or a claim (Issue)', suggest: 'Suggest a claim',
     answerH: 'Reply', answerLead: 'Every expert named has the right to respond, correct, or add context to any page here.',
     answerMuted: 'Responses received are published as received. The absence of a response is not an admission of anything.', replyCta: 'Right of reply',
     alt: { name: SITE.name, alternateName: 'Expert Watch' },
@@ -78,8 +79,8 @@ const websiteLd = {
   '@context': 'https://schema.org', '@type': 'WebSite', name: T.alt.name, alternateName: T.alt.alternateName,
   '@id': `${SITE.url}/#website`, url: new URL(localizedPath('home', locale), SITE.url).toString(), sameAs: [SITE.url, SITE.repo],
   inLanguage: locale, description: T.description,
-  author: { '@type': 'Person', name: SITE.author },
-  publisher: { '@type': 'Organization', '@id': 'https://www.infraloka.co.id/#organization', name: 'Infraloka', url: 'https://www.infraloka.co.id' },
+  author: authorLd(locale),
+  publisher: organizationLd(locale),
 };
 ---
 <BaseLayout title={T.title} description={T.description} path={localizedPath('home', locale)} locale={locale} jsonLd={websiteLd}>
@@ -161,6 +162,7 @@ const websiteLd = {
           {T.rules.map((r) => <li>{r}</li>)}
         </ul>
         <div class="btn-row">
+          <a class="btn" href={routePath('suggest', locale)}>{T.suggest}</a>
           <a class="btn" href={`${SITE.repo}/blob/main/CONTRIBUTING.md`} rel="noopener noreferrer" target="_blank">{T.how}</a>
           <a class="btn" href={`${SITE.repo}/issues/new/choose`} rel="noopener noreferrer" target="_blank">{T.send}</a>
         </div>

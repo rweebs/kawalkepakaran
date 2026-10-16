@@ -10,7 +10,6 @@ describe('brand', () => {
     expect(SITE.name).toBe('Kawal Kepakaran');
     expect(SITE.url).toBe('https://kawalkepakaran.org');
     expect(SITE.repo).toBe('https://github.com/rweebs/kawalkepakaran');
-    expect(SITE.legacyUrl).toBe('https://abilsudarman.my.id');
   });
   it('config files point at the new domain and name', () => {
     expect(read('astro.config.mjs')).toContain("site: 'https://kawalkepakaran.org'");

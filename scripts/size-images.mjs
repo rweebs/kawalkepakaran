@@ -14,7 +14,8 @@ function htmlFiles(dir) {
   return out;
 }
 
-/** Gives every local /img and /thumb image its width, height and decoding hint, and lazy-loads all but the first one on a page (the likely header). */
+/** Gives every local /img and /thumb image its width, height and decoding hint, and lazy-loads all but the first one on a page (the likely header).
+ * That first one, when it is a content image (/img or its /thumb/*-full.webp edition), is fetched with high priority. */
 export async function sizeImages(distDir) {
   const dist = siteRoot(distDir);
   const dims = new Map();
@@ -48,7 +49,7 @@ export async function sizeImages(distDir) {
         }
         if (!/\sdecoding=/.test(tag)) tag = tag.replace(/<img/, '<img decoding="async"');
         if (!wasFirst && !/\sloading=/.test(tag)) tag = tag.replace(/<img/, '<img loading="lazy"');
-        else if (wasFirst && !/\sfetchpriority=/.test(tag) && /\ssrc="\/img\//.test(tag)) tag = tag.replace(/<img/, '<img fetchpriority="high"');
+        else if (wasFirst && !/\sfetchpriority=/.test(tag) && /\ssrc="\/(?:img\/|thumb\/[^"]+-full\.webp")/.test(tag)) tag = tag.replace(/<img/, '<img fetchpriority="high"');
       }
       parts.push(html.slice(last, m.index), tag);
       last = m.index + m[0].length;

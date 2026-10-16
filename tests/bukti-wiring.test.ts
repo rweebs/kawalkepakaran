@@ -30,6 +30,6 @@ describe('bukti wiring', () => {
   });
   it('the page is a real route and lists /bukti in the sitemap source', () => {
     expect(readFileSync('src/pages/kasus/abil-sudarman/bukti.astro', 'utf8')).toContain('groupBukti');
-    expect(readFileSync('src/pages/sitemap.xml.ts', 'utf8')).toContain("path: '/kasus/abil-sudarman/bukti'");
+    expect(readFileSync('src/lib/sitemap-entries.ts', 'utf8')).toContain("path: '/kasus/abil-sudarman/bukti'");
   });
 });

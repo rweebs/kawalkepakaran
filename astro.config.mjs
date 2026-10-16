@@ -7,6 +7,9 @@ export default defineConfig({
   trailingSlash: 'never',
   build: { format: 'file', inlineStylesheets: 'always' },
   markdown: { syntaxHighlight: false },
+  // Opt-in prefetch: only links marked data-astro-prefetch (the main navigation) are fetched, on hover or focus. Astro bundles
+  // the prefetch code into the page's own /_astro module, so it needs no inline script and no CSP change.
+  prefetch: { prefetchAll: false, defaultStrategy: 'hover' },
   security: {
     csp: {
       scriptDirective: { resources: ["'self'", 'https://static.cloudflareinsights.com'] },

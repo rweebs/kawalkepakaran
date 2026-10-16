@@ -14,7 +14,7 @@ import { buildTitle, truncateAtWord, breadcrumbLd } from '../lib/seo';
 import { siteOg, type OgImage } from '../lib/og';
 
 interface Crumb { name: string; path: string }
-const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrumbs, author, locale: localeProp, alternates: alternatesProp, image: imageProp, ogTitle, publishedTime, modifiedTime, section } = Astro.props as {
+const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrumbs, author, locale: localeProp, alternates: alternatesProp, image: imageProp, ogTitle, publishedTime, modifiedTime, section, feeds = [] } = Astro.props as {
   title: string; description: string; path: string; jsonLd?: object | object[]; noindex?: boolean;
   ogType?: 'website' | 'article'; breadcrumbs?: Crumb[]; author?: string;
   locale?: Locale; alternates?: Partial<Record<Locale, string>>;
@@ -24,6 +24,8 @@ const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrum
   ogTitle?: string;
   /** ISO dates for article:published_time / article:modified_time. */
   publishedTime?: string; modifiedTime?: string; section?: string;
+  /** Extra RSS feeds for this page (e.g. one expert's feed), linked after the site feed. */
+  feeds?: { title: string; href: string }[];
 };
 const locale: Locale = localeProp ?? pathLocale(path);
 const ui = UI[locale];
@@ -37,7 +39,7 @@ const canonical = new URL(path, SITE.url).toString();
 const image = imageProp ?? siteOg(locale);
 const ogImage = new URL(image.src, SITE.url).toString();
 const abs = (p: string) => new URL(p, SITE.url).toString();
-const fullTitle = buildTitle(title, SITE.name, 'Kawal');
+const fullTitle = buildTitle(title, SITE.name);
 const desc = truncateAtWord(description, 160);
 const corrections = correctionsFor(path, undefined, Object.values(alternates ?? {}).filter((p): p is string => !!p));
 const FOOT = { id: { log: 'Catatan koreksi', updates: 'Pembaruan' }, en: { log: 'Corrections log', updates: 'Updates' } }[locale];
@@ -76,6 +78,7 @@ const lds = [
     <noscript><link rel="stylesheet" href="/nojs.css" /></noscript>
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="alternate" type="application/rss+xml" title={SITE.name} href={feedHref} />
+    {feeds.map((f) => <link rel="alternate" type="application/rss+xml" title={f.title} href={f.href} />)}
     <link rel="alternate" type="application/json" title="Kawal Kepakaran claims" href="/klaim.json" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     <meta property="og:type" content={ogType} />
@@ -118,11 +121,11 @@ const lds = [
               <li class="nav__group-item">
                 <details class="nav__group">
                   <summary class:list={{ 'is-active': e.items.some((i) => isActive(path, i.href)) }}>{e.label}</summary>
-                  <ul>{e.items.map((i) => <li><a href={i.href} aria-current={isActive(path, i.href) ? 'page' : undefined}>{i.label}</a></li>)}</ul>
+                  <ul>{e.items.map((i) => <li><a href={i.href} data-astro-prefetch aria-current={isActive(path, i.href) ? 'page' : undefined}>{i.label}</a></li>)}</ul>
                 </details>
               </li>
             ) : (
-              <li><a href={e.href} aria-current={isActive(path, e.href) ? 'page' : undefined}>{e.label}</a></li>
+              <li><a href={e.href} data-astro-prefetch aria-current={isActive(path, e.href) ? 'page' : undefined}>{e.label}</a></li>
             ))}
             <li class="nav__lang"><LanguageToggle locale={locale} href={switchHref} label={ui.language} /></li>
           </ul>

@@ -6,6 +6,7 @@ import CaseStats from '../../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
 import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
+import { itemListLd, pageLd } from '../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('claims', locale);
 const all = await getKlaim();
@@ -19,16 +20,21 @@ const T = {
   id: { title: 'Cek klaim para pakar', h1: 'Cek klaim', crumb: 'Cek klaim',
     description: 'Klaim para pakar yang telah diperiksa, masing-masing dengan putusan pemeriksaan, tingkat keyakinan, bukti, dan batas apa yang tidak dibuktikan.',
     lead: 'Setiap klaim diberi putusan pemeriksaan dan tingkat keyakinan, dengan bukti dan batas apa yang tidak dibuktikan.',
-    empty: 'Belum ada klaim yang dimuat.', confidence: 'Keyakinan', method: 'Bagaimana putusan ditentukan',
+    empty: 'Belum ada klaim yang dimuat.', confidence: 'Keyakinan', method: 'Bagaimana putusan ditentukan', suggest: 'Usulkan klaim untuk diperiksa',
     genH: 'Dari dokumen arsip', reviewed: 'ditinjau', caseLink: 'Ringkasan kasus', genLead: 'Dibuat otomatis, satu per dokumen penulis. Entri ini hanya mencatat bahwa dokumen itu ada, bukan bahwa isinya telah diperiksa atau terbukti.' },
   en: { title: 'Expert claim checks', h1: 'Claim checks', crumb: 'Claim checks',
     description: 'Expert claims we have checked, each with a verdict, a confidence level, the evidence, and the limits of what the evidence does not prove.',
     lead: 'Each claim gets a verdict and a confidence level, with the evidence and the limits of what it does not prove.',
-    empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided',
+    empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided', suggest: 'Suggest a claim to check',
     genH: 'From archive documents', reviewed: 'reviewed', caseLink: 'Case overview', genLead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.' },
 }[locale];
+// Curated checks only: generated archive entries are noindex and never listed in structured data.
+const ld = [
+  pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description }),
+  itemListLd({ name: T.title, path, items: claims.map((k) => ({ name: locale === 'id' ? k.data.claim : k.data.claimEn, path: localizedPath('claims', locale, k.id) })) }),
+];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <p class="lead">{T.lead}</p>
@@ -59,5 +65,6 @@ const T = {
       </section>
     )}
     <p><a href={routePath('method', locale)}>{T.method} →</a></p>
+    <p><a href={routePath('suggest', locale)}>{T.suggest} →</a></p>
   </article>
 </BaseLayout>

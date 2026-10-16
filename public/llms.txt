@@ -9,17 +9,28 @@
 - [Hak jawab](https://kawalkepakaran.org/hak-jawab)
 - [Disclaimer](https://kawalkepakaran.org/disclaimer)
 
+## Kasus 001: Abil Sudarman
+- [Ringkasan kasus](https://kawalkepakaran.org/kasus/abil-sudarman)
+- [Artikel](https://kawalkepakaran.org/kasus/abil-sudarman/artikel)
+- [Bukti](https://kawalkepakaran.org/kasus/abil-sudarman/bukti)
+- [Linimasa](https://kawalkepakaran.org/kasus/abil-sudarman/linimasa)
+
 ## English
 - [Method](https://kawalkepakaran.org/en/method)
 - [Claim checks](https://kawalkepakaran.org/en/claims)
 - [Experts](https://kawalkepakaran.org/en/experts)
 - [Right of reply](https://kawalkepakaran.org/en/right-of-reply)
 - [Policies](https://kawalkepakaran.org/en/policy)
+- [Case 001: Abil Sudarman](https://kawalkepakaran.org/en/cases/abil-sudarman)
+- [Case 001 articles](https://kawalkepakaran.org/en/cases/abil-sudarman/articles)
+- [Case 001 evidence](https://kawalkepakaran.org/en/cases/abil-sudarman/evidence)
+- [Case 001 timeline](https://kawalkepakaran.org/en/cases/abil-sudarman/timeline)
 
 ## Pakar
 - [Pakar](https://kawalkepakaran.org/pakar): profil, kredensial, dan klaim yang diperiksa
 
 ## Opsional
+- [Semua klaim beserta putusan dan batasnya / All claims with verdicts and limits](https://kawalkepakaran.org/llms-full.txt)
 - [Sitemap](https://kawalkepakaran.org/sitemap.xml)
 - [RSS](https://kawalkepakaran.org/rss.xml)
 - [RSS (English)](https://kawalkepakaran.org/en/rss.xml)

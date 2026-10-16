@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getPosts } from '../lib/content';
 import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
-import { buildRss, claimFeedItem, type FeedItem } from '../lib/feed';
+import { buildRss, claimFeedItem, CONTENT_MAX, type FeedItem } from '../lib/feed';
 import { articleOg, claimOg } from '../lib/og';
 import { descriptionFromMarkdown } from '../lib/seo';
 import { SITE } from '../lib/site';
@@ -20,6 +20,8 @@ export const GET: APIRoute = async () => {
       path: `/kasus/abil-sudarman/artikel/${p.id}`,
       date: p.data.translationDate,
       summary: descriptionFromMarkdown(p.body ?? '') || p.data.title,
+      // The opening paragraph, longer than the description; buildRss cuts it to CONTENT_MAX.
+      content: descriptionFromMarkdown(p.body ?? '', CONTENT_MAX) || undefined,
       image: articleOg(p.id, 'id', p.data.title),
       categories: ['Kasus Abil Sudarman'],
     })),

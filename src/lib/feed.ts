@@ -1,6 +1,7 @@
 import type { Locale } from '../i18n';
 import type { Verdict } from './schemas';
 import { replyStatusLabel, verdictLabel } from './verdict';
+import { truncateAtWord } from './seo';
 
 /** A media card attached to an item (the OG card): src is a site path or an absolute URL. */
 export interface FeedImage { src: string; width: number; height: number; type: string }
@@ -16,7 +17,14 @@ export interface FeedItem {
   updated?: Date;
   image?: FeedImage;
   categories?: readonly string[];
+  /** Plain text for content:encoded (the start of the body, or a claim's limits); cut to CONTENT_MAX characters. */
+  content?: string;
 }
+
+/** content:encoded carries a short excerpt, not the full article: readers follow the link for the rest. */
+export const CONTENT_MAX = 300;
+/** Public WebSub hub announced in both feeds; it must be pinged after a deploy for subscribers to hear of new items. */
+export const WEBSUB_HUB = 'https://pubsubhubbub.appspot.com/';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -51,6 +59,7 @@ const EVIDENCE: Record<Locale, (n: number) => string> = {
   en: (n) => (n === 0 ? 'No evidence linked yet' : `${n} evidence item${n === 1 ? '' : 's'} linked`),
 };
 const CLAIMS_CATEGORY: Record<Locale, string> = { id: 'Cek klaim', en: 'Claim checks' };
+const LIMITS_LABEL: Record<Locale, string> = { id: 'Yang tidak dibuktikan', en: 'What this does not prove' };
 
 /** The finding, or a sentence built from the verdict, the evidence count and the reply status; then the limits. */
 export function claimFeedSummary(i: Pick<ClaimFeedInput, 'verdict' | 'evidenceCount' | 'replyStatus' | 'limits' | 'finding'>, locale: Locale): string {
@@ -73,6 +82,7 @@ export function claimFeedItem(i: ClaimFeedInput, locale: Locale, siteUrl: string
     guid: revisionGuid(url, [i.reviewedAt, i.replyReceivedAt]),
     ...(i.image ? { image: i.image } : {}),
     categories: [CLAIMS_CATEGORY[locale], label, i.pakarName],
+    content: `${LIMITS_LABEL[locale]}: ${i.limits}`,
   };
 }
 
@@ -89,13 +99,17 @@ export function buildRss(items: FeedItem[], site: { url: string; name: string; d
     const media = i.image
       ? `<media:content url="${esc(abs(i.image.src))}" medium="image" type="${esc(i.image.type)}" width="${i.image.width}" height="${i.image.height}"/>`
       : '';
-    return `    <item><title>${esc(i.title)}</title><link>${esc(link)}</link>${guid}<pubDate>${i.date.toUTCString()}</pubDate>${categories}<description>${esc(i.summary)}</description>${media}</item>`;
+    // The excerpt is HTML-escaped inside CDATA, so it can never hold a literal ']]>' that would end the section early.
+    const content = i.content?.trim()
+      ? `<content:encoded><![CDATA[<p>${esc(truncateAtWord(i.content, CONTENT_MAX))}</p>]]></content:encoded>`
+      : '';
+    return `    <item><title>${esc(i.title)}</title><link>${esc(link)}</link>${guid}<pubDate>${i.date.toUTCString()}</pubDate>${categories}<description>${esc(i.summary)}</description>${content}${media}</item>`;
   });
   const times = items.map((i) => Math.max(i.date.getTime(), i.updated?.getTime() ?? 0));
   const lastBuild = times.length ? `    <lastBuildDate>${new Date(Math.max(...times)).toUTCString()}</lastBuildDate>` : undefined;
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">',
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/">',
     '  <channel>',
     `    <title>${esc(site.name)}</title>`,
     `    <link>${esc(site.url)}</link>`,
@@ -103,6 +117,7 @@ export function buildRss(items: FeedItem[], site: { url: string; name: string; d
     `    <language>${language}</language>`,
     ...(lastBuild ? [lastBuild] : []),
     `    <atom:link href="${esc(abs(feedPath))}" rel="self" type="application/rss+xml"/>`,
+    `    <atom:link rel="hub" href="${esc(WEBSUB_HUB)}"/>`,
     ...body,
     '  </channel>',
     '</rss>',

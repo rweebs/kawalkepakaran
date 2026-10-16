@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { buildRss, claimFeedItem, claimFeedSummary, revisionGuid } from '../src/lib/feed';
+import { buildRss, claimFeedItem, claimFeedSummary, CONTENT_MAX, revisionGuid, WEBSUB_HUB } from '../src/lib/feed';
 
 const site = { url: 'https://example.org', name: 'S', description: 'd' };
 const claim = {
@@ -63,4 +63,45 @@ describe('feed routes', () => {
       expect(src).toContain('articleOg(');
     });
   }
+});
+
+describe('content:encoded and WebSub', () => {
+  const long = 'kata '.repeat(200);
+  const xml = buildRss([
+    claimFeedItem(claim, 'en', site.url),
+    { title: 'Post', path: '/p', date: new Date('2026-09-01T00:00:00Z'), summary: 's', content: long },
+    { title: 'Bare', path: '/b', date: new Date('2026-08-01T00:00:00Z'), summary: 's' },
+    { title: 'Evil', path: '/e', date: new Date('2026-07-01T00:00:00Z'), summary: 's', content: 'a ]]> <b>x</b> & y' },
+  ], site);
+  it('declares the content namespace and announces the WebSub hub', () => {
+    expect(xml).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
+    expect(xml).toContain(`<atom:link rel="hub" href="${WEBSUB_HUB}"/>`);
+    expect(WEBSUB_HUB).toBe('https://pubsubhubbub.appspot.com/');
+  });
+  it("gives a claim its 'what this does not prove' text", () => {
+    expect(claimFeedItem(claim, 'id', site.url).content).toBe('Yang tidak dibuktikan: Batas.');
+    expect(xml).toContain('<content:encoded><![CDATA[<p>What this does not prove: Batas.</p>]]></content:encoded>');
+  });
+  it('cuts the excerpt to about 300 characters and leaves it out when there is none', () => {
+    const body = xml.match(/<title>Post<\/title>[\s\S]*?<content:encoded><!\[CDATA\[<p>([^<]*)<\/p>/)![1];
+    expect(body.length).toBeLessThanOrEqual(CONTENT_MAX);
+    expect(body.endsWith('…')).toBe(true);
+    expect(xml.match(/<title>Bare<\/title>[^\n]*/)![0]).not.toContain('content:encoded');
+  });
+  it('escapes the excerpt so it cannot close the CDATA section or inject markup', () => {
+    expect(xml).toContain('<![CDATA[<p>a ]]&gt; &lt;b&gt;x&lt;/b&gt; &amp; y</p>]]>');
+  });
+});
+
+describe('feed parity', () => {
+  it('both feeds carry the same hand-made claim checks and article excerpts', () => {
+    const strip = (f: string) => readFileSync(f, 'utf8');
+    for (const f of ['src/pages/rss.xml.ts', 'src/pages/en/rss.xml.ts']) {
+      const src = strip(f);
+      expect(src, f).toContain('(await getKlaim()).filter((k) => !isGenerated(k))');
+      expect(src, f).toContain('reviewedAt: k.data.reviewedAt');
+      expect(src, f).toContain('replyReceivedAt: k.data.reply?.receivedAt');
+      expect(src, f).toContain('content: descriptionFromMarkdown(p.body ?? \'\', CONTENT_MAX)');
+    }
+  });
 });

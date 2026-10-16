@@ -8,6 +8,7 @@ import { thumbFor } from '../lib/bukti';
 import { SITE } from '../lib/site';
 import { UI } from '../i18n/ui';
 import { localizedPath, type Locale } from '../i18n';
+import { pageLd } from '../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const dateFmt = new Intl.DateTimeFormat(locale === 'id' ? 'id-ID' : 'en-US', { dateStyle: 'long', timeZone: 'UTC' });
@@ -17,7 +18,7 @@ const T = {
   en: { title: 'Case 001 books and reports: Abil Sudarman', h1: 'Books (Case 001)', crumb: 'Books', intro: "The documents below are the author's opinion and analysis. Each card carries a note on the limits of its scope and on what the document itself states. The PDFs are in Indonesian.", empty: 'No documents have been published yet.', cover: 'Cover of', version: 'version', pages: 'pages', note: 'Note:', read: 'Read', download: 'Download PDF', description: 'Reports and critical documents by Rahmat Wibowo about the claims of Abil Sudarman and ASSAI, available to read and download as PDF (in Indonesian).' },
 }[locale];
 const path = localizedPath('books', locale);
-const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
+const ld = pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description });
 const DESCRIPTION = T.description;
 ---
 <BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>

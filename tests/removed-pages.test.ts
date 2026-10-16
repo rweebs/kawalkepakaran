@@ -16,7 +16,7 @@ describe('the PageSpeed page is gone', () => {
     expect(Object.keys(ROUTES)).not.toContain('pagespeed');
     for (const n of NAV) expect(n.href, n.href).not.toMatch(/pagespeed/);
     expect(Object.keys(PAGE_LASTMOD).join(' ')).not.toMatch(/pagespeed/);
-    expect(read('src/pages/sitemap.xml.ts')).not.toMatch(/pagespeed/i);
+    expect(read('src/lib/sitemap-entries.ts')).not.toMatch(/pagespeed/i);
   });
   it('old PageSpeed URLs land on the home page of their language', () => {
     expect(legacyTarget('/pagespeed')).toBe('/');

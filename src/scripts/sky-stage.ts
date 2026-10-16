@@ -1,5 +1,6 @@
 import { atPageBottom, stateForSection, type SkyState } from '../lib/sky/states';
 import type { AbabilScene } from '../lib/sky/AbabilScene';
+import { prefersStill, whenInView, whenStartPressed } from './scene-gate';
 
 // Ported from the former React SkyStage island. The static SVG sky is already on screen, so the heavy WebGL scene waits for the
 // first sign of a real visitor, or a long idle fallback, and stays out of the load window where it would count as blocking time.
@@ -11,12 +12,13 @@ if (root && canvas) {
   const lastId = sectionIds[sectionIds.length - 1];
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const forceFallback = new URLSearchParams(window.location.search).has('nowebgl');
-  // Phones, slow or metered connections and low-memory devices keep the static SVG sky: three.js is ~half a megabyte of JS
-  // and a GPU-bound loop, which costs those visitors more than the animation gives them.
+  // Phones, slow connections and low-memory devices keep the static SVG sky: three.js is ~half a megabyte of JS and a
+  // GPU-bound loop, which costs those visitors more than the animation gives them. Reduced motion and saveData (Save-Data,
+  // a metered connection) also keep it, but get a button to start the scene on request.
   const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  const liteDevice = Boolean(conn?.saveData)
-    || ['slow-2g', '2g', '3g'].includes(conn?.effectiveType ?? '')
+  const still = prefersStill();
+  const liteDevice = ['slow-2g', '2g', '3g'].includes(conn?.effectiveType ?? '')
     || (typeof memory === 'number' && memory < 4)
     || window.matchMedia('(max-width: 720px)').matches;
 
@@ -44,7 +46,9 @@ if (root && canvas) {
   (async () => {
     try {
       if (forceFallback || liteDevice) { root.dataset.mode = 'fallback'; return; }
-      await whenSettled();
+      if (still) await whenStartPressed(document.querySelector<HTMLButtonElement>('[data-sky-start]'));
+      else await whenSettled();
+      await whenInView(root);
       const { createScene } = await import('../lib/sky/AbabilScene');
       const scene: AbabilScene = createScene({ canvas, reducedMotion: reduced });
       const apply = (st: SkyState) => {

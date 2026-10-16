@@ -8,6 +8,7 @@ import { getKlaim, isGenerated } from '../../../lib/pakar';
 import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
 import { localizedPath, routePath, type Locale } from '../../../i18n';
+import { evidenceImageLd, pageLd } from '../../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const groups = groupBukti(await getBukti());
 // Which checked claims cite each item, so a reader can go from a screenshot to the verdict it feeds.
@@ -26,7 +27,15 @@ const T = {
   en: { title: 'Evidence and screenshots on Abil Sudarman', h1: 'Evidence', crumb: 'Evidence', intro: 'The images below show claims as published and records that can be checked. Images are not rulings. Identity numbers are masked.', empty: 'No evidence has been published yet.', shows: 'Shows:', limits: 'Does not prove:', edited: 'Edited:', usedIn: 'Used in:', anchor: 'Link to this item', caseCrumb: 'Case 001', link: 'Source link', image: 'Image', description: "Screenshots relevant to Abil Sudarman's claims, each with a note on what is visible and what it does not prove." },
 }[locale];
 const path = localizedPath('evidence', locale);
-const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: T.description };
+// Every evidence image is a screenshot of someone else's material (LICENSE-CONTENT.md), so none carries the site's CC BY
+// license: each credits its source where one is stated.
+const ld = {
+  ...pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description }),
+  hasPart: groups.flatMap((g) => g.items).flatMap((e) => {
+    const x = buktiText(e.data, locale);
+    return e.data.images.map((im, i) => evidenceImageLd({ src: im.src, caption: x.alt(i), pageUrl: `${SITE.url}${path}#${e.id}`, source: x.source, siteAuthored: false }));
+  }),
+};
 const DESCRIPTION = T.description;
 ---
 <BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.caseCrumb, path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
@@ -36,16 +45,18 @@ const DESCRIPTION = T.description;
     <p class="muted">{T.intro}</p>
     {groups.length === 0
       ? <p class="muted">{T.empty}</p>
-      : groups.map((g) => (
+      : groups.map((g, gi) => (
         <section class="bukti-group" aria-labelledby={`grup-${g.id}`}>
           <h2 id={`grup-${g.id}`}>{locale === 'en' ? BUKTI_GROUP_LABEL_EN[g.id] : g.label}</h2>
           <div class="grid bukti-grid" data-reveal>
-            {g.items.map((e) => {
+            {g.items.map((e, ii) => {
               const x = buktiText(e.data, locale);
+              // The first evidence card sits above the fold and is the page's LCP image: fetched eagerly and first.
+              const lead = gi === 0 && ii === 0;
               return (
               <article class="card bukti-item" id={e.id} data-reveal-item>
                 <a class="bukti-thumb" href={e.data.images[0].src} target="_blank" rel="noopener noreferrer">
-                  <img src={thumbFor(e.data.images[0].src)} srcset={thumbSrcset(e.data.images[0].src)} sizes={CARD_THUMB_SIZES} alt={x.alt(0)} width={sizes.get(e.id)!.width} height={sizes.get(e.id)!.height} loading="lazy" decoding="async" />
+                  <img src={thumbFor(e.data.images[0].src)} srcset={thumbSrcset(e.data.images[0].src)} sizes={CARD_THUMB_SIZES} alt={x.alt(0)} width={sizes.get(e.id)!.width} height={sizes.get(e.id)!.height} loading={lead ? 'eager' : 'lazy'} fetchpriority={lead ? 'high' : undefined} decoding="async" />
                 </a>
                 <h3>{x.title}<a class="anchor" href={`#${e.id}`} aria-label={T.anchor}>#</a></h3>
                 <p><strong>{T.shows}</strong> {x.shows}</p>

@@ -53,8 +53,9 @@ describe('home image delivery', () => {
     expect(home).toMatch(/aria-label="\$\{T\.emblemAlt\}"/);
     expect(home).toMatch(/width="320" height="320"/);
   });
-  it('revalidates social cards daily, since their filenames are not hashed', () => {
-    expect(read('public/_headers')).toMatch(/\/og\/\*\n\s+Cache-Control: public, max-age=86400/);
+  it('caches social cards for a week but never as immutable, since their filenames are not hashed', () => {
+    expect(read('public/_headers')).toMatch(/\/og\/\*\n\s+Cache-Control: public, max-age=604800\n/);
+    expect(read('public/_headers')).not.toMatch(/\/(og|img)\/\*\n\s+Cache-Control:[^\n]*immutable/);
   });
   it('gives static assets a long cache lifetime', () => {
     const headers = read('public/_headers');
