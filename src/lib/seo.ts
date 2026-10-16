@@ -7,14 +7,53 @@ export function truncateAtWord(text: string, max: number): string {
   return base.replace(/[\s,;:.\-–—]+$/, '') + '…';
 }
 
-export function buildTitle(title: string, brand: string, shortBrand: string, max = 60): string {
+/** Longest <title> the site allows, counted as written in the HTML (the dist check measures the escaped text). */
+export const TITLE_MAX = 65;
+
+/** Length of the text once escaped in HTML: & becomes &amp;, ' becomes &#39;, " becomes &quot;, < and > become &lt; / &gt;. */
+export function htmlLength(s: string): number {
+  let n = s.length;
+  for (const ch of s) n += ch === '&' ? 4 : ch === "'" ? 4 : ch === '"' ? 5 : ch === '<' || ch === '>' ? 3 : 0;
+  return n;
+}
+
+/** Page title with the brand suffix. Every title, cut or not, ends in the same full brand (" · Kawal Kepakaran"); a long title
+ *  is cut at a word so the whole stays within `max` as escaped HTML. A trailing " #n" (the number that tells colliding titles
+ *  apart) survives the cut. */
+export function buildTitle(title: string, brand: string, max = TITLE_MAX): string {
   if (title === brand) return brand;
-  const long = `${title} · ${brand}`;
-  if (long.length <= max) return long;
-  // A title that already names the subject keeps the short brand; one that does not gets the subject as its suffix.
-  const subject = brand.replace(/^Kawal\s+/i, '');
-  const suffix = ` · ${title.toLowerCase().includes(subject.toLowerCase()) ? shortBrand : subject}`;
-  return truncateAtWord(title, max - suffix.length) + suffix;
+  const suffix = ` · ${brand}`;
+  const long = `${title}${suffix}`;
+  if (htmlLength(long) <= max) return long;
+  const [, head, num = ''] = /^(.*?)( #\d+)?$/s.exec(title.trim())!;
+  let budget = max - suffix.length - num.length;
+  let cut = truncateAtWord(head, budget);
+  while (htmlLength(cut + num + suffix) > max && budget > 10) cut = truncateAtWord(head, --budget);
+  return cut + num + suffix;
+}
+
+/** Titles for a set of pages that share a template, numbered (" #1", " #2") where two would otherwise produce the same
+ *  <title> once cut, the same convention the archive uses. Returns id -> the title to hand to the layout. */
+export function distinctTitles(items: ReadonlyArray<{ id: string; title: string }>, brand: string, max = TITLE_MAX): Map<string, string> {
+  const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id));
+  const groups = new Map<string, string[]>();
+  for (const it of sorted) {
+    const k = buildTitle(it.title, brand, max);
+    groups.set(k, [...(groups.get(k) ?? []), it.id]);
+  }
+  const out = new Map<string, string>();
+  for (const it of sorted) {
+    const same = groups.get(buildTitle(it.title, brand, max))!;
+    out.set(it.id, same.length > 1 ? `${it.title} #${same.indexOf(it.id) + 1}` : it.title);
+  }
+  return out;
+}
+
+/** Meta descriptions for a set of pages, where two pages that would share one get their own title in front, so each is unique. */
+export function distinctDescriptions(items: ReadonlyArray<{ id: string; title: string; description: string }>, max = 160): Map<string, string> {
+  const count = new Map<string, number>();
+  for (const it of items) count.set(it.description, (count.get(it.description) ?? 0) + 1);
+  return new Map(items.map((it) => [it.id, (count.get(it.description) ?? 0) > 1 ? truncateAtWord(`${it.title}. ${it.description}`, max) : it.description]));
 }
 
 function stripMarkdown(line: string): string {

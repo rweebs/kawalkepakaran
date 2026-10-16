@@ -30,15 +30,15 @@ const description = truncateAtWord(`${pakar.data.name}: ${summary}`, 160);
 const ld = profilePageLd({ url: new URL(path, SITE.url).toString(), name: pakar.data.name, field: pakar.data.field, description, locale,
   sameAs: pakar.data.credentials.map((c) => c.source), image: pakarOg(pakar.id, locale, pakar.data.name).src });
 const T = {
-  id: { crumb: 'Pakar', creds: 'Kredensial', claims: 'Klaim yang diperiksa', claimsGen: 'Dokumen dan klaim', none: 'Belum ada klaim yang diperiksa.',
+  id: { crumb: 'Pakar', profile: 'profil pakar', creds: 'Kredensial', claims: 'Klaim yang diperiksa', claimsGen: 'Dokumen dan klaim', none: 'Belum ada klaim yang diperiksa.',
     confidence: 'Keyakinan', reply: 'Hak jawab', replyNote: 'berhak menanggapi, mengoreksi, atau menambahkan konteks atas setiap halaman ini lewat', replyLabel: 'hak jawab',
     posts: 'Tulisan yang menyebut pihak ini', status: 'Status', interest: 'Kepentingan penulis', limits: 'Yang tidak dibuktikan' },
-  en: { crumb: 'Experts', creds: 'Credentials', claims: 'Claims checked', claimsGen: 'Documents and claims', none: 'No claims have been checked yet.',
+  en: { crumb: 'Experts', profile: 'expert profile', creds: 'Credentials', claims: 'Claims checked', claimsGen: 'Documents and claims', none: 'No claims have been checked yet.',
     confidence: 'Confidence', reply: 'Right of reply', replyNote: 'has the right to respond, correct or add context to any of these pages through the', replyLabel: 'right of reply',
     posts: 'Posts that name this party', status: 'Status', interest: 'The author\'s interest', limits: 'What this does not prove' },
 }[locale];
 ---
-<BaseLayout title={pakar.data.name} description={description} path={path} locale={locale} alternates={alternates} jsonLd={generated ? undefined : ld} noindex={generated} image={generated ? undefined : pakarOg(pakar.id, locale, pakar.data.name)}
+<BaseLayout title={`${pakar.data.name}: ${T.profile}`} description={description} path={path} locale={locale} alternates={alternates} jsonLd={generated ? undefined : ld} noindex={generated} image={generated ? undefined : pakarOg(pakar.id, locale, pakar.data.name)}
   breadcrumbs={[{ name: T.crumb, path: routePath('experts', locale) }, { name: pakar.data.name, path }]}>
   <article class="reading">
     <h1>{pakar.data.name}</h1>

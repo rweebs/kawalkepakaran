@@ -33,6 +33,7 @@ export const GET: APIRoute = async () => {
     { path: '/klaim', lastmod: PAGE_LASTMOD['/klaim'] },
     { path: ROUTES.updates.id, lastmod: updatesLastmod },
     { path: '/metode', lastmod: PAGE_LASTMOD['/metode'] },
+    { path: '/glosarium', lastmod: PAGE_LASTMOD['/glosarium'] },
     { path: '/kasus/abil-sudarman', lastmod: PAGE_LASTMOD['/kasus/abil-sudarman'] },
     ...pakar.map((p) => ({ path: `/pakar/${p.id}`, lastmod: PAGE_LASTMOD['/pakar'] })),
     ...klaim.map((k) => ({ path: `/klaim/${k.id}`, lastmod: k.data.reviewedAt?.toISOString().slice(0, 10) ?? PAGE_LASTMOD['/klaim'] })),

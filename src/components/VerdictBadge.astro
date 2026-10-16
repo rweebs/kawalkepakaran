@@ -1,7 +1,14 @@
 ---
 import { verdictLabel } from '../lib/verdict';
 import type { Verdict } from '../lib/schemas';
-import type { Locale } from '../i18n';
+import { routePath, type Locale } from '../i18n';
 const { verdict, locale = 'id' } = Astro.props as { verdict: Verdict; locale?: Locale };
+// Each badge leads to the meaning of its verdict in the glossary (the anchor is the same in both languages).
+const href = `${routePath('glossary', locale)}#putusan-${verdict}`;
+const hint = locale === 'id' ? 'Arti putusan ini' : 'What this verdict means';
 ---
-<span class="badge badge--blue verdict" data-verdict={verdict}>{verdictLabel(verdict, locale)}</span>
+<a class="badge badge--blue verdict" data-verdict={verdict} href={href} title={hint}>{verdictLabel(verdict, locale)}</a>
+<style>
+  a.verdict { text-decoration: none; }
+  a.verdict:hover, a.verdict:focus-visible { text-decoration: underline; }
+</style>

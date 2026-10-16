@@ -37,7 +37,7 @@ const canonical = new URL(path, SITE.url).toString();
 const image = imageProp ?? siteOg(locale);
 const ogImage = new URL(image.src, SITE.url).toString();
 const abs = (p: string) => new URL(p, SITE.url).toString();
-const fullTitle = buildTitle(title, SITE.name, 'Kawal');
+const fullTitle = buildTitle(title, SITE.name);
 const desc = truncateAtWord(description, 160);
 const corrections = correctionsFor(path, undefined, Object.values(alternates ?? {}).filter((p): p is string => !!p));
 const FOOT = { id: { log: 'Catatan koreksi', updates: 'Pembaruan' }, en: { log: 'Corrections log', updates: 'Updates' } }[locale];

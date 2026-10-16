@@ -15,6 +15,7 @@ const DISCLAIMER = UI[locale].disclaimer;
 const events = localizedEvents(locale);
 const event = events.find((e) => e.idSlug === idSlug)!;
 const { prev, next } = neighboursFor(events, idSlug);
+const position = events.findIndex((e) => e.idSlug === idSlug) + 1;
 const path = eventPath(event, locale);
 const idEvent = localizeEvent(EVENTS.find((e) => e.slug === idSlug)!, 'id');
 const alternates = { id: eventPath(idEvent, 'id'), en: eventPath(localizeEvent(EVENTS.find((e) => e.slug === idSlug)!, 'en'), 'en') };
@@ -28,15 +29,21 @@ const ld = {
 };
 const replyPath = localizedPath('reply', locale);
 const T = {
-  id: { crumb: 'Linimasa', note: 'Abil Sudarman dan pihak lain yang disebut berhak menjawab lewat', replyLabel: 'hak jawab', sources: 'Sumber', sourcesNote: 'Tautan mengarah ke kiriman asli saya. Jika ada yang berubah atau dihapus, beri tahu saya.', related: 'Terkait di situs ini', navLabel: 'Entri berikutnya', all: '← Semua entri linimasa' },
-  en: { crumb: 'Timeline', note: 'Abil Sudarman and any other party named have the right to reply through the', replyLabel: 'right of reply', sources: 'Sources', sourcesNote: 'Links point to my original posts. If anything has changed or been deleted, please tell me.', related: 'Related on this site', navLabel: 'Next entries', all: '← All timeline entries' },
+  id: { crumb: 'Linimasa', note: 'Abil Sudarman dan pihak lain yang disebut berhak menjawab lewat', replyLabel: 'hak jawab', sources: 'Sumber', sourcesNote: 'Tautan mengarah ke kiriman asli saya. Jika ada yang berubah atau dihapus, beri tahu saya.', related: 'Terkait di situs ini', navLabel: 'Entri berikutnya', all: '← Semua entri linimasa',
+    position: (n: number, total: number) => `Entri ${n} dari ${total} dalam linimasa`, prev: 'Entri sebelumnya', next: 'Entri berikutnya', first: 'Ini entri pertama dalam linimasa.', last: 'Ini entri terakhir dalam linimasa.',
+    contextH: 'Tentang entri ini', context: 'Entri ini satu dari catatan berurutan waktu yang saya susun dari kiriman publik saya sendiri tentang klaim Abil Sudarman. Setiap entri punya tanggal, saluran, tautan sumber, dan, bila ada, tautan ke halaman terkait di situs ini.',
+    caseHub: 'Kasus 001: ringkasan dan semua klaim', evidence: 'Semua bukti', abilTimeline: 'Linimasa Abil Sudarman', method: 'Metode' },
+  en: { crumb: 'Timeline', note: 'Abil Sudarman and any other party named have the right to reply through the', replyLabel: 'right of reply', sources: 'Sources', sourcesNote: 'Links point to my original posts. If anything has changed or been deleted, please tell me.', related: 'Related on this site', navLabel: 'Next entries', all: '← All timeline entries',
+    position: (n: number, total: number) => `Entry ${n} of ${total} in the timeline`, prev: 'Previous entry', next: 'Next entry', first: 'This is the first entry in the timeline.', last: 'This is the last entry in the timeline.',
+    contextH: 'About this entry', context: 'This entry is one of a chronological record I compiled from my own public posts about Abil Sudarman\'s claims. Every entry has a date, a channel, source links and, where there are any, links to related pages on this site.',
+    caseHub: 'Case 001: overview and all claims', evidence: 'All evidence', abilTimeline: 'Abil Sudarman timeline', method: 'Method' },
 }[locale];
 const indexPath = localizedPath('timeline', locale);
 ---
 <BaseLayout title={event.title} description={description} path={path} locale={locale} alternates={alternates} jsonLd={ld}
   breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path: indexPath }, { name: formatDateFor(event.date, locale), path }]}>
   <article class="reading linimasa-post">
-    <p class="linimasa-meta"><time datetime={event.date}>{formatDateFor(event.date, locale)}</time> · {event.channel}</p>
+    <p class="linimasa-meta"><time datetime={event.date}>{formatDateFor(event.date, locale)}</time> · {event.channel} · <a href={indexPath}>{T.position(position, events.length)}</a></p>
     <h1>{event.title}</h1>
     <p class="muted">{DISCLAIMER}</p>
     <p class="linimasa-note">{T.note} <a href={replyPath}>{T.replyLabel}</a>.</p>
@@ -56,9 +63,21 @@ const indexPath = localizedPath('timeline', locale);
       </section>
     )}
 
+    <section aria-labelledby="konteks-h">
+      <h2 id="konteks-h">{T.contextH}</h2>
+      <p>{T.context}</p>
+      <ul>
+        <li><a href={indexPath}>{T.all.replace('← ', '')}</a></li>
+        <li><a href={routePath('abilTimeline', locale)}>{T.abilTimeline}</a></li>
+        <li><a href={routePath('evidence', locale)}>{T.evidence}</a></li>
+        <li><a href={routePath('caseHome', locale)}>{T.caseHub}</a></li>
+        <li><a href={routePath('method', locale)}>{T.method}</a></li>
+      </ul>
+    </section>
+
     <nav class="linimasa-nav" aria-label={T.navLabel}>
-      {prev ? <a href={eventPath(prev, locale)} rel="prev">← {prev.title}</a> : <span></span>}
-      {next ? <a href={eventPath(next, locale)} rel="next">{next.title} →</a> : <span></span>}
+      {prev ? <a href={eventPath(prev, locale)} rel="prev">← {T.prev} · <time datetime={prev.date}>{formatDateFor(prev.date, locale)}</time><br />{prev.title}</a> : <span class="muted">{T.first}</span>}
+      {next ? <a href={eventPath(next, locale)} rel="next">{T.next} · <time datetime={next.date}>{formatDateFor(next.date, locale)}</time> →<br />{next.title}</a> : <span class="muted">{T.last}</span>}
     </nav>
     <p><a href={indexPath}>{T.all}</a></p>
   </article>
