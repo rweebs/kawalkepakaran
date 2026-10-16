@@ -7,7 +7,7 @@ import { claimOg } from '../../lib/og';
 import { getArsip, arsipPath } from '../../lib/arsip';
 import { getBukti } from '../../lib/content';
 import { truncateAtWord } from '../../lib/seo';
-import { claimReviewLd } from '../../lib/schema-org';
+import { claimReviewLd, speakablePageLd } from '../../lib/schema-org';
 import { PAGE_LASTMOD, SITE } from '../../lib/site';
 import { sourceLineFor } from '../../lib/bukti';
 import { confidenceLabel, findingFor, replyLine, replyStatusLabel, verdictLabel } from '../../lib/verdict';
@@ -61,7 +61,7 @@ const T = {
 }[locale];
 ---
 <BaseLayout title={truncateAtWord(claim.replace(/["“”]/g, ''), 48)} ogTitle={ogTitle} description={description} path={path} locale={locale} alternates={alternates}
-  jsonLd={generated ? undefined : ld} noindex={generated} image={generated ? undefined : claimOg(id, locale, claim, vLabel)}
+  jsonLd={generated ? undefined : [ld, speakablePageLd({ url: canonicalUrl, name: claim, locale })]} noindex={generated} image={generated ? undefined : claimOg(id, locale, claim, vLabel)}
   ogType="article" publishedTime={publishedIso} modifiedTime={reviewedIso} section={T.crumb}
   breadcrumbs={[...(inCase ? [{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }] : []), { name: T.crumb, path: routePath('claims', locale) }, { name: claim, path }]}>
   <article class="reading">
@@ -70,7 +70,7 @@ const T = {
       <p class="notice" role="note">{T.docNote} {T.reply}: {reply_}. <a href={routePath('reply', locale)}>{T.replyLink}</a>.</p>
     ) : (
       /* Verdict, finding, reply status and the not-a-ruling line sit together under the claim: one screen, one crop. */
-      <section aria-labelledby="putusan-h" id="putusan">
+      <section aria-labelledby="putusan-h" id="putusan" class="claim-verdict">
         <h2 id="putusan-h">{T.verdict}<a class="anchor" href="#putusan" aria-label={T.anchor}>#</a></h2>
         <p><VerdictBadge verdict={klaim.data.verdict} locale={locale} /> · {T.confidence}: {confidenceLabel(klaim.data.confidence, locale)}</p>
         <p class="finding"><strong>{T.finding}:</strong> {finding}</p>
@@ -116,7 +116,7 @@ const T = {
       <p><a href={routePath('evidence', locale)}>{T.evidence} →</a></p>
     </section>
 
-    <section aria-labelledby="batas-h" id="batas" data-reveal>
+    <section aria-labelledby="batas-h" id="batas" class="claim-limits" data-reveal>
       <h2 id="batas-h">{T.limits}<a class="anchor" href="#batas" aria-label={T.anchor}>#</a></h2>
       <p>{limits}</p>
     </section>

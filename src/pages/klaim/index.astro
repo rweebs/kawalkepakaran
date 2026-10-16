@@ -6,6 +6,7 @@ import CaseStats from '../../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
 import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
 import { formatDateLocale, localizedPath, routePath, type Locale } from '../../i18n';
+import { itemListLd, pageLd } from '../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('claims', locale);
 const all = await getKlaim();
@@ -27,8 +28,13 @@ const T = {
     empty: 'No claim checks have been listed yet.', confidence: 'Confidence', method: 'How verdicts are decided',
     genH: 'From archive documents', reviewed: 'reviewed', caseLink: 'Case overview', genLead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.' },
 }[locale];
+// Curated checks only: generated archive entries are noindex and never listed in structured data.
+const ld = [
+  pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description }),
+  itemListLd({ name: T.title, path, items: claims.map((k) => ({ name: locale === 'id' ? k.data.claim : k.data.claimEn, path: localizedPath('claims', locale, k.id) })) }),
+];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <p class="lead">{T.lead}</p>

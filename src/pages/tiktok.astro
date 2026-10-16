@@ -1,11 +1,12 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getTiktok } from '../lib/content';
-import { sortTiktok, thumbSrc, watchUrl, TIKTOK_CAPTION } from '../lib/tiktok';
+import { embedUrl, sortTiktok, thumbSrc, watchUrl, TIKTOK_CAPTION } from '../lib/tiktok';
 import { thumbFor, thumbSrcset } from '../lib/bukti';
 import { SITE } from '../lib/site';
 import { UI } from '../i18n/ui';
 import { localizedPath, type Locale } from '../i18n';
+import { pageLd, tiktokUploadDate, videoLd } from '../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const videos = sortTiktok(await getTiktok());
@@ -21,7 +22,11 @@ const T = {
 }[locale];
 const path = localizedPath('tiktok', locale);
 const DESCRIPTION = T.description;
-const ld = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: DESCRIPTION };
+// A VideoObject per video. The upload time is read from the TikTok id itself; the description is the series caption the author used.
+const ld = [
+  pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: DESCRIPTION }),
+  ...videos.map((v) => videoLd({ name: v.data.title, description: TIKTOK_CAPTION, thumbnail: thumbSrc(v.data.tiktokId), uploadDate: tiktokUploadDate(v.data.tiktokId), embedUrl: embedUrl(v.data.tiktokId), url: watchUrl(v.data.tiktokId) })).filter((x) => !!x),
+];
 const TIKTOK_SIZES = '(min-width: 768px) 220px, 50vw';
 ---
 <BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.h1, path }]}>

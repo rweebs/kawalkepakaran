@@ -4,6 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
 import { PAKAR_KIND_LABEL } from '../../lib/arsip';
 import { localizedPath, routePath, type Locale } from '../../i18n';
+import { itemListLd, pageLd } from '../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('experts', locale);
 const all = (await getPakar()).sort((a, b) => a.data.name.localeCompare(b.data.name));
@@ -24,8 +25,13 @@ const T = {
     empty: 'No experts have been listed yet.', claims: 'claims checked', method: 'See our method',
     archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts' },
 }[locale];
+// Curated profiles only: generated archive parties are noindex and never listed in structured data.
+const ld = [
+  pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description }),
+  itemListLd({ name: T.title, path, items: pakar.map((p) => ({ name: p.data.name, path: localizedPath('experts', locale, p.id) })) }),
+];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <ListFilter locale={locale} />

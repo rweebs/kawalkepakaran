@@ -8,6 +8,7 @@ import { HERO_EN, chaptersEn, STATS_EN, MESSAGE_EN } from '../lib/tentang-en';
 import { SITE } from '../lib/site';
 import { UI } from '../i18n/ui';
 import { localizedPath, routePath, type Locale } from '../i18n';
+import { authorLd, pageLd } from '../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const en = locale === 'en';
@@ -29,7 +30,7 @@ const DESCRIPTION = T.description;
 const split = chapters.findIndex((c) => c.id === 'nama') + 1;
 const before = chapters.slice(0, split);
 const after = chapters.slice(split);
-const ld = { '@context': 'https://schema.org', '@type': 'AboutPage', name: T.title, url: `${SITE.url}${path}`, inLanguage: locale, description: DESCRIPTION };
+const ld = { ...pageLd({ type: 'AboutPage', name: T.title, path, locale, description: DESCRIPTION }), mainEntity: authorLd(locale) };
 ---
 <BaseLayout title={T.title} description={DESCRIPTION} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: T.crumb, path }]}>
   <div class="tentang-stars" aria-hidden="true"></div>

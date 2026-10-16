@@ -14,6 +14,7 @@ import { localizeEvent, eventPath, formatDateFor } from '../../../lib/linimasa-l
 import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
 import { routePath, localizedPath, type Locale } from '../../../i18n';
+import { pageLd } from '../../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const en = locale === 'en';
@@ -24,7 +25,7 @@ const CREDITS = en ? CREDITS_EN : CREDITS_ID;
 const PARVAS = PARVAS_ID.map((p) => (en ? { ...p, ...PARVAS_EN[p.id] } : p));
 const U = BOWO_UI[locale];
 const path = localizedPath('bowobharata', locale);
-const ld = { '@context': 'https://schema.org', '@type': 'WebPage', name: PAGE.title, url: `${SITE.url}${path}`, inLanguage: locale, description: PAGE.description };
+const ld = pageLd({ name: PAGE.title, path, locale, description: PAGE.description });
 ---
 <BaseLayout title={PAGE.title} description={PAGE.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: 'Bowobharata', path }]}>
   <BowobharataStage />

@@ -6,6 +6,7 @@ import VerdictBadge from '../components/VerdictBadge.astro';
 import CaseStats from '../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
 import { SITE } from '../lib/site';
+import { authorLd, organizationLd } from '../lib/schema-org';
 import { localizedPath, routePath, type Locale } from '../i18n';
 import { HOME_SECTIONS } from '../lib/sky/states';
 
@@ -78,8 +79,8 @@ const websiteLd = {
   '@context': 'https://schema.org', '@type': 'WebSite', name: T.alt.name, alternateName: T.alt.alternateName,
   '@id': `${SITE.url}/#website`, url: new URL(localizedPath('home', locale), SITE.url).toString(), sameAs: [SITE.url, SITE.repo],
   inLanguage: locale, description: T.description,
-  author: { '@type': 'Person', name: SITE.author },
-  publisher: { '@type': 'Organization', '@id': 'https://www.infraloka.co.id/#organization', name: 'Infraloka', url: 'https://www.infraloka.co.id' },
+  author: authorLd(locale),
+  publisher: organizationLd(locale),
 };
 ---
 <BaseLayout title={T.title} description={T.description} path={localizedPath('home', locale)} locale={locale} jsonLd={websiteLd}>
