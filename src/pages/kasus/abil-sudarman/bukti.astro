@@ -36,16 +36,18 @@ const DESCRIPTION = T.description;
     <p class="muted">{T.intro}</p>
     {groups.length === 0
       ? <p class="muted">{T.empty}</p>
-      : groups.map((g) => (
+      : groups.map((g, gi) => (
         <section class="bukti-group" aria-labelledby={`grup-${g.id}`}>
           <h2 id={`grup-${g.id}`}>{locale === 'en' ? BUKTI_GROUP_LABEL_EN[g.id] : g.label}</h2>
           <div class="grid bukti-grid" data-reveal>
-            {g.items.map((e) => {
+            {g.items.map((e, ii) => {
               const x = buktiText(e.data, locale);
+              // The first evidence card sits above the fold and is the page's LCP image: fetched eagerly and first.
+              const lead = gi === 0 && ii === 0;
               return (
               <article class="card bukti-item" id={e.id} data-reveal-item>
                 <a class="bukti-thumb" href={e.data.images[0].src} target="_blank" rel="noopener noreferrer">
-                  <img src={thumbFor(e.data.images[0].src)} srcset={thumbSrcset(e.data.images[0].src)} sizes={CARD_THUMB_SIZES} alt={x.alt(0)} width={sizes.get(e.id)!.width} height={sizes.get(e.id)!.height} loading="lazy" decoding="async" />
+                  <img src={thumbFor(e.data.images[0].src)} srcset={thumbSrcset(e.data.images[0].src)} sizes={CARD_THUMB_SIZES} alt={x.alt(0)} width={sizes.get(e.id)!.width} height={sizes.get(e.id)!.height} loading={lead ? 'eager' : 'lazy'} fetchpriority={lead ? 'high' : undefined} decoding="async" />
                 </a>
                 <h3>{x.title}<a class="anchor" href={`#${e.id}`} aria-label={T.anchor}>#</a></h3>
                 <p><strong>{T.shows}</strong> {x.shows}</p>

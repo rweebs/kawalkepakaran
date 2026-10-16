@@ -3,6 +3,8 @@
 // first interaction. No framework runtime is shipped for it, which keeps React off the page's loading path.
 interface Props { sectionIds: readonly string[] }
 const { sectionIds } = Astro.props;
+// Shown by sky-stage.ts only under reduced motion or Save-Data, where the scene does not start by itself.
+const startLabel = Astro.url.pathname.startsWith('/en') ? 'Play the 3D sky' : 'Putar langit 3D';
 const stars = Array.from({ length: 60 }, (_, i) => ({ cx: (i * 53) % 100, cy: (i * 37) % 70, r: 0.15 + ((i * 7) % 5) * 0.06 }));
 const bird = 'M0 0 L-4 -1.5 L0 0.8 L4 -1.5 Z';
 const birds = [[20, 20], [34, 14], [48, 22], [62, 12], [76, 20]];
@@ -14,4 +16,5 @@ const birds = [[20, 20], [34, 14], [48, 22], [62, 12], [76, 20]];
   </svg>
   <canvas class="sky-stage__canvas sky-stage__canvas--hidden"></canvas>
 </div>
+<button type="button" class="scene-start" data-sky-start hidden>{startLabel}</button>
 <script>import '../scripts/sky-stage';</script>
