@@ -1,8 +1,11 @@
 ---
 // Bowobharata's backdrop: a CSS gradient (blue camp left, dark camp right) is the static first paint. The WebGL diorama
 // (three.js) is loaded by bowobharata-stage.ts after the first interaction. No framework runtime is shipped for it.
+// The start button is shown only under reduced motion or Save-Data, where the scene does not start by itself.
+const startLabel = Astro.url.pathname.startsWith('/en') ? 'Play the 3D scene' : 'Putar adegan 3D';
 ---
 <div class="bb-stage" aria-hidden="true" data-mode="fallback">
   <canvas class="bb-stage__canvas bb-stage__canvas--hidden"></canvas>
 </div>
+<button type="button" class="scene-start" data-bb-start hidden>{startLabel}</button>
 <script>import '../scripts/bowobharata-stage';</script>

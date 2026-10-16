@@ -121,11 +121,11 @@ const lds = [
               <li class="nav__group-item">
                 <details class="nav__group">
                   <summary class:list={{ 'is-active': e.items.some((i) => isActive(path, i.href)) }}>{e.label}</summary>
-                  <ul>{e.items.map((i) => <li><a href={i.href} aria-current={isActive(path, i.href) ? 'page' : undefined}>{i.label}</a></li>)}</ul>
+                  <ul>{e.items.map((i) => <li><a href={i.href} data-astro-prefetch aria-current={isActive(path, i.href) ? 'page' : undefined}>{i.label}</a></li>)}</ul>
                 </details>
               </li>
             ) : (
-              <li><a href={e.href} aria-current={isActive(path, e.href) ? 'page' : undefined}>{e.label}</a></li>
+              <li><a href={e.href} data-astro-prefetch aria-current={isActive(path, e.href) ? 'page' : undefined}>{e.label}</a></li>
             ))}
             <li class="nav__lang"><LanguageToggle locale={locale} href={switchHref} label={ui.language} /></li>
           </ul>

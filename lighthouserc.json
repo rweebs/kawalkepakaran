@@ -2,7 +2,16 @@
   "ci": {
     "collect": {
       "staticDistDir": "./dist",
-      "url": ["/index.html", "/pakar.html", "/klaim.html", "/metode.html", "/kebijakan.html"],
+      "url": [
+        "/index.html",
+        "/pakar.html",
+        "/klaim.html",
+        "/metode.html",
+        "/kebijakan.html",
+        "/klaim/abil-sudarman-dosen-tim-bergelar.html",
+        "/kasus/abil-sudarman/artikel/investigative-report-unpacking-the-credentials-of-abil-sudarman.html",
+        "/pakar/abil-sudarman.html"
+      ],
       "numberOfRuns": 1
     },
     "assert": {
@@ -10,7 +19,7 @@
         "categories:accessibility": ["error", { "minScore": 0.9 }],
         "categories:seo": ["error", { "minScore": 0.9 }],
         "categories:best-practices": ["warn", { "minScore": 0.9 }],
-        "categories:performance": ["warn", { "minScore": 0.7 }]
+        "categories:performance": ["error", { "minScore": 0.8 }]
       }
     }
   }

@@ -1,6 +1,7 @@
 import { parvaProgress } from '../lib/bowobharata/stage-math';
 import { atPageBottom } from '../lib/sky/states';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
+import { prefersStill, whenInView, whenStartPressed } from './scene-gate';
 
 // Same loading discipline as sky-stage.ts: the page is already complete and readable without this; the WebGL scene and the
 // motion library wait for the first sign of a real visitor, or a long idle fallback, so they never count against the load.
@@ -51,6 +52,10 @@ if (root && canvas && parvas) {
       await whenSettled();
       if (!reduced) void revealOnScroll();
       if (forceFallback) return;
+      // Reduced motion or Save-Data: the gradient backdrop stays until the visitor presses the start button. Either way the
+      // scene is fetched only once the parvas it narrates are about to scroll into view.
+      if (prefersStill()) await whenStartPressed(document.querySelector<HTMLButtonElement>('[data-bb-start]'));
+      await whenInView(parvas);
 
       const { createScene } = await import('../lib/bowobharata/KurukshetraScene');
       let scene: KurukshetraScene | undefined;
