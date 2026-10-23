@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { llmsFull } from '../src/lib/llms';
+import { llmsFull, llmsIndex } from '../src/lib/llms';
 
 const site = { name: 'Kawal Kepakaran', url: 'https://kawalkepakaran.org', description: 'Desc.' };
 const claim = {
@@ -24,11 +24,24 @@ describe('llms-full.txt', () => {
   it('the route leaves generated claims out', () => {
     expect(readFileSync('src/pages/llms-full.txt.ts', 'utf8')).toContain('!isGenerated(k)');
   });
-  it('llms.txt links both case hubs, the English case pages and llms-full.txt', () => {
-    const idx = readFileSync('public/llms.txt', 'utf8');
-    for (const p of ['/kasus/abil-sudarman)', '/en/cases/abil-sudarman)', '/en/cases/abil-sudarman/articles)', '/en/cases/abil-sudarman/evidence)', '/en/cases/abil-sudarman/timeline)', '/llms-full.txt)']) {
-      expect(idx, p).toContain(`https://kawalkepakaran.org${p}`);
-    }
+  it('llms.txt is generated from the sitemap entries, so every page is listed', () => {
+    const idx = llmsIndex([
+      { path: '/', label: 'Home', group: 'pages' },
+      { path: '/en/cases/abil-sudarman', label: 'Case', group: 'pages' },
+      { path: '/klaim/x', label: 'A  claim', group: 'claims' },
+      { path: '/klaim/x', label: 'dup', group: 'claims' },
+    ], site);
+    expect(idx).toContain('- [Home](https://kawalkepakaran.org/)');
+    expect(idx).toContain('- [Case](https://kawalkepakaran.org/en/cases/abil-sudarman)');
+    expect(idx.match(/\/klaim\/x\)/g)).toHaveLength(1);
+    expect(idx).toContain('https://kawalkepakaran.org/llms-full.txt');
+    expect(idx).toMatch(/praduga tak bersalah/);
+    expect(readFileSync('src/pages/llms.txt.ts', 'utf8')).toContain('sitemapEntries()');
+  });
+  it('robots.txt names the AI crawlers and allows them', () => {
+    const robots = readFileSync('public/robots.txt', 'utf8');
+    for (const bot of ['ClaudeBot', 'Claude-SearchBot', 'GPTBot', 'PerplexityBot', 'Google-Extended']) expect(robots).toContain(`User-agent: ${bot}`);
+    expect(robots).not.toMatch(/Disallow:\s*\//);
   });
 });
 
