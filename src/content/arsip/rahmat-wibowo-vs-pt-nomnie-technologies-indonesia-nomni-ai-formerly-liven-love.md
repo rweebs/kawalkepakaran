@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Nomni AI (PT Nomnie Technologies Indonesia, formerly Liven.love): Case Summary"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-pt-nomnie-technologies-indonesia-nomni-ai-formerly-liven-love"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

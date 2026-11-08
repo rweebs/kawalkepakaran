@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 072/SOMASI/RW/IX/2026: Rafiq Al Hafizh Adha (English Edition)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-072-rafiq-al-hafizh-adha-letter-of-demand-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

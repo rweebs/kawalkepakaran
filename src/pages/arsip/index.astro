@@ -10,17 +10,17 @@ const path = localizedPath('archive', locale);
 const items = (await getArsip()).sort((a, b) => a.data.title.localeCompare(b.data.title));
 const KINDS = ['somasi', 'aduan', 'ringkasan', 'analisis', 'catatan'] as const;
 const T = {
-  id: { title: 'Arsip Perkara', h1: 'Arsip Perkara', crumb: 'Arsip', description: 'Tulisan penulis tentang sengketa, somasi, dan aduan, disalin dari blog Infraloka, beserta pihak yang disebut.',
-    lead: 'Salinan tulisan dari blog Infraloka tentang sengketa profesional, apa adanya, dengan sumber aslinya. Pihak yang disebut ada di halaman Pihak.',
+  id: { title: 'Kasus', h1: 'Kasus', crumb: 'Kasus', description: 'Semua kasus aktif: sengketa, somasi, dan aduan yang dicatat penulis, beserta sumber dan pihak yang disebut.',
+    lead: 'Semua kasus aktif, sejajar: sengketa profesional yang dicatat penulis, apa adanya, dengan sumber aslinya. Pihak yang disebut ada di halaman Pihak.',
     note: 'Penulis situs ini adalah pihak dalam perkara-perkara ini. Isinya pendapat dan catatan penulis, bukan putusan. Setiap pihak berhak menjawab lewat', replyLabel: 'hak jawab',
-    empty: 'Arsip belum diterbitkan.', parties: 'Lihat pihak yang disebut', lang: { id: 'Bahasa Indonesia', en: 'Bahasa Inggris' }, trimmed: 'dipangkas' },
-  en: { title: 'Case archive', h1: 'Case archive', crumb: 'Archive', description: 'The author\'s posts on disputes, legal notices and complaints, copied from the Infraloka blog, with the parties they name.',
-    lead: 'Copies of posts from the Infraloka blog about professional disputes, as published, with their original source. The parties named are on the Parties page.',
+    empty: 'Belum ada kasus yang diterbitkan.', parties: 'Lihat pihak yang disebut', lang: { id: 'Bahasa Indonesia', en: 'Bahasa Inggris' }, trimmed: 'dipangkas' },
+  en: { title: 'Cases', h1: 'Cases', crumb: 'Cases', description: 'All active cases: the disputes, legal notices and complaints the author records, with their sources and the parties named.',
+    lead: 'Every case is active and listed side by side: professional disputes recorded by the author, as published, with their original source. The parties named are on the Parties page.',
     note: 'The author of this site is a party to these matters. What is published is the author\'s opinion and notes, not a ruling. Every party has the right to reply through the', replyLabel: 'right of reply',
-    empty: 'The archive has not been published yet.', parties: 'See the parties named', lang: { id: 'Indonesian', en: 'English' }, trimmed: 'trimmed' },
+    empty: 'No cases have been published yet.', parties: 'See the parties named', lang: { id: 'Indonesian', en: 'English' }, trimmed: 'trimmed' },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex breadcrumbs={[{ name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]}>
   <article class="reading">
     <h1>{T.h1}</h1>
     <ListFilter locale={locale} />

@@ -4,7 +4,8 @@ import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
 import { EVENTS, eventUrl } from './linimasa';
 import { getBukti, getPosts, getPostsEn } from './content';
-import { getKlaim, getPakar, isGenerated } from './pakar';
+import { getKlaim, getPakar } from './pakar';
+import { getArsip, arsipPath } from './arsip';
 import { ROUTES } from '../i18n';
 import { localizedEvents, localizeEvent, eventPath } from './linimasa-locale';
 import { firstImage } from './header-image';
@@ -43,7 +44,7 @@ const claimDates = (k: Klaim) => [k.data.reviewedAt, k.data.reply?.receivedAt];
 
 let cached: Promise<SitemapEntry[]> | undefined;
 
-/** All sitemap entries, each tagged with its child sitemap and its hreflang twin. Generated entries are never included. */
+/** All sitemap entries, each tagged with its child sitemap and its hreflang twin. Archive-generated entries are included too. */
 export function sitemapEntries(): Promise<SitemapEntry[]> {
   cached ??= collect();
   return cached;
@@ -53,11 +54,10 @@ async function collect(): Promise<SitemapEntry[]> {
   const posts = await getPosts();
   const bukti = await getBukti();
   const postsEn = await getPostsEn();
-  const allPakar = await getPakar();
-  const allKlaim = await getKlaim();
-  // The /pakar and /klaim hubs are indexable (generated entries live elsewhere); generated detail pages stay noindex and out.
-  const pakar = allPakar.filter((p) => !isGenerated(p));
-  const klaim = allKlaim.filter((k) => !isGenerated(k));
+  const pakar = await getPakar();
+  const klaim = await getKlaim();
+  const arsip = await getArsip();
+  const arsipLastmod = newestDay(arsip.map((a) => a.data.archivedAt));
   const latest = newestDay(posts.map((p) => p.data.translationDate));
   // Claim reviews and replies: the home page, the updates page and the hubs all show them.
   const claimsLastmod = newestDay(klaim.flatMap(claimDates));
@@ -79,6 +79,10 @@ async function collect(): Promise<SitemapEntry[]> {
     { path: '/metode', lastmod: pageLastmod('/metode') },
     { path: '/glosarium', lastmod: pageLastmod('/glosarium') },
     { path: '/kasus/abil-sudarman', lastmod: pageLastmod('/kasus/abil-sudarman') },
+    { path: '/arsip', lastmod: arsipLastmod },
+    { path: '/pakar/arsip', lastmod: arsipLastmod },
+    { path: '/klaim/arsip', lastmod: arsipLastmod },
+    ...arsip.map((a) => ({ path: arsipPath(a.id, 'id'), lastmod: iso(a.data.archivedAt), group: 'articles' as const })),
     ...pakar.map((p) => ({ path: `/pakar/${p.id}`, lastmod: expertLastmod(p), group: 'claims' as const })),
     ...klaim.map((k) => ({ path: `/klaim/${k.id}`, lastmod: claimLastmod(k), group: 'claims' as const })),
     { path: '/kasus/abil-sudarman/artikel', lastmod: latest },
@@ -112,6 +116,7 @@ async function collect(): Promise<SitemapEntry[]> {
     ...pakar.map((p) => ({ path: `/en/experts/${p.id}`, lastmod: expertLastmod(p), group: 'claims' as const })),
     ...klaim.map((k) => ({ path: `/en/claims/${k.id}`, lastmod: claimLastmod(k), group: 'claims' as const })),
     ...localizedEvents('en').map((e) => ({ path: eventPath(e, 'en'), lastmod: e.date, group: 'articles' as const })),
+    ...arsip.map((a) => ({ path: arsipPath(a.id, 'en'), lastmod: iso(a.data.archivedAt), group: 'articles' as const })),
     ...postsEn.map((p) => {
       const header = firstImage(p.body ?? '');
       return { path: `/en/cases/abil-sudarman/articles/${p.id}`, lastmod: iso(p.data.publishedDate), images: header ? [header.src] : [], group: 'articles' as const };
@@ -124,6 +129,7 @@ async function collect(): Promise<SitemapEntry[]> {
   for (const r of Object.values(ROUTES)) pair.set(r.id, r.en);
   for (const p of pakar) pair.set(`/pakar/${p.id}`, `/en/experts/${p.id}`);
   for (const k of klaim) pair.set(`/klaim/${k.id}`, `/en/claims/${k.id}`);
+  for (const a of arsip) pair.set(arsipPath(a.id, 'id'), arsipPath(a.id, 'en'));
   for (const e of EVENTS) pair.set(eventUrl(e), eventPath(localizeEvent(e, 'en'), 'en'));
   for (const p of postsEn) pair.set(`/kasus/abil-sudarman/artikel/${p.id}`, `/en/cases/abil-sudarman/articles/${p.id}`);
   const reverse = new Map([...pair].map(([id, en]) => [en, id]));

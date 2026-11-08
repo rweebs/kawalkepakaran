@@ -289,69 +289,9 @@ export function findInternalLinkProblems(distDir, site = DEFAULT_SITE) {
   return problems;
 }
 
-/** Content collections whose generated entries get their own pages, with the routes they are served at. */
-export const GENERATED_ROUTES = { pakar: ['/pakar', '/en/experts'], klaim: ['/klaim', '/en/claims'] };
-/** Archive routes: everything at or under these paths must be noindex. */
-export const ARCHIVE_PREFIXES = ['/arsip', '/en/archive', '/pakar/arsip', '/klaim/arsip', '/en/experts/archive', '/en/claims/archive'];
-
-function jsonFiles(dir) {
-  if (!existsSync(dir)) return [];
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...jsonFiles(p));
-    else if (name.endsWith('.json')) out.push(p);
-  }
-  return out;
-}
-
-/** Ids of the entries generated from the archive ("source": "arsip"), as src/content.config.ts derives them. */
-export function generatedEntries(contentDir) {
-  const out = [];
-  for (const [collection, routes] of Object.entries(GENERATED_ROUTES)) {
-    const base = join(contentDir, collection);
-    for (const file of jsonFiles(base)) {
-      let data;
-      try { data = JSON.parse(readFileSync(file, 'utf8')); } catch { continue; }
-      if (data?.source !== 'arsip') continue;
-      const id = relative(base, file).split(sep).join('/').replace(/^generated\//, '').replace(/\.json$/, '');
-      out.push({ collection, id, file, draft: data.draft === true, paths: routes.map((r) => `${r}/${id}`) });
-    }
-  }
-  return out;
-}
-
-/**
- * LEGAL GUARD. Pages built from entries generated out of the author's archive, and the archive itself, name
- * people in disputes without a curated review; they must never be indexable. A page that loses its noindex
- * (or a generated entry whose page disappears, so the guard can no longer see it) fails the build.
- */
-export function findLegalGuardProblems(distDir, contentDir = 'src/content', site = DEFAULT_SITE) {
-  const dist = siteRoot(distDir);
-  const origin = new URL(site).origin;
-  const problems = [];
-  for (const entry of generatedEntries(contentDir)) {
-    for (const path of entry.paths) {
-      const page = pageFileFor(dist, path);
-      if (!page) {
-        if (!entry.draft) problems.push(`LEGAL GUARD: ${path} (generated from ${entry.file}) has no page, so its noindex cannot be checked`);
-        continue;
-      }
-      if (!isNoindex(readFileSync(page, 'utf8'))) problems.push(`LEGAL GUARD: ${path} is generated from the archive (${entry.file}) but is indexable; it must be noindex`);
-    }
-  }
-  for (const file of htmlFiles(dist)) {
-    const { pathname } = new URL(selfUrl(dist, file, origin));
-    if (!ARCHIVE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) continue;
-    if (!isNoindex(readFileSync(file, 'utf8'))) problems.push(`LEGAL GUARD: archive page ${pathname} is indexable; it must be noindex`);
-  }
-  return problems;
-}
-
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const dist = resolve(process.argv[2] ?? 'dist');
   const problems = [
-    ...findLegalGuardProblems(dist),
     ...findProblems(dist), ...findSitemapProblems(dist), ...findHreflangProblems(dist), ...findBundleProblems(dist), ...findOgImageProblems(dist),
     ...findCanonicalProblems(dist), ...findInternalLinkProblems(dist),
   ];

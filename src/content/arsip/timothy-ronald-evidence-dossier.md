@@ -1,7 +1,7 @@
 ---
 title: "Timothy Ronald: Evidence Dossier"
 sourceUrl: "https://www.infraloka.co.id/blog/timothy-ronald-evidence-dossier"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

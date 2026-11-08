@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Yassirullah Muhammad: A Cease-and-Desist Over Reposted Accusations"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-yassirullah-muhammad-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Why Abil Sudarman Is Named in Complaint No. 068/ADUAN/RW/09/2026 (English Edition)"
 sourceUrl: "https://www.infraloka.co.id/blog/aduan-068-abil-sudarman-reported-party-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "aduan"
 status: "tidak-diketahui"

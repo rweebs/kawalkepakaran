@@ -1,7 +1,7 @@
 ---
 title: "Hiring Manager Summary: Ida Bagus Raditya Avanindra Mahaputra — Software Engineering Assessment"
 sourceUrl: "https://www.infraloka.co.id/blog/hiring-manager-summary-ida-bagus-raditya-avanindra-mahaputra-software-engineering-assessment"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

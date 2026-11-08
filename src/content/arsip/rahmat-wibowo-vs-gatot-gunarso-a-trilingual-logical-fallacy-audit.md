@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Gatot Gunarso: A Trilingual Logical-Fallacy Audit of a Threads Dispute"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-gatot-gunarso-a-trilingual-logical-fallacy-audit"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

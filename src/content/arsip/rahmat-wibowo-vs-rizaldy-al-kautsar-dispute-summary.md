@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Rizaldy Al Kautsar: A Cease-and-Desist Over Online Comments"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-rizaldy-al-kautsar-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

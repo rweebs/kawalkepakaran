@@ -1,7 +1,7 @@
 ---
 title: "Digital Dictators: When the Admin Button Becomes a Weapon : Denis Enrico Hasyim and Achmad Zaky ex-Bukalapak from Init6"
 sourceUrl: "https://www.infraloka.co.id/blog/digital-dictators-when-the-admin-button-becomes-a-weapon-denis-enrico-hasyim-and-achmad-zaky-syaifudin-ex-bukalapak-from-init6"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

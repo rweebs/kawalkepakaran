@@ -2,7 +2,7 @@ import { getKlaim, isGenerated } from './pakar';
 import { verdictBadge } from './badge';
 import type { Locale } from '../i18n';
 
-/** Hand-made claims only: generated (archive) entries are noindex and get no badge. */
+/** Hand-made claims only: generated (archive) entries get no badge. */
 export async function curatedKlaimPaths() {
   return (await getKlaim()).filter((k) => !isGenerated(k)).map((k) => ({ params: { slug: k.id } }));
 }

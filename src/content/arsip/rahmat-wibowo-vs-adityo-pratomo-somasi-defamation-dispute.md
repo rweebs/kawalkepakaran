@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Adityo Pratomo (@kotakmakan): A Cease-and-Desist Letter Over Public Comments"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-adityo-pratomo-somasi-defamation-dispute"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Who is DeletedUser? The Unmasking of Bernadeta Elie"
 sourceUrl: "https://www.infraloka.co.id/blog/who-is-deleteduser-the-unmasking-of-bernadeta-elie"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

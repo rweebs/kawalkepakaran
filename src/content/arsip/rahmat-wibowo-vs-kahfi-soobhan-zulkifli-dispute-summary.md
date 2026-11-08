@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Kahfi Soobhan Zulkifli: A Legal Notice Over Online Defamation and Religiously-Framed Harassment"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-kahfi-soobhan-zulkifli-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

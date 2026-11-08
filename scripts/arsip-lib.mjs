@@ -70,10 +70,15 @@ export function langFor(text) {
 export const titleFrom = (md) => (md.match(/^#\s+(.+)$/m) ?? [])[1]?.trim() ?? '';
 
 export function stripTitle(md) {
-  return md.replace(/^#\s+.+\n+/m, '');
+  // The page supplies the one h1, so later top-level headings are demoted (outside code fences).
+  let fenced = false;
+  return md.replace(/^#\s+.+\n+/m, '').split('\n').map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    return !fenced && /^#\s/.test(line) ? `#${line}` : line;
+  }).join('\n');
 }
 
-const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i;
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|svg)$/i;
 
 /** The flat output file name for a source image, url-safe: `My Shot (2).PNG` becomes `arsip-my-shot-2.webp`. */
 export function imageName(base) {

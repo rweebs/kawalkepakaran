@@ -1,7 +1,7 @@
 ---
 title: "Weaponizing Police Reports: The Digital Era of Extortion Study Case of Luca Cada Lora , Burman Noviansyah, Suryadiputra L., Xendit, and Nomni. AI"
 sourceUrl: "https://www.infraloka.co.id/blog/weaponizing-police-reports-the-digital-era-of-extortion-study-case-of-luca-cada-lora-burman-noviansyah-suryadiputra-l-xendit-and-nomni-ai"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Aria Ghora Prabono: A Cease-and-Desist Letter Over Online Mockery"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-aria-ghora-prabono-defamation-cease-and-desist"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Assessment Index: Ida Bagus Raditya Avanindra Mahaputra — Complete AEGIS Project Documentation Overview"
 sourceUrl: "https://www.infraloka.co.id/blog/assessment-index-ida-bagus-raditya-avanindra-mahaputra-aegis-project-documentation-overview"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

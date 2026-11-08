@@ -1,7 +1,7 @@
 ---
 title: "A Fair Review of a Mentor's Own Site: gedearya.com by I Gede Arya Raditya Parameswara"
 sourceUrl: "https://www.infraloka.co.id/blog/a-fair-review-of-a-mentor-s-own-site-gedearya-com-by-i-gede-arya-raditya-parameswara"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

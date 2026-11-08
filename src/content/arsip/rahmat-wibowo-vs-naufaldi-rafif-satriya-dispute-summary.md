@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Naufaldi Rafif Satriya: A Cease-and-Desist Over Public Mockery and Defamation Allegations"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-naufaldi-rafif-satriya-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

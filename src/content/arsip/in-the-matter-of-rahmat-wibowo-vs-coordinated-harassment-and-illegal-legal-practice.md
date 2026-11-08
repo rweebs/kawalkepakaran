@@ -1,7 +1,7 @@
 ---
 title: "In the Matter of Rahmat Wibowo vs. Coordinated Harassment and Illegal Legal Practice"
 sourceUrl: "https://www.infraloka.co.id/blog/in-the-matter-of-rahmat-wibowo-vs-coordinated-harassment-and-illegal-legal-practice"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

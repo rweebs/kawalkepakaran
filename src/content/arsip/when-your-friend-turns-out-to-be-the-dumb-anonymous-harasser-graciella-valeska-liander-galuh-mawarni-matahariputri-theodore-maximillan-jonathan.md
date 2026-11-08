@@ -1,7 +1,7 @@
 ---
 title: "When Your Friend Turns Out to Be the Dumb Anonymous Harasser: , Graciella Valeska Liander,  Galuh Mawarni Matahariputri, Theodore Maximillan Jonathan"
 sourceUrl: "https://www.infraloka.co.id/blog/when-your-friend-turns-out-to-be-the-dumb-anonymous-harasser-graciella-valeska-liander-galuh-mawarni-matahariputri-theodore-maximillan-jonathan"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

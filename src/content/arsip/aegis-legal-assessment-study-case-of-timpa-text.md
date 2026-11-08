@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Legal Assessment: Study Case of Timpa Text"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-legal-assessment-study-case-of-timpa-text"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

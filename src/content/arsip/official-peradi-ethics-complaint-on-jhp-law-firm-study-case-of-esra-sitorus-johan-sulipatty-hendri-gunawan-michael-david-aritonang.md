@@ -1,7 +1,7 @@
 ---
 title: "Official PERADI Ethics Complaint on JHP Law Firm: Study Case of Esra Sitorus, Johan Sulipatty, Hendri Gunawan, Michael David Aritonang"
 sourceUrl: "https://www.infraloka.co.id/blog/official-peradi-ethics-complaint-on-jhp-law-firm-study-case-of-esra-sitorus-johan-sulipatty-hendri-gunawan-michael-david-aritonang"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

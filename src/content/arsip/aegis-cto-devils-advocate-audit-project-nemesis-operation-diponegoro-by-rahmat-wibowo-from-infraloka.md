@@ -1,7 +1,7 @@
 ---
 title: "AEGIS CTO Devil's Advocate Audit: Project Nemesis (Operation Diponegoro) Of Abil Sudarman from ASSAI By Rahmat Wibowo From InfraLoka"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-cto-devils-advocate-audit-project-nemesis-operation-diponegoro-by-rahmat-wibowo-from-infraloka"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

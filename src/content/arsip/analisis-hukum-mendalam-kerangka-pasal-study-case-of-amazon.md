@@ -1,7 +1,7 @@
 ---
 title: "Analisis Hukum Mendalam & Kerangka Pasal — Study Case of PT Amazon Web Services Indonesia, Makarim & Taira S."
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-hukum-mendalam-kerangka-pasal-study-case-of-amazon"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

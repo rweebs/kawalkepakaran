@@ -6,7 +6,7 @@ const home = readFileSync('src/pages/index.astro', 'utf8');
 
 describe('home', () => {
   it('leads with the pakar framing and links the main sections', () => {
-    for (const k of ["routePath('experts'", "routePath('claims'", "routePath('method'", "routePath('caseHome'"]) expect(home).toContain(k);
+    for (const k of ["routePath('experts'", "routePath('claims'", "routePath('method'", "routePath('archive'"]) expect(home).toContain(k);
   });
   it('no longer presents Operasi Ababil as the site identity', () => {
     expect(home).not.toMatch(/Operasi Ababil|Operation Ababil/);
@@ -21,7 +21,7 @@ describe('home', () => {
     expect(order.at(-1)).toBe('jawaban');
   });
   it('leads with the case before the method, and staggers sections in on scroll', () => {
-    expect(home.indexOf("routePath('caseHome'")).toBeLessThan(home.indexOf('T.howH'));
+    expect(home.indexOf("routePath('archive'")).toBeLessThan(home.indexOf('T.howH'));
     expect(home).toContain('data-reveal');
   });
   it('links the contribution guide on the default branch', () => {

@@ -1,7 +1,7 @@
 ---
 title: "The Hypomanic Edge: Minds That Moved the World, Study Case of Rahmat Wibowo"
 sourceUrl: "https://www.infraloka.co.id/blog/the-hypomanic-edge-minds-that-moved-the-world-study-case-of-rahmat-wibowo"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Is Your Data Safe on Anonymous Forums? A Case Study on FOMO Indonesia and Indonesia's Personal Data Protection Law"
 sourceUrl: "https://www.infraloka.co.id/blog/is-your-data-safe-on-anonymous-forums-a-case-study-on-fomo-indonesia-and-indonesia-s-personal-data-protection-law"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

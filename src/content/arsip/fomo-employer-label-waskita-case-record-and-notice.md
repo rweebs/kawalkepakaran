@@ -1,7 +1,7 @@
 ---
 title: "Fomo Employer Label “Waskita”: Case Record and Notice"
 sourceUrl: "https://www.infraloka.co.id/blog/fomo-employer-label-waskita-case-record-and-notice"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

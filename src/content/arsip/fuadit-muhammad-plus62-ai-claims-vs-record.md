@@ -1,7 +1,7 @@
 ---
 title: "Fuadit Muhammad and Plus62.ai: Claims vs the Verifiable Record"
 sourceUrl: "https://www.infraloka.co.id/blog/fuadit-muhammad-plus62-ai-claims-vs-record"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Yudha Okky Pratama and Delegasi: A Neutral Record of a Public Threads Exchange"
 sourceUrl: "https://www.infraloka.co.id/blog/yudha-okky-pratama-delegasi-public-thread-record"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

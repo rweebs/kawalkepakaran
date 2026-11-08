@@ -1,7 +1,7 @@
 ---
 title: "Critical Analysis The Real Gift of Tan Malaka: Logic, Not Atheism ; Blacklist Malaka Project, Sabda PS, and Ferry Irwandi"
 sourceUrl: "https://www.infraloka.co.id/blog/critical-analysis-the-real-gift-of-tan-malaka-logic-not-atheism-blacklist-malaka-project-sabda-ps-and-ferry-irwandi"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

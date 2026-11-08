@@ -1,7 +1,7 @@
 ---
 title: "I Filed a Police Complaint Against Nomni AI: Here's What Happened"
 sourceUrl: "https://www.infraloka.co.id/blog/i-filed-a-police-complaint-against-nomni-ai-heres-what-happened"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Galih Indra Firmansyah: A Cease-and-Desist Over Tweets About My AWS Departure"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-galih-indra-firmansyah-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

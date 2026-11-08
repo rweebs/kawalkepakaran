@@ -1,7 +1,7 @@
 ---
 title: "Analisis Risiko Hukum & Prediksi Putusan Pengadilan — Study Case of Kawalrahmatthread1"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-risiko-hukum-prediksi-putusan-pengadilan-study-case-of-kawalrahmatthread1"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

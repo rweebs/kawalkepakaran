@@ -13,8 +13,7 @@ describe('sitemap route', () => {
     expect(src).toContain('{ path: ROUTES.updates.id');
     expect(src).toContain('for (const r of Object.values(ROUTES)) pair.set(r.id, r.en)');
   });
-  it('keeps generated claim and pakar detail pages out', () => {
-    expect(src).toContain('allPakar.filter((p) => !isGenerated(p))');
-    expect(src).toContain('allKlaim.filter((k) => !isGenerated(k))');
+  it('lists generated claim and pakar detail pages too', () => {
+    expect(src).not.toContain('isGenerated');
   });
 });

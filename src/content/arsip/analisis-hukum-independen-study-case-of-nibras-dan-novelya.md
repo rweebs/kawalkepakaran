@@ -1,7 +1,7 @@
 ---
 title: "ANALISIS HUKUM INDEPENDEN — Study Case of Nibras Maulana Meidiawan Dan Novellya Devivarlianti"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-hukum-independen-study-case-of-nibras-dan-novelya"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "When Leadership Principles Become Wall Decorations : Study Case of Anthony Amni, Rudi Suryadi, Donald Tirtaatmadja"
 sourceUrl: "https://www.infraloka.co.id/blog/when-leadership-principles-become-wall-decorations-study-case-of-anthony-amni-rudi-suryadi-donald-tirtaatmadja"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

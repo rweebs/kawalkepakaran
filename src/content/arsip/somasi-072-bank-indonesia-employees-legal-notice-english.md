@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 072/SOMASI/RW/IX/2026: Two Bank Indonesia Employees (English Edition)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-072-bank-indonesia-employees-legal-notice-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

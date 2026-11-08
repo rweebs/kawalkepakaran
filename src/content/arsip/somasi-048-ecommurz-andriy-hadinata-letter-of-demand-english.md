@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 048/SOMASI/RW/IX/2026: Andriy Hadinata and Ecommurz (English Translation of the Indonesian Letter)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-048-ecommurz-andriy-hadinata-letter-of-demand-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

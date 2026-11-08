@@ -1,7 +1,7 @@
 ---
 title: "The Art of Playing Victim: A Field Guide to Manufactured Innocence: Study Case of Ibrahim Arief Kawal Ibam"
 sourceUrl: "https://www.infraloka.co.id/blog/the-art-of-playing-victim-a-field-guide-to-manufactured-innocence-study-case-of-ibrahim-arief-kawal-ibam"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

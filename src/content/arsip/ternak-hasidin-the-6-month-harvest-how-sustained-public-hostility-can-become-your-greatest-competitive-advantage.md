@@ -1,7 +1,7 @@
 ---
 title: "Ternak Hasidin, The 6-Month Harvest: How Sustained Public Hostility Can Become Your Greatest Competitive Advantage By Rahmat Wibowo From Infraloka"
 sourceUrl: "https://www.infraloka.co.id/blog/ternak-hasidin-the-6-month-harvest-how-sustained-public-hostility-can-become-your-greatest-competitive-advantage"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Kiro Architecture Review: Rahmat Wibowo of InfraLoka Assesses Petra Novandi's AWS Well-Architected Framework Case for Kiro"
 sourceUrl: "https://www.infraloka.co.id/blog/kiro-architecture-review-rahmat-wibowo-infraloka-assessment-of-petra-novandi-aws-well-architected-framework"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

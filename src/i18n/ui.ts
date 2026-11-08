@@ -86,7 +86,7 @@ export const UI: Record<Locale, UiStrings> = {
     ogImageAlt: "Kawal Kepakaran: checking what experts claim. Swifts flying across a starry night sky beside the Kawal emblem. The author's notes and opinion, not a ruling.",
     nav: {
       '/pakar': 'Experts', '/klaim': 'Claim checks', '/metode': 'Method', Kasus: 'Cases',
-      '/kasus/abil-sudarman': 'Case 001 overview', '/kasus/abil-sudarman/artikel': 'Articles', '/kasus/abil-sudarman/bukti': 'Evidence', '/kasus/abil-sudarman/linimasa': 'Timeline', '/kasus/abil-sudarman/linimasa-abil': 'Abil timeline', '/arsip': 'Case archive', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
+      '/arsip': 'All cases', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
       '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/manifesto': 'Manifesto', '/kasus/abil-sudarman/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
       '/disclaimer': 'Disclaimer', '/kebijakan': 'Policies', '/hak-jawab': 'Right of reply',
     },

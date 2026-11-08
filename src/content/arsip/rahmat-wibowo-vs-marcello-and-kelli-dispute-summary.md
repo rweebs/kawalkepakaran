@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Marcello Faria and Maria “Khelli”: A Cease-and-Desist Over Online Mockery and Coordinated Blocking"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-marcello-and-kelli-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

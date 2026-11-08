@@ -1,7 +1,7 @@
 ---
 title: "The Report Against Tiyo Ardianto: A Standing Problem in BSD By Firdaus Oiwobo"
 sourceUrl: "https://www.infraloka.co.id/blog/the-report-against-tiyo-ardianto-a-standing-problem-in-bsd-by-firdaus-oiwobo"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

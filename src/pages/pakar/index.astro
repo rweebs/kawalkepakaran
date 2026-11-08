@@ -2,7 +2,7 @@
 import ListFilter from '../../components/ListFilter.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getKlaim, getPakar, isGenerated } from '../../lib/pakar';
-import { PAKAR_KIND_LABEL } from '../../lib/arsip';
+import { getArsip } from '../../lib/arsip';
 import VerdictBadge from '../../components/VerdictBadge.astro';
 import { confidenceLabel, replyStatusLabel } from '../../lib/verdict';
 import { SITE } from '../../lib/site';
@@ -11,8 +11,9 @@ import { itemListLd, pageLd } from '../../lib/schema-org';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('experts', locale);
 const all = (await getPakar()).sort((a, b) => a.data.name.localeCompare(b.data.name));
-const pakar = all.filter((p) => !isGenerated(p));
-const generated = all.filter(isGenerated);
+const pakar = all;
+const arsip = await getArsip();
+const posts = (id: string) => arsip.filter((a) => a.data.parties.includes(id)).length;
 const klaim = await getKlaim();
 const count = (id: string) => klaim.filter((k) => k.data.pakar === id).length;
 const nameOf = (id: string) => all.find((p) => p.id === id)?.data.name ?? id;
@@ -26,7 +27,7 @@ const T = {
     description: 'Profil para pakar yang klaimnya diperiksa Kawal Kepakaran: kredensial yang diverifikasi, klaim yang dicek, dan tanggapan mereka.',
     lead: 'Setiap pakar punya halaman sendiri: kredensial yang diperiksa, klaim yang diuji, dan tanggapannya.',
     empty: 'Belum ada pakar yang dimuat.', claims: 'klaim diperiksa', method: 'Lihat metode kami',
-    archiveH: 'Pihak dalam arsip', archiveLead: 'Pihak yang disebut dalam tulisan penulis di Arsip Perkara. Halaman mereka hanya merangkum tulisan itu, dengan batas dan hak jawab, dan bukan hasil pemeriksaan kredensial.', posts: 'tulisan',
+    posts: 'tulisan',
     profileH: 'Isi sebuah profil',
     profile: ['Bidang yang dikaitkan dengan pakar itu dan ringkasan singkat kasusnya.', 'Kredensial yang diklaim, masing-masing dengan status pemeriksaan dan sumbernya.', 'Klaim yang sudah diperiksa, masing-masing dengan putusan, tingkat keyakinan, dan status hak jawab.', 'Tautan ke bukti, dan bagian "yang tidak dibuktikan" di setiap klaim.'],
     chosenH: 'Siapa yang diperiksa',
@@ -39,7 +40,7 @@ const T = {
     description: "Profiles of the experts whose claims Kawal Kepakaran has checked: verified credentials, claims checked, and the experts' replies.",
     lead: 'Each expert has a page of their own: the credentials checked, the claims tested, and their reply.',
     empty: 'No experts have been listed yet.', claims: 'claims checked', method: 'See our method',
-    archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts',
+    posts: 'posts',
     profileH: 'What a profile contains',
     profile: ['The field the expert is associated with and a short summary of the case.', 'The credentials claimed, each with its check status and source.', 'The claims checked, each with a verdict, a confidence level and its right-of-reply status.', 'Links to the evidence, and the "what this does not prove" part of every claim.'],
     chosenH: 'Who is checked',
@@ -49,7 +50,6 @@ const T = {
     latestH: 'Latest verdicts', latestLead: 'The claims reviewed most recently. Each verdict links to its meaning in the glossary.', reviewed: 'reviewed', confidence: 'Confidence', allClaims: 'All claim checks',
     listH: 'Expert list' },
 }[locale];
-// Curated profiles only: generated archive parties are noindex and never listed in structured data.
 const ld = [
   pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description }),
   itemListLd({ name: T.title, path, items: pakar.map((p) => ({ name: p.data.name, path: localizedPath('experts', locale, p.id) })) }),
@@ -70,7 +70,7 @@ const ld = [
       <p class="muted">{T.chosenNote}</p>
       <p><a href={routePath('method', locale)}>{T.methodFull} →</a> · <a href={routePath('reply', locale)}>{T.replyLink} →</a> · <a href={routePath('glossary', locale)}>{T.glossary} →</a> · <a href={`${SITE.repo}/blob/main/CONTRIBUTING.md`} rel="noopener noreferrer" target="_blank">GitHub</a></p>
     </section>
-    <h2>{T.listH}</h2>
+    <h2>{T.listH} ({pakar.length})</h2>
     {pakar.length === 0 ? (
       <p class="muted">{T.empty}</p>
     ) : (
@@ -79,7 +79,7 @@ const ld = [
           <a class="card card--link" href={localizedPath('experts', locale, p.id)}>
             <h3 class="card-title">{p.data.name}</h3>
             <p>{p.data.field}</p>
-            <p class="muted">{count(p.id)} {T.claims}</p>
+            <p class="muted">{[count(p.id) > 0 && `${count(p.id)} ${T.claims}`, posts(p.id) > 0 && `${posts(p.id)} ${T.posts}`].filter(Boolean).join(' · ')}</p>
           </a>
         ))}
       </div>
@@ -98,13 +98,6 @@ const ld = [
           ))}
         </ul>
         <p><a href={routePath('claims', locale)}>{T.allClaims} →</a></p>
-      </section>
-    )}
-    {generated.length > 0 && (
-      <section aria-labelledby="arsip-h">
-        <h2 id="arsip-h">{T.archiveH} ({generated.length})</h2>
-        <p class="muted">{T.archiveLead}</p>
-        <p><a href={routePath('expertsArchive', locale)}>{T.archiveH} →</a></p>
       </section>
     )}
     <p><a href={routePath('method', locale)}>{T.method} →</a></p>

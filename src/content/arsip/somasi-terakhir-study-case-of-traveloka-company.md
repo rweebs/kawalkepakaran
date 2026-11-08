@@ -1,7 +1,7 @@
 ---
 title: "SOMASI TERAKHIR — Study Case of Traveloka Company"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-terakhir-study-case-of-traveloka-company"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "somasi"
 status: "dikirim"
@@ -102,7 +102,7 @@ BSD City, Kabupaten Tangerang
 
 \newpage
 
-# LAMPIRAN BUKTI
+## LAMPIRAN BUKTI
 
 Seluruh gambar berikut dilampirkan sebagai salinan bukti elektronik. Keaslian, konteks, identitas pemilik akun, dan keterkaitan dengan PT Traveloka Indonesia tetap perlu diverifikasi melalui pemeriksaan platform, investigasi internal, dan/atau proses penegakan hukum yang sah.
 

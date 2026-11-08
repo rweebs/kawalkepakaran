@@ -1,7 +1,7 @@
 ---
 title: "Anonymous Forum, Real Legal Liability: Why Platforms Like FOMO Indonesia & Teamblind Are a Brand Risk You Cannot Ignore"
 sourceUrl: "https://www.infraloka.co.id/blog/anonymous-forum-real-legal-liability-why-platforms-like-fomo-indonesia-teamblind-are-a-brand-risk-you-cannot-ignore"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

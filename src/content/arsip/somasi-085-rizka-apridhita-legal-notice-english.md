@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 085/SOMASI/RW/X/2026: Rizka Apridhita (English Edition)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-085-rizka-apridhita-legal-notice-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

@@ -1,7 +1,7 @@
 ---
 title: "Police Complaint No. 031/LAP-PIDANA/RW/V/2026: Ibrahim Arief (English Edition)"
 sourceUrl: "https://www.infraloka.co.id/blog/aduan-031-ibrahim-arief-police-complaint-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "aduan"
 status: "tidak-diketahui"

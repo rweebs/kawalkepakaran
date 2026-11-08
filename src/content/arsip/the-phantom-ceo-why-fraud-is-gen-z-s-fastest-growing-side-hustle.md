@@ -1,7 +1,7 @@
 ---
 title: "The Phantom CEO: Why Fraud Is Gen Z's Fastest-Growing Side Hustle By Rahmat Wibowo From Infraloka"
 sourceUrl: "https://www.infraloka.co.id/blog/the-phantom-ceo-why-fraud-is-gen-z-s-fastest-growing-side-hustle"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

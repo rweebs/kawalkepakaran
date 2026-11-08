@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Ghozy Ul Haq: A Cease-and-Desist Over a Tweet"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-ghozy-ul-haq-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

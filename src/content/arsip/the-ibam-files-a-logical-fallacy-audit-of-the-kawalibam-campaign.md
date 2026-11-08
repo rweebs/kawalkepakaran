@@ -1,7 +1,7 @@
 ---
 title: "The Ibam Files: A Logical Fallacy Audit of the #KawalIbam Campaign"
 sourceUrl: "https://www.infraloka.co.id/blog/the-ibam-files-a-logical-fallacy-audit-of-the-kawalibam-campaign"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

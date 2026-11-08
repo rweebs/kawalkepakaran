@@ -1,7 +1,7 @@
 ---
 title: "What the Public Record Shows About Wisnu Murti: A Neutral Evidence Check"
 sourceUrl: "https://www.infraloka.co.id/blog/what-the-public-record-shows-about-wisnu-murti-a-neutral-evidence-check"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

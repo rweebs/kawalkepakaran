@@ -3,17 +3,21 @@ import { readFileSync } from 'node:fs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SkyStage from '../components/SkyStage.astro';
 import VerdictBadge from '../components/VerdictBadge.astro';
-import CaseStats from '../components/CaseStats.astro';
 import { getKlaim, getPakar, isGenerated } from '../lib/pakar';
+import { getArsip, arsipPath } from '../lib/arsip';
 import { SITE } from '../lib/site';
 import { authorLd, organizationLd } from '../lib/schema-org';
 import { localizedPath, routePath, type Locale } from '../i18n';
 import { HOME_SECTIONS } from '../lib/sky/states';
 
 const { locale = 'id' } = Astro.props as { locale?: Locale };
-const pakar = (await getPakar()).filter((p) => !isGenerated(p)).sort((a, b) => a.data.name.localeCompare(b.data.name)).slice(0, 6);
+const allPakar = await getPakar();
+const cases = (await getArsip()).sort((a, b) => b.data.archivedAt.getTime() - a.data.archivedAt.getTime() || a.data.title.localeCompare(b.data.title));
+const postsOf = (id: string) => cases.filter((c) => c.data.parties.includes(id)).length;
+const pakar = [...allPakar].sort((a, b) => postsOf(b.id) - postsOf(a.id) || a.data.name.localeCompare(b.data.name)).slice(0, 6);
 const claims = (await getKlaim()).filter((k) => !isGenerated(k)).slice(0, 5);
-const nameOf = (id: string) => pakar.find((p) => p.id === id)?.data.name ?? id;
+const nameOf = (id: string) => allPakar.find((p) => p.id === id)?.data.name ?? id;
+const recent = cases.slice(0, 5);
 const SECTIONS = [...HOME_SECTIONS];
 const T = {
   id: {
@@ -32,9 +36,9 @@ const T = {
     methodLink: 'Baca metode lengkap',
     pakarH: 'Pakar yang diperiksa', pakarAll: 'Semua pakar', noPakar: 'Belum ada pakar yang dimuat.',
     claimsH: 'Cek klaim terbaru', claimsAll: 'Semua cek klaim', noClaims: 'Belum ada klaim yang dimuat.',
-    caseH: 'Kasus 001: Abil Sudarman',
-    caseLead: 'Kasus pertama kami memeriksa klaim kredensial dan jabatan Abil Sudarman, lengkap dengan artikel, bukti, dan linimasa.',
-    caseCta: 'Buka Kasus 001',
+    caseH: 'Kasus aktif',
+    caseLead: (n: number) => `${n} kasus terbuka untuk dibaca: sengketa, somasi, dan aduan, masing-masing dengan sumber, pihak yang disebut, dan hak jawab.`,
+    caseCta: 'Lihat semua kasus',
     contribH: 'Ikut menguji klaim',
     contribLead: 'Kode situs ini open source. Punya dokumen, tangkapan layar, atau sumber yang dapat diperiksa tentang klaim seorang pakar, baik yang memperkuat maupun yang membantah? Kirim lewat GitHub.',
     rules: ['Sertakan sumber yang dapat diperiksa dan tanggal pengambilan.', 'Tutup NIK, NIM, nomor telepon, dan data pribadi lain.', 'Tulis apa yang ditunjukkan dan apa yang tidak dibuktikan.', 'Tanpa rumor, tanpa data pribadi orang yang tidak terkait.'],
@@ -59,9 +63,9 @@ const T = {
     methodLink: 'Read the full method',
     pakarH: 'Experts checked', pakarAll: 'All experts', noPakar: 'No experts have been listed yet.',
     claimsH: 'Latest claim checks', claimsAll: 'All claim checks', noClaims: 'No claim checks have been listed yet.',
-    caseH: 'Case 001: Abil Sudarman',
-    caseLead: 'Our first case checks Abil Sudarman\'s claimed credentials and roles, with articles, evidence and a timeline.',
-    caseCta: 'Open Case 001',
+    caseH: 'Active cases',
+    caseLead: (n: number) => `${n} cases are open to read: disputes, legal notices and complaints, each with its source, the parties named and the right of reply.`,
+    caseCta: 'See all cases',
     contribH: 'Help check claims',
     contribLead: 'This site\'s code is open source. Do you have documents, screenshots or sources that can be checked about an expert\'s claim, whether they support or contradict it? Send them through GitHub.',
     rules: ['Include a checkable source and the date it was captured.', 'Mask ID numbers, student numbers, phone numbers and other personal data.', 'Write what the item shows and what it does not prove.', 'No rumours, and no personal data of unrelated people.'],
@@ -110,9 +114,11 @@ const websiteLd = {
     <section id="bukti" class="home-section container home-pair" data-reveal>
       <div class="glass stack" data-reveal-item>
         <h2>{T.caseH}</h2>
-        <p class="lead">{T.caseLead}</p>
-        <CaseStats locale={locale} pakar="abil-sudarman" />
-        <div class="btn-row"><a class="btn" href={routePath('caseHome', locale)}>{T.caseCta}</a></div>
+        <p class="lead">{T.caseLead(cases.length)}</p>
+        <ul class="stack">
+          {recent.map((c) => <li><a href={arsipPath(c.id, locale)}>{c.data.title}</a></li>)}
+        </ul>
+        <div class="btn-row"><a class="btn" href={routePath('archive', locale)}>{T.caseCta}</a></div>
       </div>
       <div class="glass stack" data-reveal-item>
         <h2>{T.claimsH}</h2>

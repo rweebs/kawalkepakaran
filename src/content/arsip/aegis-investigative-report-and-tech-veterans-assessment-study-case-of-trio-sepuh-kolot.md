@@ -1,7 +1,7 @@
 ---
 title: "Workplace Harassment and Toxic Seniority: Study Case of Trio Sepuh Kolot : Laksito Anindyo, Wihnu Manupraba, and Adrianus Hendrawan"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-tech-veterans-assessment-study-case-of-trio-sepuh-kolot"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

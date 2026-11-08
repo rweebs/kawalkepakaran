@@ -1,7 +1,7 @@
 ---
 title: "When Probation Becomes a Weapon: Misconduct by Nomni AI (Nomni.ai), Formerly Liven (PT Nomnie Technologies Indonesia) Leading POS System"
 sourceUrl: "https://www.infraloka.co.id/blog/when-probation-becomes-a-weapon-missconduct-by-nomni-ai-formerly-liven-pt-nomnie-technologies-indonesia-leading-pos-system"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

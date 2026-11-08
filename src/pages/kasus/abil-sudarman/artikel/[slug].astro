@@ -51,11 +51,11 @@ const related = aboutAbil ? caseClaims : [];
 const authorIsParty = (p.subjects ?? []).includes('Rahmat Wibowo') || aboutAbil;
 const L = {
   id: { interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara ini.', claims: 'Hasil cek klaim terkait', reply: 'Setiap pihak yang disebut berhak menjawab lewat', replyLabel: 'hak jawab',
-    relatedClaims: 'Klaim terkait', relatedClaimsLead: 'Klaim dalam Kasus 001 yang sudah diperiksa, masing-masing dengan putusan, tingkat keyakinan, dan status hak jawab.', confidence: 'Keyakinan', expert: 'Profil pakar',
-    published: 'Terbit', updated: 'Diperbarui', next: 'Lanjut', caseHub: 'Kasus 001: ringkasan dan semua klaim', evidence: 'Bukti', claimsAll: 'Cek klaim', share: 'Kawal Kepakaran' },
+    relatedClaims: 'Klaim terkait', relatedClaimsLead: 'Klaim dalam Kasus Abil Sudarman yang sudah diperiksa, masing-masing dengan putusan, tingkat keyakinan, dan status hak jawab.', confidence: 'Keyakinan', expert: 'Profil pakar',
+    published: 'Terbit', updated: 'Diperbarui', next: 'Lanjut', caseHub: 'Kasus Abil Sudarman: ringkasan dan semua klaim', evidence: 'Bukti', claimsAll: 'Cek klaim', share: 'Kawal Kepakaran' },
   en: { interest: 'The author of this site (Rahmat Wibowo) is a party to this matter.', claims: 'Related claim checks', reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply',
-    relatedClaims: 'Related claims', relatedClaimsLead: 'Claims in Case 001 that have been checked, each with a verdict, a confidence level and its right-of-reply status.', confidence: 'Confidence', expert: 'Expert profile',
-    published: 'Published', updated: 'Updated', next: 'Continue', caseHub: 'Case 001: overview and all claims', evidence: 'Evidence', claimsAll: 'Claim checks', share: 'Kawal Kepakaran' },
+    relatedClaims: 'Related claims', relatedClaimsLead: 'Claims in Abil Sudarman case that have been checked, each with a verdict, a confidence level and its right-of-reply status.', confidence: 'Confidence', expert: 'Expert profile',
+    published: 'Published', updated: 'Updated', next: 'Continue', caseHub: 'Abil Sudarman case: overview and all claims', evidence: 'Evidence', claimsAll: 'Claim checks', share: 'Kawal Kepakaran' },
 }[locale];
 const fmt = (iso: string) => formatDateLocale(new Date(iso), locale);
 const jsonLd = {
@@ -74,7 +74,7 @@ const jsonLd = {
   ...(en ? { workTranslation: { '@type': 'Article', inLanguage: 'id', url: new URL(localizedPath('articles', 'id', entry.id), SITE.url).toString() } } : {}),
 };
 const crumbName = en ? 'Articles' : 'Artikel';
-const caseCrumb = { name: en ? 'Case 001' : 'Kasus 001', path: routePath('caseHome', locale) };
+const caseCrumb = { name: en ? 'Abil Sudarman case' : 'Kasus Abil Sudarman', path: routePath('caseHome', locale) };
 const alternates = { id: localizedPath('articles', 'id', entry.id), en: localizedPath('articles', 'en', entry.id) };
 ---
 <BaseLayout title={pageTitle} ogTitle={pageTitle !== title ? title : undefined} description={description} path={path} locale={locale} alternates={alternates} jsonLd={jsonLd} image={og} ogType="article" publishedTime={date} modifiedTime={modified} section={crumbName} author={p.author} breadcrumbs={[caseCrumb, { name: crumbName, path: localizedPath('articles', locale) }, { name: title, path }]}>

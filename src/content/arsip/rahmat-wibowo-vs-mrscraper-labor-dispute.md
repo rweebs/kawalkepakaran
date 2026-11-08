@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. MrScraper (PT Pena Teknologi Indonesia) and Cahyo Subroto: A Complaint Over Disability Discrimination and Trademark Use"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-mrscraper-labor-dispute"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

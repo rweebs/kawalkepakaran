@@ -1,7 +1,7 @@
 ---
 title: "Jerome Polin Sijabat: Evidence Dossier"
 sourceUrl: "https://www.infraloka.co.id/blog/jerome-polin-evidence-dossier"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

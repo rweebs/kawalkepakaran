@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 044/SOMASI/RW/VIII/2026: AWS Indonesia and Others (English + Bahasa Melayu)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-044-aws-rahmat-fabhian-letter-of-demand-english-malay"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

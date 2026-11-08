@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 080/SOMASI/RW/X/2026: Luca Cada Lora (English Edition)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-080-luca-cada-lora-legal-notice-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

@@ -1,7 +1,7 @@
 ---
 title: "The Scrutiny of Youth: Influence, Credentials, and the AI Era in Indonesia; Simmilarities Between Abil Sudarman and Gibran Rakabuming Raka"
 sourceUrl: "https://www.infraloka.co.id/blog/the-scrutiny-of-youth-influence-credentials-and-the-ai-era-in-indonesia-simmilarities-between-abil-sudarman-and-gibran-rakabuming-raka"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

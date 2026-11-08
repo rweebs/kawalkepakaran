@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Critical Profile Assessment of Rahmat Wibowo From InfraLoka"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-critical-profile-assessment-of-rahmat-wibowo-from-infraloka"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

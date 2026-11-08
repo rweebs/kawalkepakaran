@@ -1,7 +1,7 @@
 ---
 title: "The applause addict: when high achievement masks a dangerous disorder, Maria Khelli a Student with 3.94 GPA From ITB and International Scammer"
 sourceUrl: "https://www.infraloka.co.id/blog/the-applause-addict-when-high-achievement-masks-a-dangerous-disorder-maria-khelli-a-student-with-3-94-gpa-from-itb-and-international-scammer"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

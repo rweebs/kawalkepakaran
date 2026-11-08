@@ -1,7 +1,7 @@
 ---
 title: "Six acts, one chat thread, and a credential that kept losing arguments, Study Case of Dr. Suryadiputra Liawatimena, S.Kom., PgDip.App.Sci."
 sourceUrl: "https://www.infraloka.co.id/blog/six-acts-one-chat-thread-and-a-credential-that-kept-losing-arguments-study-case-of-dr-suryadiputra-liawatimena-s-kom-pgdip-app-sci"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Your Master's Degree From a Top University Does Not Proof You a Smart Leader: A Stupid Story From Irham Muhammad Fadhil"
 sourceUrl: "https://www.infraloka.co.id/blog/your-master-s-degree-from-a-top-university-does-not-proof-you-a-smart-leader-a-stupid-story-from-irham-muhammad-fadhil"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"
