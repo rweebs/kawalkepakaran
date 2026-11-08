@@ -85,9 +85,9 @@ const T = {
         <h2 id="posts-h">{T.posts}</h2>
         <ul class="stack">
           {articles.map((a) => (
-            <li>
+            <li class="post-item">
               <a href={arsipPath(a.id, locale)}>{a.data.title}</a>
-              <span class="muted"> · {KIND_LABEL[a.data.kind as keyof typeof KIND_LABEL][locale]} · {T.status}: {STATUS_LABEL[a.data.status as keyof typeof STATUS_LABEL][locale]}</span>
+              <span class="muted post-item__meta">{KIND_LABEL[a.data.kind as keyof typeof KIND_LABEL][locale]} · {T.status}: {STATUS_LABEL[a.data.status as keyof typeof STATUS_LABEL][locale]}</span>
             </li>
           ))}
         </ul>

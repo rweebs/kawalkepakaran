@@ -60,16 +60,6 @@ const ld = [
     <h1>{T.h1}</h1>
     <ListFilter locale={locale} />
     <p class="lead">{T.lead}</p>
-    <section aria-labelledby="profil-h">
-      <h2 id="profil-h">{T.profileH}</h2>
-      <ul>{T.profile.map((x) => <li>{x}</li>)}</ul>
-    </section>
-    <section aria-labelledby="dipilih-h">
-      <h2 id="dipilih-h">{T.chosenH}</h2>
-      <p>{T.chosen}</p>
-      <p class="muted">{T.chosenNote}</p>
-      <p><a href={routePath('method', locale)}>{T.methodFull} →</a> · <a href={routePath('reply', locale)}>{T.replyLink} →</a> · <a href={routePath('glossary', locale)}>{T.glossary} →</a> · <a href={`${SITE.repo}/blob/main/CONTRIBUTING.md`} rel="noopener noreferrer" target="_blank">GitHub</a></p>
-    </section>
     <h2>{T.listH} ({pakar.length})</h2>
     {pakar.length === 0 ? (
       <p class="muted">{T.empty}</p>
@@ -84,6 +74,16 @@ const ld = [
         ))}
       </div>
     )}
+    <section aria-labelledby="profil-h" class="section-gap">
+      <h2 id="profil-h">{T.profileH}</h2>
+      <ul>{T.profile.map((x) => <li>{x}</li>)}</ul>
+    </section>
+    <section aria-labelledby="dipilih-h">
+      <h2 id="dipilih-h">{T.chosenH}</h2>
+      <p>{T.chosen}</p>
+      <p class="muted">{T.chosenNote}</p>
+      <ul class="link-row"><li><a href={routePath('method', locale)}>{T.methodFull} →</a></li><li><a href={routePath('reply', locale)}>{T.replyLink} →</a></li><li><a href={routePath('glossary', locale)}>{T.glossary} →</a></li><li><a href={`${SITE.repo}/blob/main/CONTRIBUTING.md`} rel="noopener noreferrer" target="_blank">GitHub</a></li></ul>
+    </section>
     {latest.length > 0 && (
       <section aria-labelledby="terbaru-h">
         <h2 id="terbaru-h">{T.latestH}</h2>

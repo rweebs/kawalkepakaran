@@ -14,13 +14,15 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg-primary);
+body { margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg-primary);
   color: var(--text-primary); font-family: var(--font); line-height: 1.65; }
 main { flex: 1; }
 a { color: var(--text-accent); }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent-amber); outline-offset: 3px; border-radius: 4px; }
 img { max-width: 100%; height: auto; border-radius: var(--radius-md); }
-h1, h2, h3 { line-height: 1.2; font-family: var(--font-display); letter-spacing: 0.005em; }
+h1, h2, h3 { line-height: 1.2; font-family: var(--font-display); letter-spacing: 0.005em; text-wrap: balance; }
+.reading p, .reading li { text-wrap: pretty; }
+.stats dd, .tentang-stats dd, .card--link .muted, time { font-variant-numeric: tabular-nums; }
 .container { width: min(1100px, 100% - 2rem); margin-inline: auto; }
 .reading { width: min(70ch, 100% - 2rem); margin-inline: auto; padding-block: 2rem 4rem; }
 .reading blockquote { margin: 1rem 0; padding: 0.5rem 1rem; border-left: 3px solid var(--accent-blue); color: var(--text-secondary); }
@@ -44,13 +46,20 @@ h1, h2, h3 { line-height: 1.2; font-family: var(--font-display); letter-spacing:
 .verdict[data-verdict='belum-terverifikasi']::before { content: '?'; }
 .banner { background: rgba(245, 158, 11, 0.08); border-bottom: 1px solid rgba(245, 158, 11, 0.35);
   color: var(--text-primary); font-size: 0.85rem; padding: 0.6rem 0; }
-.btn { display: inline-block; padding: 0.6rem 1.1rem; border-radius: var(--radius-full); background: #1d4ed8;
-  color: #fff; text-decoration: none; font-weight: 600; }
+/* Phones: same full text, set tighter so it takes less of the first screen. */
+@media (max-width: 720px) { .banner { font-size: 0.8rem; line-height: 1.4; padding: 0.45rem 0; } }
+/* Post lists: title first, kind and status on their own muted line. */
+.post-item__meta { display: block; font-size: 0.85rem; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0.6rem 1.25rem; border-radius: var(--radius-full); background: #1d4ed8;
+  color: #fff; text-decoration: none; font-weight: 600; cursor: pointer; transition: background-color 0.15s; }
+.btn:hover { background: #2563eb; }
+.btn:active { background: #1e40af; }
 .hero { background: var(--gradient-hero); padding: 4rem 0 3rem; }
 .hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); margin: 0 0 1rem; }
-.nav { border-bottom: 1px solid var(--bg-glass-border); background: rgba(10, 14, 26, 0.9); position: sticky; top: 0; z-index: 10; }
+.nav { border-bottom: 1px solid var(--bg-glass-border); background: rgb(10, 14, 26); position: sticky; top: 0; z-index: 10; }
 .nav .container { display: flex; align-items: center; justify-content: space-between; padding-block: 0.8rem; }
 .nav a { color: var(--text-primary); text-decoration: none; }
+.nav__links a:hover, .nav__group > summary:hover { color: var(--accent-amber); }
 .nav__links { display: flex; gap: 1.25rem; list-style: none; margin: 0; padding: 0; }
 .nav__links a[aria-current='page'] { color: var(--accent-amber); }
 .lang-toggle { display: inline-flex; padding: 2px; border: 1px solid var(--bg-glass-border); border-radius: 999px; }
@@ -89,10 +98,31 @@ a.lang-toggle__opt:hover { background: var(--bg-glass-border); }
   .nav__group > ul { position: static; min-width: 0; padding: 0 0 0 0.75rem; background: none; border: 0; box-shadow: none; }
   .nav__group > ul a { padding: 0.6rem 0; }
 }
-.footer { border-top: 1px solid var(--bg-glass-border); padding: 2rem 0; color: var(--text-secondary); font-size: 0.9rem; }
+/* Bottom padding keeps the fixed "Lagu tema" / scene buttons from covering the last footer line. */
+.footer { border-top: 1px solid var(--bg-glass-border); padding: 2rem 0 5rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.9; }
+/* Touch screens: controls reach 44px; the 24px minimum still holds with a mouse. */
+@media (pointer: coarse) {
+  .lang-toggle__opt { min-height: 2.25rem; display: inline-flex; align-items: center; padding-inline: 0.8rem; }
+  .share-bar__btn, .cite button, .scene-start, .theme-song__toggle { min-height: 2.75rem; display: inline-flex; align-items: center; }
+  .breadcrumbs ol { align-items: center; }
+  .breadcrumbs a { display: inline-block; padding-block: 0.5rem; }
+  .reading p > a:only-child { display: inline-block; padding-block: 0.4rem; }
+  .footer a { display: inline-block; padding-block: 0.35rem; }
+}
 .address { font-style: normal; border-left: 3px solid var(--accent-amber); padding-left: 1rem; }
 .card-link { text-decoration: none; color: inherit; display: block; }
-.card--link:hover { border-color: rgba(96, 165, 250, 0.4); }
+/* A card that is one link: only the title reads as a link; field and counts stay plain text. */
+.card--link { display: block; color: inherit; text-decoration: none; transition: border-color 0.15s, background-color 0.15s, transform 0.15s; }
+.card--link .card-title { margin: 0 0 0.4rem; color: var(--text-accent); }
+.card--link p { margin: 0 0 0.4rem; }
+.card--link p:last-child { margin-bottom: 0; }
+.card--link:hover { border-color: rgba(96, 165, 250, 0.4); background-color: rgba(26, 36, 68, 0.8); }
+.card--link:hover .card-title { text-decoration: underline; text-underline-offset: 3px; }
+.card--link:active { transform: scale(0.99); }
+@media (prefers-reduced-motion: reduce) { .card--link, .btn, .share-bar__btn { transition: none; } .card--link:active { transform: none; } }
+/* Standalone link rows (not links inside a sentence): wrap, with room to tap. */
+.link-row { display: flex; flex-wrap: wrap; gap: 0 1.25rem; list-style: none; margin: 0.5rem 0; padding: 0; }
+.link-row a { display: inline-block; padding-block: 0.4rem; }
 .lead { max-width: 60ch; }
 .notice p { margin: 0; }
 .pre-wrap { white-space: pre-wrap; }
