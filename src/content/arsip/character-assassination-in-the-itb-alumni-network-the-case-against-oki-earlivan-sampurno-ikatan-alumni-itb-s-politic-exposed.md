@@ -1,7 +1,7 @@
 ---
 title: "Character Assassination in the ITB Alumni Network: The Case Against Oki Earlivan Sampurno Ikatan Alumni ITB's Politic Exposed"
 sourceUrl: "https://www.infraloka.co.id/blog/character-assassination-in-the-itb-alumni-network-the-case-against-oki-earlivan-sampurno-ikatan-alumni-itb-s-politic-exposed"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

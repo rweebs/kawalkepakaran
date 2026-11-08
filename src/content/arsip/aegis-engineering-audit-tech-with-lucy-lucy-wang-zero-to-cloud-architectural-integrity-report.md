@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Engineering Audit: Tech With Lucy (Lucy Wang) — Architectural Integrity Report on Zero To Cloud"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-engineering-audit-tech-with-lucy-lucy-wang-zero-to-cloud-architectural-integrity-report"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

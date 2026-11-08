@@ -1,7 +1,7 @@
 ---
 title: "A branded account called him an enemy. Here is what the law says happens next. Zvoove Group Germany and Create IT Solution Indonesia Case Report"
 sourceUrl: "https://www.infraloka.co.id/blog/a-branded-account-called-him-an-enemy-here-is-what-the-law-says-happens-next-zvoove-group-germany-and-create-it-solution-indonesia-case-report"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

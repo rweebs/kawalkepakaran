@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Software Engineering Assessment: Study Case of Ida Bagus Raditya Avanindra Mahaputra"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-software-engineering-assessment-study-case-of-ida-bagus-raditya-avanindra-mahaputra"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Legal Basis: KUHP 2023 and the 2024 ITE Law on Defamation, Threats, Cyberbullying and Corporate Liability, Full Text with English Translation"
 sourceUrl: "https://www.infraloka.co.id/blog/legal-basis-kuhp-2023-and-uu-ite-2024-defamation-threats-cyberbullying-and-corporate-liability-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

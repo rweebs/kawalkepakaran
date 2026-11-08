@@ -1,7 +1,7 @@
 ---
 title: "INIT-6 VENTURE CAPITAL  : Deep-Dive Investigative Report Backed By Achmad Zaky founder of Bukalapak"
 sourceUrl: "https://www.infraloka.co.id/blog/init-6-venture-capital-deep-dive-investigative-report-backed-by-achmad-zaky-founder-of-bukalapak"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

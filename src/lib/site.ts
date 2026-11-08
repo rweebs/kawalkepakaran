@@ -58,12 +58,7 @@ export const NAV_GROUPS: readonly NavEntry[] = [
   { href: '/klaim', label: 'Cek klaim' },
   { href: '/metode', label: 'Metode' },
   { label: 'Kasus', items: [
-    { href: '/kasus/abil-sudarman', label: 'Ringkasan Kasus 001' },
-    { href: '/kasus/abil-sudarman/artikel', label: 'Artikel' },
-    { href: '/kasus/abil-sudarman/bukti', label: 'Bukti' },
-    { href: '/kasus/abil-sudarman/linimasa', label: 'Linimasa' },
-    { href: '/kasus/abil-sudarman/linimasa-abil', label: 'Linimasa Abil' },
-    { href: '/arsip', label: 'Arsip Perkara' },
+    { href: '/arsip', label: 'Semua Kasus' },
     { href: '/kasus/abil-sudarman/bowobharata', label: 'Bowobharata' },
   ] },
   { label: 'Media', items: [

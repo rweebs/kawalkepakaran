@@ -17,15 +17,15 @@ const T = {
     description: 'Profil para pakar yang klaimnya diperiksa Kawal Kepakaran: kredensial yang diverifikasi, klaim yang dicek, dan tanggapan mereka.',
     lead: 'Setiap pakar punya halaman sendiri: kredensial yang diperiksa, klaim yang diuji, dan tanggapannya.',
     empty: 'Belum ada pakar yang dimuat.', claims: 'klaim diperiksa', method: 'Lihat metode kami',
-    archiveH: 'Pihak dalam arsip', archiveLead: 'Pihak yang disebut dalam tulisan penulis di Arsip Perkara. Halaman mereka hanya merangkum tulisan itu, dengan batas dan hak jawab, dan bukan hasil pemeriksaan kredensial.', posts: 'tulisan' },
+    archiveH: 'Pihak dalam kasus', archiveLead: 'Pihak yang disebut dalam tulisan penulis di halaman Kasus. Halaman mereka hanya merangkum tulisan itu, dengan batas dan hak jawab, dan bukan hasil pemeriksaan kredensial.', posts: 'tulisan' },
   en: { title: 'Experts we have checked', h1: 'Experts', crumb: 'Experts',
     description: "Profiles of the experts whose claims Kawal Kepakaran has checked: verified credentials, claims checked, and the experts' replies.",
     lead: 'Each expert has a page of their own: the credentials checked, the claims tested, and their reply.',
     empty: 'No experts have been listed yet.', claims: 'claims checked', method: 'See our method',
-    archiveH: 'Parties in the archive', archiveLead: 'Parties named in the author\'s posts in the Case archive. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts' },
+    archiveH: 'Parties in the cases', archiveLead: 'Parties named in the author\'s posts on the Cases page. Their pages only summarise those posts, with limits and the right of reply, and are not a credential check.', posts: 'posts' },
 }[locale];
 ---
-<BaseLayout title={T.archiveH} description={T.archiveLead} path={path} locale={locale} noindex
+<BaseLayout title={T.archiveH} description={T.archiveLead} path={path} locale={locale}
   alternates={{ id: routePath('expertsArchive', 'id'), en: routePath('expertsArchive', 'en') }}
   breadcrumbs={[{ name: T.crumb, path: routePath('experts', locale) }, { name: T.archiveH, path }]}>
   <article class="reading">

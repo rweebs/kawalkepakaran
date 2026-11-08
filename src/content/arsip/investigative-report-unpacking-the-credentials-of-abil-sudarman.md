@@ -1,7 +1,7 @@
 ---
 title: "Investigative Report: Unpacking the Credentials of Abil Sudarman"
 sourceUrl: "https://www.infraloka.co.id/blog/investigative-report-unpacking-the-credentials-of-abil-sudarman"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

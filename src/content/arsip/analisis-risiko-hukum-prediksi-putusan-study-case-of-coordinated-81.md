@@ -1,7 +1,7 @@
 ---
 title: "Analisis Risiko Hukum & Prediksi Putusan — Study Case of Coordinated SMAN 81 Jakarta's Alumni: Aqilah Saffanah, Ni Putu Ayu Kartika Diva Putri, Andija Rahman Dzikra, Faiz Rizky Putra"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-risiko-hukum-prediksi-putusan-study-case-of-coordinated-81"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

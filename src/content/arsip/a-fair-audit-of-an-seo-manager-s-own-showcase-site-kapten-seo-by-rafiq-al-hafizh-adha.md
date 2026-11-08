@@ -1,7 +1,7 @@
 ---
 title: "A Fair Audit of an SEO Manager's Own Showcase Site: Kapten SEO by Rafiq Al Hafizh Adha"
 sourceUrl: "https://www.infraloka.co.id/blog/a-fair-audit-of-an-seo-manager-s-own-showcase-site-kapten-seo-by-rafiq-al-hafizh-adha"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

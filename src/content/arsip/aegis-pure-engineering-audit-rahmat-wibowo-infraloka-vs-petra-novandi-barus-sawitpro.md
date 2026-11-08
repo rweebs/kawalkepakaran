@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Pure Engineering Audit: Rahmat Wibowo (InfraLoka) vs. Petra Novandi Barus (SawitPRO)"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-pure-engineering-audit-rahmat-wibowo-infraloka-vs-petra-novandi-barus-sawitpro"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

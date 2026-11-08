@@ -1,7 +1,7 @@
 ---
 title: "Beyond Salary: The “Kawal Ibam” Narrative Study Case of Ibrahim Arief"
 sourceUrl: "https://www.infraloka.co.id/blog/beyond-salary-the-kawal-ibam-narrative-study-case-of-ibrahim-arief"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

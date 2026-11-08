@@ -1,7 +1,7 @@
 ---
 title: "Cahyo Subroto, President Director of PT Pena Teknologi Indonesia: Legal Notice No. 050/SOMASI/RW/IX/2026"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-050-cahyo-subroto-president-director-case-record-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

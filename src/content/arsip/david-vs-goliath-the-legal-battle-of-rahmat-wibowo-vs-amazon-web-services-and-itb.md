@@ -1,7 +1,7 @@
 ---
 title: "David vs. Goliath: The Legal Battle of Rahmat Wibowo vs. Amazon Web Services and ITB"
 sourceUrl: "https://www.infraloka.co.id/blog/david-vs-goliath-the-legal-battle-of-rahmat-wibowo-vs-amazon-web-services-and-itb"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

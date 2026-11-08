@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. PT CreateIT Solutions Indonesia and Machrio Achmad Nurhatta (Machi Achmad): A Police Complaint"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-pt-createit-solutions-indonesia-and-machrio-achmad-nurhatta-police-complaint"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

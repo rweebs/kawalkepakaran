@@ -1,7 +1,7 @@
 ---
 title: "Study Case of Graciella Valeska Liander: A Principal-Engineer-Grade Software Engineering Assessment of Her Smart Waste Management System Project"
 sourceUrl: "https://www.infraloka.co.id/blog/study-case-of-graciella-valeska-liander-a-principal-engineer-grade-software-engineering-assessment-of-her-smart-waste-management-system"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

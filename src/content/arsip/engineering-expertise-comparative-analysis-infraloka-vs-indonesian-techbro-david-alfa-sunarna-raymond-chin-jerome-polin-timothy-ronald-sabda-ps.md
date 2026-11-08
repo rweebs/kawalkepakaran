@@ -1,7 +1,7 @@
 ---
 title: "Engineering Expertise Comparative Analysis: InfraLoka vs. Indonesian TechBro; David Alfa Sunarna, Raymond Chin, Jerome Polin, Timothy Ronald, Sabda PS"
 sourceUrl: "https://www.infraloka.co.id/blog/engineering-expertise-comparative-analysis-infraloka-vs-indonesian-techbro-david-alfa-sunarna-raymond-chin-jerome-polin-timothy-ronald-sabda-ps"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

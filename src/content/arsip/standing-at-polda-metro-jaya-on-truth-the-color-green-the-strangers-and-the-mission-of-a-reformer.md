@@ -1,7 +1,7 @@
 ---
 title: "Standing at Polda Metro Jaya: On Truth, The Color Green, The Strangers, and The Mission of a Reformer By Rahmat Wibowo From Infraloka"
 sourceUrl: "https://www.infraloka.co.id/blog/standing-at-polda-metro-jaya-on-truth-the-color-green-the-strangers-and-the-mission-of-a-reformer"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

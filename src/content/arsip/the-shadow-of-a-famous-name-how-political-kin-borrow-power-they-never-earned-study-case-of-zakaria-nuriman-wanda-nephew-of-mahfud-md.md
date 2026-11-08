@@ -1,7 +1,7 @@
 ---
 title: "The Shadow of a Famous Name: How Political Kin Borrow Power They Never Earned Study Case of Zakaria Nuriman Wanda, Nephew of Mahfud MD"
 sourceUrl: "https://www.infraloka.co.id/blog/the-shadow-of-a-famous-name-how-political-kin-borrow-power-they-never-earned-study-case-of-zakaria-nuriman-wanda-nephew-of-mahfud-md"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "When Your Harasser Turns Out to Be Your Own Idol : Ardya Dipta Nandaviri and Panji Gautama"
 sourceUrl: "https://www.infraloka.co.id/blog/when-your-harasser-turns-out-to-be-your-own-idol-ardya-dipta-nandaviri-and-panji-gautama"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

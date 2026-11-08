@@ -71,11 +71,11 @@ describe('parties live inside /pakar', () => {
     expect(moves).toContain('/pihak > /pakar');
     expect(moves).toContain('/en/parties > /en/experts');
   });
-  it('a generated profile and claim are noindex, and say so in the page source', () => {
+  it('a generated profile and claim are indexable like any other page', () => {
     for (const p of ['src/pages/pakar/[slug].astro', 'src/pages/klaim/[slug].astro']) {
       const s = read(p);
       expect(s, p).toContain('isGenerated');
-      expect(s, p).toMatch(/noindex=\{/);
+      expect(s, p).not.toMatch(/noindex/);
     }
   });
   it('the profile lists the posts that name the party, the interest and the limits', () => {
@@ -85,30 +85,30 @@ describe('parties live inside /pakar', () => {
   it('the claim page links the document a generated claim is about', () => {
     expect(read('src/pages/klaim/[slug].astro')).toContain('articles');
   });
-  it('the home page and the sitemap list only the hand-made entries', () => {
+  it('the home page lists only hand-made entries, while the sitemap lists the archive too', () => {
     expect(read('src/pages/index.astro')).toContain('isGenerated');
-    expect(read('src/lib/sitemap-entries.ts')).toContain('isGenerated');
+    expect(read('src/lib/sitemap-entries.ts')).not.toContain('isGenerated');
   });
-  it('the indexes group the generated entries apart from the checked ones', () => {
-    expect(read('src/pages/pakar/index.astro')).toContain('isGenerated');
-    expect(read('src/pages/klaim/index.astro')).toContain('isGenerated');
+  it('the indexes list every expert and claim side by side', () => {
+    expect(read('src/pages/klaim/index.astro')).not.toContain('isGenerated');
+    expect(read('src/pages/pakar/index.astro')).not.toMatch(/generated\./);
   });
 });
 
 describe('pages and policy', () => {
-  it('has the archive pages in both languages, all noindex with the right of reply', () => {
+  it('has the archive pages in both languages, all indexable with the right of reply', () => {
     for (const p of ['src/pages/arsip/index.astro', 'src/pages/arsip/artikel/[slug].astro', 'src/pages/en/archive/index.astro', 'src/pages/en/archive/articles/[slug].astro']) {
       expect(existsSync(p), p).toBe(true);
     }
     for (const p of ['src/pages/arsip/index.astro', 'src/pages/arsip/artikel/[slug].astro']) {
-      expect(read(p), p).toMatch(/noindex/);
+      expect(read(p), p).not.toMatch(/noindex/);
       expect(read(p), p).toMatch(/routePath\('reply'/);
     }
   });
   it('the article page says it is an archive copy, links the original and says when it was trimmed', () => {
     const s = read('src/pages/arsip/artikel/[slug].astro');
-    for (const k of ['sourceUrl', 'trimmed', 'noindex']) expect(s, k).toContain(k);
-    expect(s).toMatch(/arsip Infraloka/i);
+    for (const k of ['sourceUrl', 'trimmed']) expect(s, k).toContain(k);
+    expect(s).toMatch(/catatan kasus dari blog Infraloka/i);
   });
   it('generated content stays out of git until the owner publishes it, and out of the CC BY license', () => {
     const ignore = read('.gitignore');
@@ -123,11 +123,12 @@ describe('pages and policy', () => {
     expect(s).toContain('arsipStaticPaths');
     expect(s).toMatch(/replace\(\/&\/g/);
   });
-  it('the sitemap lists the /pakar and /klaim hubs but leaves out generated detail pages', () => {
+  it('the sitemap lists the hubs, the archive pages and the generated detail pages', () => {
     const s = read('src/lib/sitemap-entries.ts');
     expect(s).toContain("{ path: '/pakar'");
     expect(s).toContain("{ path: '/klaim'");
-    expect(s).toContain('!isGenerated(');
+    expect(s).toContain('getArsip');
+    expect(s).toContain("{ path: '/arsip'");
   });
   it('the privacy test also scans the archive folder', () => {
     expect(read('tests/privacy.test.ts')).toContain("'src/content/arsip'");

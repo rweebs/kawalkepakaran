@@ -1,7 +1,7 @@
 ---
 title: "When \"Legal Threats\" Become the Threat, Misconduct By Burman Noviansyah CMU CISO Program Graduate and Xendit Company"
 sourceUrl: "https://www.infraloka.co.id/blog/when-legal-threats-become-the-threat-misconduct-by-burman-noviansyah-cmu-ciso-program-graduate-and-xendit-company"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

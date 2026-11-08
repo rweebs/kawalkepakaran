@@ -1,7 +1,7 @@
 ---
 title: "Books Don't Lie, Ego Does: The Book of Suryadiputra Liawatimena — A Trilingual Reasoning Audit"
 sourceUrl: "https://www.infraloka.co.id/blog/books-dont-lie-ego-does-the-book-of-suryadiputra-liawatimena"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

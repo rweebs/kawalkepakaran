@@ -1,7 +1,7 @@
 ---
 title: "My Labor Dispute with PT Nomnie Technologies Indonesia (Nomni AI / Nomni.AI, formerly Liven)"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-rahmat-wibowo-vs-pt-nomnie-technologies-indonesia-nomni-ai-labor-dispute-panel-verdict"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

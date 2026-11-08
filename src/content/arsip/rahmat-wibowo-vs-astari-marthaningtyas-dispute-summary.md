@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Astari Marthaningtyas: A Cease-and-Desist Over Social Media Posts"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-astari-marthaningtyas-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

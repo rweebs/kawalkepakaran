@@ -1,7 +1,7 @@
 ---
 title: "Legal Assessment and Media Ethics Review: Study Case of Yuliyanti Anggraeni (Kilat.com)"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-legal-assessment-study-case-of-kilat-group"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -74,8 +74,7 @@ describe('Abil Sudarman timeline pages', () => {
     expect(existsSync('src/pages/kasus/abil-sudarman/linimasa-abil.astro')).toBe(true);
     expect(existsSync('src/pages/en/cases/abil-sudarman/abil-timeline.astro')).toBe(true);
   });
-  it('is in the Kasus menu, the sitemap and the case landing page', () => {
-    expect(NAV.map((n) => n.href)).toContain('/kasus/abil-sudarman/linimasa-abil');
+  it('is in the sitemap and the case landing page', () => {
     expect(read('src/lib/sitemap-entries.ts')).toContain('/kasus/abil-sudarman/linimasa-abil');
     expect(read('src/pages/kasus/abil-sudarman/index.astro')).toMatch(/\['abilTimeline', '[^']+'\]/);
   });

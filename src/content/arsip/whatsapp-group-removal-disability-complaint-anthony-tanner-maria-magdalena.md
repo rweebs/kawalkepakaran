@@ -1,7 +1,7 @@
 ---
 title: "Removed From a 121-Member Professional Group Without Warning: My Complaint Against Anthony Tanner and Maria Magdalena"
 sourceUrl: "https://www.infraloka.co.id/blog/whatsapp-group-removal-disability-complaint-anthony-tanner-maria-magdalena"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

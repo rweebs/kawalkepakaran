@@ -29,7 +29,7 @@ const T = {
 const path = localizedPath('articles', locale);
 const ld = pageLd({ type: 'CollectionPage', name: T.title, path, locale, description: T.description });
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus Abil Sudarman' : 'Abil Sudarman case', path: routePath('caseHome', locale) }, { name: T.crumb, path }]}>
   <section class="container pad-block">
     <h1>{T.h1}</h1>
     {posts.length === 0

@@ -6,7 +6,7 @@ import { CONTENT_LICENSE } from '../lib/schema-org';
 
 /**
  * Claims that were checked by hand, as JSON, for researchers and other fact-checkers. Claims generated from the archive
- * are left out: their pages are noindex, and a machine-readable list of people named in disputes would defeat that.
+ * are left out: they only record that a document exists, not that a claim was checked.
  */
 export const GET: APIRoute = async () => {
   const pakar = new Map((await getPakar()).map((p) => [p.id, p.data.name]));

@@ -1,7 +1,7 @@
 ---
 title: "Unauthorized Commercial Use of International Trademarks: Study Case of I Gede Arya Raditya Parameswara"
 sourceUrl: "https://www.infraloka.co.id/blog/unauthorized-commercial-use-of-international-trademarks-study-case-of-i-gede-arya-raditya-parameswara"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

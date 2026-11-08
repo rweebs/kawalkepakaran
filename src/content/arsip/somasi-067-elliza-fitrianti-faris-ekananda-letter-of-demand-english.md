@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 067/SOMASI/RW/IX/2026: Elliza Fitrianti and Faris Rizki Ekananda (English Translation of the Indonesian Letter)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-067-elliza-fitrianti-faris-ekananda-letter-of-demand-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

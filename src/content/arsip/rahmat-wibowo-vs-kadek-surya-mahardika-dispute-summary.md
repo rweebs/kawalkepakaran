@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Kadek Surya Mahardika: A Cyber-Attack and Defamation Dispute"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-kadek-surya-mahardika-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "SOMASI KEDUA DAN TERAKHIR — Study Case of Korika"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-kedua-dan-terakhir-study-case-of-korika"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "somasi"
 status: "dikirim"

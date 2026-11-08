@@ -1,7 +1,7 @@
 ---
 title: "Analisis Risiko Hukum & Prediksi Putusan — Study Case of Ibrahim Arief"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-risiko-hukum-prediksi-putusan-study-case-of-ibrahim-arief"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

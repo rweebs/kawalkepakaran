@@ -1,7 +1,7 @@
 ---
 title: "Deep Research Report: Rahmat Wibowo (Infraloka) vs. Abil Sudarman (ASSAI) — A Confidence-Scored Credential Verification of Indonesia's AI Leadership Claims"
 sourceUrl: "https://www.infraloka.co.id/blog/deep-research-report-rahmat-wibowo-infraloka-vs-abil-sudarman-assai-a-confidence-scored-credential-verification"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

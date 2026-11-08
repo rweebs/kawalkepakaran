@@ -1,7 +1,7 @@
 ---
 title: "Sisupalan, Hasidin, and Ashabul Fomo Study Case of Adrianus Hendrawan, Laksito Anindyo, Salman Ma'arif Achsien, Petra Novandi Barus"
 sourceUrl: "https://www.infraloka.co.id/blog/sisupalan-hasidin-and-ashabul-fomo"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

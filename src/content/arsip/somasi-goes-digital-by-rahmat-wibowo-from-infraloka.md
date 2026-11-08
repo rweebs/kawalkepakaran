@@ -1,7 +1,7 @@
 ---
 title: "Somasi Goes Digital By Rahmat Wibowo From InfraLoka"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-goes-digital-by-rahmat-wibowo-from-infraloka"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

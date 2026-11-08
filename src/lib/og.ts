@@ -21,7 +21,7 @@ export const pakarOg = (id: string, locale: Locale, name: string): OgImage =>
   card(`/og/pakar/${id}-${locale}.jpg`, locale === 'id' ? `Pakar yang diperiksa: ${name}` : `Expert checked: ${name}`);
 
 export const caseOg = (locale: Locale): OgImage =>
-  card(`/og/kasus-001-${locale}.jpg`, locale === 'id' ? 'Kasus 001: Abil Sudarman. Catatan dan pendapat penulis, bukan putusan.' : "Case 001: Abil Sudarman. The author's notes and opinion, not a ruling.");
+  card(`/og/kasus-001-${locale}.jpg`, locale === 'id' ? 'Kasus Abil Sudarman. Catatan dan pendapat penulis, bukan putusan.' : "Abil Sudarman case. The author's notes and opinion, not a ruling.");
 
 /** Case timeline entries get a text card with their date and title, keyed by the Indonesian slug in both languages. */
 export const timelineOg = (idSlug: string, locale: Locale, title: string): OgImage => card(`/og/linimasa/${idSlug}-${locale}.jpg`, title);

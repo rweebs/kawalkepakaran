@@ -1,7 +1,7 @@
 ---
 title: "ANALISIS HUKUM: KASUS PERUNDUNGAN SIBER DI TWITTER — Study Case of Unrelated Person"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-hukum-kasus-perundungan-siber-di-twitter-study-case-of-unrelated-person"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

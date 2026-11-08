@@ -1,7 +1,7 @@
 ---
 title: "I Pitched My Deck in a Singapore VC Whatsapp Group. Wayne Wee VP from Talino Fintech Foundry Kicked Me Without a Word."
 sourceUrl: "https://www.infraloka.co.id/blog/i-pitched-my-deck-in-a-singapore-vc-whatsapp-group-wayne-wee-vp-from-talino-fintech-foundry-kicked-me-without-a-word"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Credential Fraud and Professional Misrepresentation: Study Case of Marchel Shevchenko"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-credential-assessment-study-case-of-marchel-shevchenko"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

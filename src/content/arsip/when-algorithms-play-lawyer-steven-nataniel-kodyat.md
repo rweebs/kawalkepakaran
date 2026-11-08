@@ -1,7 +1,7 @@
 ---
 title: "When Algorithms Play Lawyer : Steven Nataniel Kodyat"
 sourceUrl: "https://www.infraloka.co.id/blog/when-algorithms-play-lawyer-steven-nataniel-kodyat"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

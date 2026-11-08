@@ -1,7 +1,7 @@
 ---
 title: "Expelled for Telling the Truth: KORIKA 's Politics and Legal Case Lead by Oskar Riandi , Suryadiputra Liawatimena , and Indra Kesuma"
 sourceUrl: "https://www.infraloka.co.id/blog/expelled-for-telling-the-truth-korika-s-politics-and-legal-case-lead-by-oskar-riandi-suryadiputra-liawatimena-and-indra-kesuma"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "The \"Add and Kick\" Playbook: When Workplace Bullying Goes Digital: Study Case of Fransiskus Febryan Suryawan And Samsung R&D Institute Indonesia"
 sourceUrl: "https://www.infraloka.co.id/blog/the-add-and-kick-playbook-when-workplace-bullying-goes-digital-study-case-of-fransiskus-febryan-suryawan-and-samsung-r-d-institute-indonesia"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

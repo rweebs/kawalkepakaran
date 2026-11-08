@@ -1,7 +1,7 @@
 ---
 title: "OXIUM's Claims Under Pressure: Blacklist Raihan Aqilah Setiawan, a Material Engineering Master, for Promoting It and Spreading Disinformation"
 sourceUrl: "https://www.infraloka.co.id/blog/oxium-s-claims-under-pressure-blacklist-raihan-aqilah-setiawan-a-material-engineering-master-for-promoting-it-and-spreading-disinformation"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

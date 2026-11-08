@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 065/SOMASI/RW/IX/2026: Gatot Gunarso (English + 中文 律师函)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-065-gatot-gunarso-letter-of-demand-english-chinese"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

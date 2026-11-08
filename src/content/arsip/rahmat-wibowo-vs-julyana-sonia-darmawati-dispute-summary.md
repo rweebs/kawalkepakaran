@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. Julyana Sonia Darmawati: A Cease-and-Desist Over a Quote-Tweet"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-julyana-sonia-darmawati-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

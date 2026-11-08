@@ -1,7 +1,7 @@
 ---
 title: "Case Record: Polsek Cisauk Clarification Summons and Disability Accommodation"
 sourceUrl: "https://www.infraloka.co.id/blog/polsek-cisauk-clarification-summons-case-record-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

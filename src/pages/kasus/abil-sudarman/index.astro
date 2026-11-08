@@ -12,13 +12,13 @@ const { locale = 'id' } = Astro.props as { locale?: Locale };
 const path = localizedPath('caseHome', locale);
 type Route = Parameters<typeof routePath>[0];
 const COPY = {
-  id: { title: 'Kasus 001: Abil Sudarman', h1: 'Kasus 001: Abil Sudarman', crumb: 'Kasus 001',
-    description: 'Kasus pertama Kawal Kepakaran: klaim kredensial dan jabatan Abil Sudarman diperiksa terhadap bukti, lengkap dengan linimasa dan hak jawab.',
-    lead: 'Kasus 001 memeriksa klaim kredensial dan jabatan Abil Sudarman terhadap bukti yang tersedia. Semua isi adalah pendapat dan catatan penulis, bukan putusan.',
+  id: { title: 'Kasus Abil Sudarman', h1: 'Kasus Abil Sudarman', crumb: 'Kasus Abil Sudarman',
+    description: 'Klaim kredensial dan jabatan Abil Sudarman diperiksa terhadap bukti, lengkap dengan linimasa dan hak jawab.',
+    lead: 'Kasus ini memeriksa kredensial dan jabatan Abil Sudarman terhadap bukti yang tersedia. Semua isi adalah pendapat dan catatan penulis, bukan putusan.',
     links: [['timeline', 'Linimasa'], ['abilTimeline', 'Linimasa Abil Sudarman'], ['evidence', 'Bukti'], ['articles', 'Artikel'], ['bowobharata', 'Bowobharata'], ['reply', 'Hak jawab']] },
-  en: { title: 'Case 001: Abil Sudarman', h1: 'Case 001: Abil Sudarman', crumb: 'Case 001',
-    description: "Kawal Kepakaran's first case: Abil Sudarman's claimed credentials and roles checked against the evidence, with a timeline and the right of reply.",
-    lead: "Case 001 checks Abil Sudarman's claimed credentials and roles against the available evidence. Everything here is the author's opinion and notes, not a ruling.",
+  en: { title: 'Abil Sudarman case', h1: 'Abil Sudarman case', crumb: 'Abil Sudarman case',
+    description: "Abil Sudarman's claimed credentials and roles checked against the evidence, with a timeline and the right of reply.",
+    lead: "This case checks Abil Sudarman's claimed credentials and roles against the available evidence. Everything here is the author's opinion and notes, not a ruling.",
     links: [['timeline', 'Timeline'], ['abilTimeline', 'Abil Sudarman timeline'], ['evidence', 'Evidence'], ['articles', 'Articles'], ['bowobharata', 'Bowobharata'], ['reply', 'Right of reply']] },
 } satisfies Record<Locale, { title: string; h1: string; crumb: string; description: string; lead: string; links: [Route, string][] }>;
 const T = COPY[locale];
@@ -26,9 +26,9 @@ const claims = (await klaimForPakar('abil-sudarman')).filter((k) => !isGenerated
 const fmt = (d: Date) => formatDateLocale(d, locale);
 const L = {
   id: { claimsH: 'Klaim yang diperiksa', claim: 'Klaim', verdict: 'Hasil', confidence: 'Keyakinan', reply: 'Tanggapan', reviewed: 'Ditinjau',
-    moreH: 'Telusuri kasus', follow: 'Ikuti pembaruan (RSS)', updates: 'Apa yang berubah', share: 'Kasus 001: klaim kredensial Abil Sudarman diperiksa terhadap bukti · Kawal Kepakaran' },
+    moreH: 'Telusuri kasus', follow: 'Ikuti pembaruan (RSS)', updates: 'Apa yang berubah', share: 'Kasus Abil Sudarman: klaim kredensial Abil Sudarman diperiksa terhadap bukti · Kawal Kepakaran' },
   en: { claimsH: 'Claims checked', claim: 'Claim', verdict: 'Result', confidence: 'Confidence', reply: 'Reply', reviewed: 'Reviewed',
-    moreH: 'Explore the case', follow: 'Follow updates (RSS)', updates: 'What changed', share: "Case 001: Abil Sudarman's claimed credentials checked against the evidence · Kawal Kepakaran" },
+    moreH: 'Explore the case', follow: 'Follow updates (RSS)', updates: 'What changed', share: "Abil Sudarman case's claimed credentials checked against the evidence · Kawal Kepakaran" },
 }[locale];
 ---
 <BaseLayout title={T.title} description={T.description} path={path} locale={locale} breadcrumbs={[{ name: T.crumb, path }]} image={caseOg(locale)}>

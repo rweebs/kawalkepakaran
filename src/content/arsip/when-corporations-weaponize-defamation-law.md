@@ -1,7 +1,7 @@
 ---
 title: "When Corporations Weaponize Defamation Law: Study Case of Nomni AI (Nomni.AI), Under PT Nomnie Technologies Indonesia"
 sourceUrl: "https://www.infraloka.co.id/blog/when-corporations-weaponize-defamation-law"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

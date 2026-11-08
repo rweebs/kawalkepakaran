@@ -1,7 +1,7 @@
 ---
 title: "Case Record: Hendiko S. / Hendro Saryanto and the 14 July Agreement"
 sourceUrl: "https://www.infraloka.co.id/blog/hendiko-hendro-saryanto-hsp-case-record-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

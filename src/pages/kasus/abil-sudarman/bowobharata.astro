@@ -27,7 +27,7 @@ const U = BOWO_UI[locale];
 const path = localizedPath('bowobharata', locale);
 const ld = pageLd({ name: PAGE.title, path, locale, description: PAGE.description });
 ---
-<BaseLayout title={PAGE.title} description={PAGE.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus 001' : 'Case 001', path: routePath('caseHome', locale) }, { name: 'Bowobharata', path }]}>
+<BaseLayout title={PAGE.title} description={PAGE.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: locale === 'id' ? 'Kasus Abil Sudarman' : 'Abil Sudarman case', path: routePath('caseHome', locale) }, { name: 'Bowobharata', path }]}>
   <BowobharataStage />
   <div class="bb-main">
     <header>

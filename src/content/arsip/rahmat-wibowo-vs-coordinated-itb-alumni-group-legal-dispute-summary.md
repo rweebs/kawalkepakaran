@@ -1,7 +1,7 @@
 ---
 title: "Rahmat Wibowo vs. a Coordinated Group of ITB Alumni: A Cease-and-Desist Summary"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-coordinated-itb-alumni-group-legal-dispute-summary"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

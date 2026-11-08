@@ -1,7 +1,7 @@
 ---
 title: "Legal Risk Analysis & Verdict Prediction Of International Scammers Luca Cada Lora Creator of Jatevo.id and AI Accelerate"
 sourceUrl: "https://www.infraloka.co.id/blog/legal-risk-analysis-verdict-prediction-of-international-scammers-luca-cada-lora-creator-of-jatevo-id-and-ai-accelerate"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

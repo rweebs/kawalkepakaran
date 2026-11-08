@@ -1,7 +1,7 @@
 ---
 title: "Have You Been Studying Diligently? Study Case of Rahmat Fabhian Aminuddin"
 sourceUrl: "https://www.infraloka.co.id/blog/have-you-been-studying-diligently"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

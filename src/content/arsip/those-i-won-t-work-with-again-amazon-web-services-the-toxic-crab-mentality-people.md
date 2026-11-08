@@ -1,7 +1,7 @@
 ---
 title: "Those I Won't Work With Again : Amazon Web Services, The Toxic Crab Mentality People Study Case of Veny Charnita Ginting, Dian Hamama, Anthony Amni, Purnaresa Yuliartanto, and Yao Cong Yeo"
 sourceUrl: "https://www.infraloka.co.id/blog/those-i-won-t-work-with-again-amazon-web-services-the-toxic-crab-mentality-people"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

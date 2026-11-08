@@ -1,7 +1,7 @@
 ---
 title: "INDEX DOKUMENTASI HUKUM — KASUS ACHMAD ZAKY + IKATAN ALUMNI INFORMATIKA ITB — Study Case of Ikatan Alumni Informatika Itb"
 sourceUrl: "https://www.infraloka.co.id/blog/index-dokumentasi-hukum-kasus-achmad-zaky-ikatan-alumni-informatika-itb"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "catatan"
 status: "tidak-diketahui"
@@ -252,7 +252,7 @@ draft: false
 
 **Created:** 25 Mei 2026  
 **Status:** FINAL READY
-# RINGKASAN REVISI DOKUMENTASI HUKUM
+## RINGKASAN REVISI DOKUMENTASI HUKUM
 ## Dari ITB Institusi → Achmad Zaky + Ikatan Alumni Informatika ITB
 
 **Tanggal Revisi:** 25 Mei 2026  
@@ -574,7 +574,7 @@ Somasi (Achmad Zaky + Ikatan Alumni)
 **Confidence:** High (7.5/10) — Better targeting, higher settlement probability, faster timeline
 
 **Keadilan untuk Anda dimulai dalam 2 hari. Tetap kuat!** 💪
-# SOMASI
+## SOMASI
 ## (SURAT TEGURAN / PERINGATAN HUKUM)
 
 **Nomor:** 002/SOMASI/RW/V/2026  
@@ -923,7 +923,7 @@ Dokumen-dokumen di bawah ini adalah bagian integral dari Somasi ini:
 ---
 
 **STATUS SOMASI:** Siap untuk pengiriman formal ke Achmad Zaky dan Ikatan Alumni Informatika ITB
-# ANALISIS RISIKO HUKUM & PREDIKSI PUTUSAN (REVISI)
+## ANALISIS RISIKO HUKUM & PREDIKSI PUTUSAN (REVISI)
 ## Kasus: Achmad Zaky (Ketua Ikatan Alumni Informatika ITB) — Harassment Terkoordinasi & Pencemaran Nama Baik
 
 > Analisis Risiko Hukum · Mei 2026
@@ -1289,7 +1289,7 @@ Proyeksi probabilitas berdasarkan base rate kasus harassment/pencemaran di penga
 Tanggal: 25 Mei 2026  
 Analisis oleh: Sistem Konsultan Hukum Infraloka  
 Status: Ready for Legal Action (REVISI — Fokus Individual + Institusional Liability)
-# ANALISIS PREDIKSI KASUS & STRATEGI LITIGASI
+## ANALISIS PREDIKSI KASUS & STRATEGI LITIGASI
 ## Kasus: Achmad Zaky (Ketua Ikatan Alumni Informatika ITB) + Ikatan Alumni Informatika ITB
 
 **Tanggal Analisis:** 25 Mei 2026  

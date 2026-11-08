@@ -16,20 +16,21 @@ const p = entry.data;
 const { Content } = await render(entry);
 const path = arsipPath(entry.id, locale);
 const image = firstImage(entry.body ?? '');
-const description = descriptionFromMarkdown(entry.body ?? '') || p.title;
+const description = truncateAtWord(descriptionFromMarkdown(entry.body ?? '') || p.title, 150);
 const parties = (await getPakar()).filter((x) => p.parties.includes(x.id));
 const T = {
-  id: { crumb: 'Arsip', marker: 'Arsip Infraloka: salinan tulisan dari blog Infraloka, disalin pada', original: 'Lihat tulisan aslinya', snapshot: 'Salinan di Internet Archive', asOf: 'menurut sumber per',
+  id: { crumb: 'Kasus', marker: 'Catatan kasus dari blog Infraloka, disalin pada', original: 'Lihat tulisan aslinya', snapshot: 'Salinan di Internet Archive', asOf: 'menurut sumber per',
     trimmed: 'Dipangkas: bagian yang menyebut kondisi kesehatan, diagnosis, atau perawatan medis dibuang dari salinan ini. Teks lengkap ada di tulisan aslinya.',
     kind: 'Jenis', status: 'Status', parties: 'Pihak yang disebut', langNote: 'Tulisan ini berbahasa Inggris.', interest: 'Penulis situs ini (Rahmat Wibowo) adalah pihak dalam perkara ini.',
     reply: 'Setiap pihak yang disebut berhak menjawab lewat', replyLabel: 'hak jawab' },
-  en: { crumb: 'Archive', marker: 'Infraloka archive: a copy of a post from the Infraloka blog, copied on', original: 'See the original post', snapshot: 'Internet Archive copy', asOf: 'per the source as of',
+  en: { crumb: 'Cases', marker: 'Case record from the Infraloka blog, copied on', original: 'See the original post', snapshot: 'Internet Archive copy', asOf: 'per the source as of',
     trimmed: 'Trimmed: parts that mention health conditions, diagnoses or medical care were removed from this copy. The full text is in the original post.',
     kind: 'Type', status: 'Status', parties: 'Parties named', langNote: 'This post is in Indonesian.', interest: 'The author of this site (Rahmat Wibowo) is a party to this matter.',
     reply: 'Every party named has the right to reply through the', replyLabel: 'right of reply' },
 }[locale];
 ---
-<BaseLayout title={shortTitle} description={description} path={path} locale={locale} noindex image={image ?? undefined}
+<BaseLayout title={shortTitle} description={description} path={path} locale={locale} image={image ?? undefined}
+  alternates={{ id: arsipPath(entry.id, 'id'), en: arsipPath(entry.id, 'en') }}
   breadcrumbs={[{ name: T.crumb, path: localizedPath('archive', locale) }, { name: p.title, path }]}>
   <article class="reading">
     <h1 lang={p.lang}>{p.title}</h1>

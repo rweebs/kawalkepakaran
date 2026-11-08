@@ -1,7 +1,7 @@
 ---
 title: "ANALISIS HUKUM — Study Case of Fomo 2026"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-hukum-study-case-of-fomo-2026"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

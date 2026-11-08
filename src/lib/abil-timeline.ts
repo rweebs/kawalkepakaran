@@ -1,4 +1,4 @@
-// Timeline of Abil Sudarman, the main figure of Case 001. Unlike the author's own timeline (src/lib/linimasa.ts), the subject
+// Timeline of Abil Sudarman, the subject of one case among many. Unlike the author's own timeline (src/lib/linimasa.ts), the subject
 // here is what was claimed, recorded or reported about him. It adds no new facts: every entry rests on an item already on this
 // site (a bukti entry or an article) or on a news report that the site already cites, and every entry states its limits.
 // Entries without a source-stated date are listed last, never given an invented one.

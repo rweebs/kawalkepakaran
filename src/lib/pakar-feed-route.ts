@@ -6,7 +6,7 @@ import type { Locale } from '../i18n';
 
 const FALLBACK_DATE = new Date('2026-10-09T00:00:00Z');
 
-/** Hand-made experts only: generated (archive) profiles are noindex and get no feed. */
+/** Hand-made experts only: generated (archive) profiles get no feed. */
 export async function curatedPakarPaths() {
   return (await getPakar()).filter((p) => !isGenerated(p)).map((p) => ({ params: { slug: p.id } }));
 }

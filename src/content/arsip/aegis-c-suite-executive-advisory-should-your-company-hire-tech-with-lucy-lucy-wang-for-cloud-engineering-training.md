@@ -1,7 +1,7 @@
 ---
 title: "AEGIS C-Suite Executive Advisory: Should Your Company Hire \"Tech With Lucy\" (Lucy Wang) for Cloud Engineering Training?"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-c-suite-executive-advisory-should-your-company-hire-tech-with-lucy-lucy-wang-for-cloud-engineering-training"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

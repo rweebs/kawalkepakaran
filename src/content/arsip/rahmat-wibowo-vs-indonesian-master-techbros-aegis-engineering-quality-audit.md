@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Engineering Quality Audit: Rahmat Wibowo vs. Indonesia's Master TechBros — Ardya Dipta, Didiet Noor, Imre Nagi & Mustafa Zaki Assegaf"
 sourceUrl: "https://www.infraloka.co.id/blog/rahmat-wibowo-vs-indonesian-master-techbros-aegis-engineering-quality-audit"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "ringkasan"
 status: "tidak-diketahui"

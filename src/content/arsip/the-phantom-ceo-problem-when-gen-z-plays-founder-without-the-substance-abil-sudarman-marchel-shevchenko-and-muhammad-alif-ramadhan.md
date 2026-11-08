@@ -1,7 +1,7 @@
 ---
 title: "The Phantom CEO Problem: When Gen Z Plays Founder Without the Substance: Abil Sudarman, Marchel Shevchenko, and Muhammad Alif Ramadhan"
 sourceUrl: "https://www.infraloka.co.id/blog/the-phantom-ceo-problem-when-gen-z-plays-founder-without-the-substance-abil-sudarman-marchel-shevchenko-and-muhammad-alif-ramadhan"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

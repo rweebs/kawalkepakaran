@@ -1,7 +1,7 @@
 ---
 title: "ANALISIS RISIKO HUKUM & PREDIKSI PUTUSAN — Study Case of Sicupuh, Iluni UI, dan Iluni FHUI Dibawah Pimpinan Pramudya A. Oktavinanda"
 sourceUrl: "https://www.infraloka.co.id/blog/analisis-risiko-hukum-prediksi-putusan-study-case-of-sicupuh"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

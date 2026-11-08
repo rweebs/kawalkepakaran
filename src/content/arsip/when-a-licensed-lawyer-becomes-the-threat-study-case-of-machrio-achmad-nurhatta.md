@@ -1,7 +1,7 @@
 ---
 title: "When a Licensed Lawyer Becomes the Threat, Study Case of Machrio Achmad Nurhatta, Machi Achmad and Partners"
 sourceUrl: "https://www.infraloka.co.id/blog/when-a-licensed-lawyer-becomes-the-threat-study-case-of-machrio-achmad-nurhatta"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "Ensnaring Corporate Criminals By Rahmat Wibowo From Infraloka, A comprehensive deep dive into Menjerat Pelaku Tindak Pidana Korporasi Di Indonesia by Dr. Yurizal, SH. MH."
 sourceUrl: "https://www.infraloka.co.id/blog/ensnaring-corporate-criminals"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

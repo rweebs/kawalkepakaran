@@ -1,7 +1,7 @@
 ---
 title: "Comprehensive Legal Risk Analysis & Judgment Verdict of ITB and Amazon VS Rahmat Wibowo"
 sourceUrl: "https://www.infraloka.co.id/blog/comprehensive-legal-risk-analysis-judgment-verdict"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

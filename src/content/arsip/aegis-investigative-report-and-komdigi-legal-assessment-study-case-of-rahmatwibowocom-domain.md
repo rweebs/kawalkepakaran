@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Investigative Report and Komdigi Regulatory Audit: Study Case of Rahmatwibowo.com Domain"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-komdigi-legal-assessment-study-case-of-rahmatwibowocom-domain"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

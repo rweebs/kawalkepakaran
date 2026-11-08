@@ -19,7 +19,7 @@ const T = {
     lead: 'Generated automatically, one per document by the author. These entries only record that the document exists, not that its content has been checked or proven.', back: 'Back to claim checks' },
 }[locale];
 ---
-<BaseLayout title={T.title} description={T.description} path={path} locale={locale} noindex
+<BaseLayout title={T.title} description={T.description} path={path} locale={locale}
   alternates={{ id: routePath('claimsArchive', 'id'), en: routePath('claimsArchive', 'en') }}
   breadcrumbs={[{ name: T.crumb, path: routePath('claims', locale) }, { name: T.here, path }]}>
   <article class="reading">

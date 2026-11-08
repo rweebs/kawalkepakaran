@@ -1,7 +1,7 @@
 ---
 title: "The Harasser Who Asked a Legal Question : PT Arkana Solusi Digital Company Toxic Employee"
 sourceUrl: "https://www.infraloka.co.id/blog/the-harasser-who-asked-a-legal-question-pt-arkana-solusi-digital-company-toxic-employee"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

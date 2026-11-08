@@ -1,7 +1,7 @@
 ---
 title: "Cross-Border Cyberbullying Assessment: Study Case of Japanese Expat Group Aria Ghora, Marcello Faria, Mustafa Assegaf, and Adith Widya Pradipta"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-cross-border-assessment-study-case-of-japanese-expat-group"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

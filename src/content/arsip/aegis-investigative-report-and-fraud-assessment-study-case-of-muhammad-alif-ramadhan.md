@@ -1,7 +1,7 @@
 ---
 title: "Corporate Fraud and False CEO Claims: Study Case of Muhammad Alif Ramadhan"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-fraud-assessment-study-case-of-muhammad-alif-ramadhan"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"

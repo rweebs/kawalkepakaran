@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 028/SOMASI/RW/VIII/2026: Galih Indra Firmansyah (English Translation of the Indonesian Letter)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-028-galih-indra-firmansyah-letter-of-demand-english"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

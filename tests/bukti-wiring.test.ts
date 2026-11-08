@@ -3,10 +3,6 @@ import { readFileSync } from 'node:fs';
 import { NAV, PAGE_LASTMOD } from '../src/lib/site';
 
 describe('bukti wiring', () => {
-  it('has Bukti in the menu', () => {
-    expect(NAV.filter((n) => n.href === '/kasus/abil-sudarman/bukti')).toHaveLength(1);
-    expect(NAV.find((n) => n.href === '/kasus/abil-sudarman/bukti')?.label).toBe('Bukti');
-  });
   it('has a YYYY-MM-DD lastmod for the sitemap', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/kasus/abil-sudarman/bukti']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });

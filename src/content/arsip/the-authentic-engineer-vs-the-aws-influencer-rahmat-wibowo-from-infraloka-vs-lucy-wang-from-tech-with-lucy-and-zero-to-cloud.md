@@ -1,7 +1,7 @@
 ---
 title: "The Authentic Engineer vs. The AWS Influencer; Rahmat Wibowo from InfraLoka vs Lucy Wang From Tech With Lucy and Zero To Cloud"
 sourceUrl: "https://www.infraloka.co.id/blog/the-authentic-engineer-vs-the-aws-influencer-rahmat-wibowo-from-infraloka-vs-lucy-wang-from-tech-with-lucy-and-zero-to-cloud"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "The Paper Wall: why a university can't be built in a month, Case Study of Abil Sudarman School of Artificial Intelligence and Kampus Malaka By Ferry Irwandi"
 sourceUrl: "https://www.infraloka.co.id/blog/the-paper-wall-why-a-university-can-t-be-built-in-a-month-case-study-of-abil-sudarman-school-of-artificial-intelligence-and-malaka-campus"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

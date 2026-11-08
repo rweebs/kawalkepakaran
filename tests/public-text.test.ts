@@ -38,9 +38,8 @@ describe('shared pages are about any pakar, not only Abil', () => {
     expect(s).toContain("routePath('method'");
     expect(s).toMatch(/Kawal Kepakaran/);
   });
-  it.each(['src/pages/videos.astro', 'src/pages/tiktok.astro', 'src/pages/buku.astro'])('%s is labelled as Case 001 material', (p) => {
+  it.each(['src/pages/videos.astro', 'src/pages/tiktok.astro', 'src/pages/buku.astro'])('%s says whose claims it covers', (p) => {
     const s = read(p);
-    expect(s).toMatch(/Kasus 001/);
-    expect(s).toMatch(/Case 001/);
+    expect(s).toMatch(/Abil Sudarman/);
   });
 });

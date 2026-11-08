@@ -1,7 +1,7 @@
 ---
 title: "When \"Probation Ending\" Becomes a Legal Euphemism: Bipartite Meetings with Nomni AI (Nomni.ai), Formerly Liven ( PT Nomnie Technologies Indonesia )"
 sourceUrl: "https://www.infraloka.co.id/blog/when-probation-ending-becomes-a-legal-euphemism-bipartite-meetings-with-nomni-nomni-ai-formerly-liven-pt-nomnie-technologies-indonesia"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

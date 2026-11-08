@@ -1,7 +1,7 @@
 ---
 title: "Legal Notice No. 015/SOMASI/RW/VIII/2026: Astari Marthaningtyas (English + ภาษาไทย)"
 sourceUrl: "https://www.infraloka.co.id/blog/somasi-015-astari-marthaningtyas-letter-of-demand-english-thai"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "somasi"
 status: "dikirim"

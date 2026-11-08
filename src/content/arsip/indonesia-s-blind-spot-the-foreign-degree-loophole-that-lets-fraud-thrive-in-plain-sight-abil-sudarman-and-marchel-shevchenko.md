@@ -1,7 +1,7 @@
 ---
 title: "Indonesia's Blind Spot: The Foreign Degree Loophole That Lets Fraud Thrive in Plain Sight, Abil Sudarman and Marchel Shevchenko"
 sourceUrl: "https://www.infraloka.co.id/blog/indonesia-s-blind-spot-the-foreign-degree-loophole-that-lets-fraud-thrive-in-plain-sight-abil-sudarman-and-marchel-shevchenko"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

@@ -1,7 +1,7 @@
 ---
 title: "The Masters of Somasi Strategic Legal Standing & The Art of Defamation Defense, Study Case of Rahmat Wibowo And Firdaus Oiwobo"
 sourceUrl: "https://www.infraloka.co.id/blog/the-masters-of-somasi-strategic-legal-standing-the-art-of-defamation-defense-study-case-of-rahmat-wibowo-and-firdaus-oiwobo"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

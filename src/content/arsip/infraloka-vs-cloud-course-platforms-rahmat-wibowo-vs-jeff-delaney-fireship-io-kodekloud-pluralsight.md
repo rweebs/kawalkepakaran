@@ -1,7 +1,7 @@
 ---
 title: "INFRALOKA vs. CLOUD COURSE PLATFORMS; Rahmat Wibowo vs Jeff Delaney Fireship.io, KodeKloud, PluralSight"
 sourceUrl: "https://www.infraloka.co.id/blog/infraloka-vs-cloud-course-platforms-rahmat-wibowo-vs-jeff-delaney-fireship-io-kodekloud-pluralsight"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "catatan"
 status: "tidak-diketahui"

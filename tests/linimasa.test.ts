@@ -61,10 +61,6 @@ describe('linimasa helpers', () => {
 });
 
 describe('linimasa wiring', () => {
-  it('has Linimasa in the menu', () => {
-    expect(NAV.filter((n) => n.href === '/kasus/abil-sudarman/linimasa')).toHaveLength(1);
-    expect(NAV.find((n) => n.href === '/kasus/abil-sudarman/linimasa')?.label).toBe('Linimasa');
-  });
   it('has a lastmod and lists the index and every entry in the sitemap', () => {
     expect((PAGE_LASTMOD as Record<string, string>)['/kasus/abil-sudarman/linimasa']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const sitemap = read('src/lib/sitemap-entries.ts');

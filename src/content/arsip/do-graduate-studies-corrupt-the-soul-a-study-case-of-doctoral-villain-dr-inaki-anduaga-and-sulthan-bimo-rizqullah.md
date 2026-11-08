@@ -1,7 +1,7 @@
 ---
 title: "Do Graduate Studies Corrupt the Soul? A Study Case of Doctoral Villain, Dr. Inaki Anduaga and Sulthan Bimo Rizqullah"
 sourceUrl: "https://www.infraloka.co.id/blog/do-graduate-studies-corrupt-the-soul-a-study-case-of-doctoral-villain-dr-inaki-anduaga-and-sulthan-bimo-rizqullah"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "en"
 kind: "analisis"
 status: "tidak-diketahui"

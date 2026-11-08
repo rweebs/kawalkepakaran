@@ -1,7 +1,7 @@
 ---
 title: "AEGIS Investigative Report and Legal Assessment: Rahmat Wibowo v. Ikatan Alumni Informatika ITB Under Achmad Zaky"
 sourceUrl: "https://www.infraloka.co.id/blog/aegis-investigative-report-and-ethics-assessment-ikatan-alumni-informatika-itb"
-archivedAt: 2026-10-10
+archivedAt: 2026-11-08
 lang: "id"
 kind: "analisis"
 status: "tidak-diketahui"
