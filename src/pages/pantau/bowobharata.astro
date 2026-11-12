@@ -30,7 +30,7 @@ const framing = (locale === 'en' ? FRAMING_EN : FRAMING_ID)[0];
     <p class="muted">{UI[locale].disclaimer}</p>
     <BowobharataGame client:only="react" locale={locale} posters={posters}>
       <div slot="fallback">
-        <p class="bg-fallback__kicker"><strong>{C.kicker}</strong></p>
+        <p><strong>{C.kicker}</strong></p>
         <p>{framing}</p>
         <p>{C.noscript} <a href={routePath('bowobharata', locale)}>{C.readLink}</a></p>
       </div>
