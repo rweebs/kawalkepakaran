@@ -52,7 +52,10 @@ function Allegation({ locale }: { locale: Locale }) {
   );
 }
 
-export function Gate({ locale, fallback, onStart }: { locale: Locale; fallback: boolean; onStart: () => void }) {
+export interface PosterImg { src: string; srcset: string; sizes: string }
+export interface GatePosters { krishna: PosterImg; sengkuni: PosterImg }
+
+export function Gate({ locale, fallback, onStart, posters }: { locale: Locale; fallback: boolean; onStart: () => void; posters?: GatePosters }) {
   const c = GAME_COPY[locale];
   const framing = locale === 'en' ? FRAMING_EN : FRAMING;
   const alt = locale === 'en' ? POSTERS_EN : POSTERS;
@@ -64,10 +67,10 @@ export function Gate({ locale, fallback, onStart }: { locale: Locale; fallback: 
       {framing.map((p) => <p key={p}>{p}</p>)}
       <div className="bg-posters">
         <figure data-poster="krishna">
-          <img src={imgSrc(POSTERS.krishna.src)} alt={alt.krishna.alt} loading="lazy" decoding="async" width={1206} height={1291} />
+          <img src={posters?.krishna.src ?? imgSrc(POSTERS.krishna.src)} srcSet={posters?.krishna.srcset} sizes={posters?.krishna.sizes} alt={alt.krishna.alt} loading="lazy" decoding="async" width={1206} height={1291} />
         </figure>
         <figure data-poster="sengkuni">
-          <img src={imgSrc(POSTERS.sengkuni.src)} alt={alt.sengkuni.alt} loading="lazy" decoding="async" width={1206} height={1302} />
+          <img src={posters?.sengkuni.src ?? imgSrc(POSTERS.sengkuni.src)} srcSet={posters?.sengkuni.srcset} sizes={posters?.sengkuni.sizes} alt={alt.sengkuni.alt} loading="lazy" decoding="async" width={1206} height={1302} />
         </figure>
       </div>
       <ul className="bg-controls">{c.controls.map((l) => <li key={l}>{l}</li>)}</ul>

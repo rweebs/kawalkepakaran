@@ -9,14 +9,14 @@ import { PARVA_POSES } from '../lib/bowobharata/stage-math';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
 import type { ArrowLayer } from '../lib/bowobharata-game/arrows3d';
 import { GAME_COPY } from '../lib/bowobharata-game/copy';
-import type { GameData } from '../lib/bowobharata-game/data';
+import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
 import { initFlow, readSaved, reduce, writeSaved } from '../lib/bowobharata-game/flow';
 import { pickNearest } from '../lib/bowobharata-game/pick';
 import { buildWave, catchArrow, startRun, step, type Run } from '../lib/bowobharata-game/rules';
-import { CatchCard, FallbackPlay, Finale, Gate, Hud, Intro, Lost, Paused, SanjayaReport, catchItems, type CatchItem } from './bowobharata-game/screens';
+import { CatchCard, FallbackPlay, Finale, Gate, type GatePosters, Hud, Intro, Lost, Paused, SanjayaReport, catchItems, type CatchItem } from './bowobharata-game/screens';
 import '../styles/bowobharata-game.css';
 
-interface Props { locale: Locale; forceFallback?: boolean; data?: GameData }
+interface Props { locale: Locale; forceFallback?: boolean; data?: GameData; posters?: GatePosters }
 
 const COUNT = PARVAS.length + 2;
 const PICK_RADIUS = 28;
@@ -33,7 +33,7 @@ const storage = (): Storage | undefined => {
 interface HudState { caught: number; missed: number; decoys: number }
 const hudOf = (r: Run): HudState => ({ caught: r.caught.length, missed: r.misses, decoys: r.decoysTaken });
 
-export default function BowobharataGame({ locale, forceFallback, data: given }: Props) {
+export default function BowobharataGame({ locale, forceFallback, data: given, posters }: Props) {
   const copy = GAME_COPY[locale];
   const [flow, dispatch] = useReducer(reduce, undefined, () => initFlow(COUNT, { fallback: !!forceFallback }));
   const [data, setData] = useState<GameData | null>(given ?? null);
@@ -67,7 +67,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
     if (saved) dispatch({ type: 'restore', chapter: saved.chapter, best: saved.best });
     if (!given) {
       let live = true;
-      import('../lib/bowobharata-game/data').then((m) => { if (live) setData(m.gameData()); }).catch(() => {});
+      fetch(GAME_DATA_SRC).then((r) => (r.ok ? r.json() : null)).then((d) => { if (live && d) setData(d as GameData); }).catch(() => {});
       return () => { live = false; };
     }
   }, [given]);
@@ -286,7 +286,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
         </div>
       )}
 
-      {flow.screen === 'gate' && <Gate locale={locale} fallback={flow.mode === 'fallback'} onStart={() => dispatch({ type: 'start' })} />}
+      {flow.screen === 'gate' && <Gate locale={locale} fallback={flow.mode === 'fallback'} onStart={() => dispatch({ type: 'start' })} posters={posters} />}
       {flow.screen === 'intro' && <Intro locale={locale} chapterIndex={flow.chapter} onNext={next} />}
       {flow.screen === 'play' && flow.mode === '3d' && (
         <>

@@ -22,7 +22,7 @@ const EXTRA_SOURCES: Partial<Record<StaticPage, string[]>> = {
   '/tiktok': ['src/lib/tiktok.ts', 'src/content/tiktok'],
   '/buku': ['src/lib/buku.ts', 'src/content/buku'],
   '/pantau': ['src/components/FomoDashboard.tsx', 'src/lib/fomo.ts', 'src/data/fomo.json', 'src/components/PerkaraDashboard.tsx', 'src/lib/perkara.ts', 'src/data/perkara.json', 'src/components/SitemapDashboard.tsx', 'src/lib/sitemap-watch.ts', 'src/data/sitemap-watch.json'],
-  '/pantau/bowobharata': ['src/components/BowobharataGame.tsx', 'src/lib/bowobharata-game', 'src/data/perkara.json'],
+  '/pantau/bowobharata': ['src/components/BowobharataGame.tsx', 'src/components/bowobharata-game', 'src/lib/bowobharata-game', 'src/lib/bowobharata.ts', 'src/lib/bowobharata-en.ts', 'src/lib/perkara.ts', 'src/lib/linimasa.ts', 'src/lib/linimasa-en.ts', 'src/data/perkara.json'],
   '/tentang': ['src/lib/tentang.ts', 'src/lib/tentang-en.ts'],
   '/kasus/abil-sudarman/linimasa': ['src/lib/linimasa.ts', 'src/lib/linimasa-en.ts'],
   '/kasus/abil-sudarman/linimasa-abil': ['src/lib/abil-timeline.ts'],

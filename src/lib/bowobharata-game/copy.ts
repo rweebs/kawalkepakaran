@@ -14,6 +14,11 @@ export interface GameCopy {
   entryLink: string;
   /** Short line next to the link. */
   entryNote: string;
+  /** Note beside the link on /pantau, which has no allegory of its own. */
+  monitorNote: string;
+  /** Server-rendered text shown until the island loads, and the link to the readable case page. */
+  noscript: string;
+  readLink: string;
   kicker: string;
   gateTitle: string;
   gateStart: string;
@@ -46,10 +51,13 @@ export interface GameCopy {
 export const GAME_COPY: Record<Locale, GameCopy> = {
   id: {
     title: 'BOWOBHARATA',
-    description: 'Permainan alegori BOWOBHARATA: tiap parva membawa peristiwa dari dossier Gelar Perkara. Alegori dan opini penulis; isi dugaan adalah klaim Pelapor, bukan temuan polisi.',
+    description: 'Permainan alegori BOWOBHARATA dari dossier Gelar Perkara. Alegori dan opini penulis; isinya dugaan Pelapor, bukan temuan polisi.',
     crumbMonitor: 'Pantau',
     entryLink: 'Main BOWOBHARATA',
     entryNote: 'Versi permainan dari alegori ini. Alegori dan opini penulis.',
+    monitorNote: 'Ada juga BOWOBHARATA, permainan alegori Mahabharata yang memakai dossier ini. Alegori dan opini penulis, bukan pernyataan fakta.',
+    noscript: 'Permainan ini butuh JavaScript. Kisahnya, dengan alegori dan opini penulis yang sama, bisa dibaca tanpa bermain.',
+    readLink: 'Baca kisah Bowobharata',
     kicker: 'Kiasan Mahabharata yang bisa dimainkan',
     gateTitle: 'Sebelum bermain',
     gateStart: 'Mulai bermain',
@@ -97,10 +105,13 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
   },
   en: {
     title: 'BOWOBHARATA',
-    description: "The BOWOBHARATA allegory game: each parva carries events from the Gelar Perkara dossier. Allegory and the author's opinion; the allegations are the Pelapor's claims, not police findings.",
+    description: "BOWOBHARATA, an allegory game on the Gelar Perkara dossier. Allegory and the author's opinion; the content is the Pelapor's allegations, not police findings.",
     crumbMonitor: 'Monitor',
     entryLink: 'Play BOWOBHARATA',
     entryNote: "A playable version of this allegory. Allegory and the author's opinion.",
+    monitorNote: "There is also BOWOBHARATA, a Mahabharata allegory game that uses this dossier. Allegory and the author's opinion, not a statement of fact.",
+    noscript: "This game needs JavaScript. The story, with the same allegory and the author's opinion, can be read without playing.",
+    readLink: 'Read the Bowobharata story',
     kicker: 'A playable Mahabharata allegory',
     gateTitle: 'Before you play',
     gateStart: 'Start playing',

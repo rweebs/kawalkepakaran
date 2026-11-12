@@ -13,6 +13,7 @@ import { localizedEvents, eventPath } from './linimasa-locale';
 import type { Locale } from '../i18n';
 import { stageItems } from './pantau-3d';
 import { WATCH_ORIGIN } from './sitemap-watch';
+import { gameData } from './bowobharata-game/data';
 
 export const watch = store as WatchStore;
 export const perkara = perkaraRaw as unknown as Perkara;
@@ -21,7 +22,7 @@ export const rows = toRows(watch);
 /** Case-file chronology rows about Fomo, for the Fomo section's date-consistency check (FomoDashboard `dossier`). */
 export const fomoDossier = perkara.kronologis.filter((r) => /fomo/i.test(r.peristiwa)).map((r) => ({ tanggal: r.tanggal, iso: r.iso, peristiwa: r.peristiwa }));
 
-export const ISLANDS = ['relasi', 'situs-id', 'situs-en', 'perkara', 'fomo', 'stage3d'] as const;
+export const ISLANDS = ['relasi', 'situs-id', 'situs-en', 'perkara', 'fomo', 'stage3d', 'bowobharata-game'] as const;
 export type Island = (typeof ISLANDS)[number];
 
 let relasiCache: ReturnType<typeof relasiData> | undefined;
@@ -56,6 +57,7 @@ export function islandData(name: Island): Record<string, unknown> {
     case 'perkara': return { data: perkara };
     case 'fomo': return { data: fomo, dossier: fomoDossier };
     case 'stage3d': return stageProps();
+    case 'bowobharata-game': return { ...gameData(perkara) };
   }
 }
 

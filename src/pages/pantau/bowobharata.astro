@@ -1,20 +1,39 @@
 ---
 // BOWOBHARATA game: a subpage of Monitor. The island is client-only (three.js); it carries its own no-animation fallback.
+import { getImage } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import BowobharataGame from '../../components/BowobharataGame';
+import krishna from '../../assets/bowobharata/labelled/krishna.jpg';
+import sengkuni from '../../assets/bowobharata/labelled/sengkuni.jpg';
 import { UI } from '../../i18n/ui';
 import { localizedPath, routePath, type Locale } from '../../i18n';
 import { pageLd } from '../../lib/schema-org';
 import { GAME_COPY } from '../../lib/bowobharata-game/copy';
+import { FRAMING as FRAMING_ID } from '../../lib/bowobharata';
+import { FRAMING_EN } from '../../lib/bowobharata-en';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const C = GAME_COPY[locale];
 const path = localizedPath('bowobharataGame', locale);
 const ld = pageLd({ name: C.title, path, locale, description: C.description });
+// Same sizes and quality as the case page, so the optimised files are shared.
+const SIZES = '(max-width: 700px) 100vw, 540px';
+const poster = async (src: ImageMetadata) => {
+  const img = await getImage({ src, widths: [400, 640], format: 'webp', quality: 60 });
+  return { src: img.src, srcset: img.srcSet.attribute, sizes: SIZES };
+};
+const posters = { krishna: await poster(krishna), sengkuni: await poster(sengkuni) };
+const framing = (locale === 'en' ? FRAMING_EN : FRAMING_ID)[0];
 ---
 <BaseLayout title={C.title} description={C.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: C.crumbMonitor, path: routePath('monitor', locale) }, { name: C.title, path }]}>
   <div class="container pad-block">
     <h1>{C.title}</h1>
     <p class="muted">{UI[locale].disclaimer}</p>
-    <BowobharataGame client:only="react" locale={locale} />
+    <BowobharataGame client:only="react" locale={locale} posters={posters}>
+      <div slot="fallback">
+        <p class="eyebrow">{C.kicker}</p>
+        <p>{framing}</p>
+        <p>{C.noscript} <a href={routePath('bowobharata', locale)}>{C.readLink}</a></p>
+      </div>
+    </BowobharataGame>
   </div>
 </BaseLayout>

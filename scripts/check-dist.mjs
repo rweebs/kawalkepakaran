@@ -141,8 +141,7 @@ export function findOgImageProblems(distDir, site = DEFAULT_SITE, maxBytes = OG_
   return problems;
 }
 
-// 'data.' is the game's on-demand dossier chunk (all of perkara.json, loaded only after the gate), not first-load script.
-const BUNDLE_BUDGET = { 'three.module': 700_000, 'data.': 500_000, default: 260_000 };
+const BUNDLE_BUDGET = { 'three.module': 700_000, default: 260_000 };
 /** No script chunk may grow past its budget (bytes, uncompressed). */
 export function findBundleProblems(distDir) {
   const dir = join(siteRoot(distDir), '_astro');
