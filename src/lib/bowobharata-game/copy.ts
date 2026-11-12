@@ -108,7 +108,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
   },
   en: {
     title: 'BOWOBHARATA',
-    description: "BOWOBHARATA, an allegory game on the Gelar Perkara dossier. Allegory and the author's opinion; the content consists of the Pelapor's allegations, not police findings.",
+    description: "BOWOBHARATA, an allegory game on the Gelar Perkara file. Allegory and the author's opinion; it consists of the Pelapor's allegations, not findings.",
     crumbMonitor: 'Monitor',
     entryLink: 'Play BOWOBHARATA',
     entryNote: "A playable version of this allegory. Allegory and the author's opinion.",
