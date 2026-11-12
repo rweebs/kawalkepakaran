@@ -27,8 +27,8 @@
     "snapshot": "node scripts/snapshot-sitemap.mjs"
   },
   "dependencies": {
-    "@astrojs/react": "^7.0.0",
-    "astro": "^7.3.5",
+    "@astrojs/react": "^7.1.5",
+    "astro": "^7.4.8",
     "motion": "^14.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
