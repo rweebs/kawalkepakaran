@@ -102,6 +102,7 @@ export function CatchCard({ locale, item }: { locale: Locale; item: CatchItem })
       <article className="bg-catch" data-catch>
         <p className="bg-catch__meta"><time dateTime={e.date}>{formatDateFor(e.date, locale)}</time> · {e.channel}</p>
         <h3>{e.title}</h3>
+        <Allegation locale={locale} />
         <a href={eventPath(e, locale)}>{c.catchSource}</a>
       </article>
     );

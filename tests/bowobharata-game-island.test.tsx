@@ -16,7 +16,11 @@ const totals = finaleTotals(data);
 const COUNT = chapters.length;
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 const nonE = data.terlapor.filter((t) => kategoriKey(t.kategori) !== 'E');
-const eNames = data.terlapor.filter((t) => kategoriKey(t.kategori) === 'E').flatMap((t) => [t.nama, t.nama.split(' (')[0]]);
+/** Each category E person by full name, by the name before the parentheses, and by the name inside them (e.g. "Abil Sudarman"). */
+const eNames = data.terlapor.filter((t) => kategoriKey(t.kategori) === 'E').flatMap((t) => {
+  const inner = t.nama.match(/\(([^)]+)\)/)?.[1];
+  return [t.nama, t.nama.split(' (')[0], ...(inner ? [inner] : [])];
+});
 const noop = () => {};
 
 /** Character ranges of every element carrying data-entry (article or li, never nested in its own kind). */
@@ -177,23 +181,30 @@ describe("Sanjaya's report", () => {
     expect(sanjaya(empty)).toContain(esc(GAME_COPY.id.sanjayaNone));
   });
 
-  it('no category E name renders on any screen of a full run, and Sengkuni never leaves the gate', () => {
+  it('no category E name renders on any Sanjaya screen, prologue card, intro or the finale; Sengkuni never leaves the gate', () => {
+    // Whitelist, by ruling: the gate and the pause screen (FRAMING and the labelled poster) and the event catch cards
+    // (linimasa titles, each under the allegation line) may contain these names. Everything else must not.
+    const checked: string[] = [];
     const screens: string[] = [];
     for (const locale of ['id', 'en'] as const) {
       for (let i = 0; i < COUNT; i++) {
-        screens.push(sanjaya(i, locale));
-        screens.push(renderToString(<Intro locale={locale} chapterIndex={i} onNext={noop} />));
+        checked.push(sanjaya(i, locale));
+        checked.push(renderToString(<Intro locale={locale} chapterIndex={i} onNext={noop} />));
         const items = catchItems(i, chapters, locale);
-        screens.push(renderToString(<FallbackPlay locale={locale} items={items} taken={items.length} onTake={noop} onDone={noop} />));
-        for (const it of items) screens.push(renderToString(<CatchCard locale={locale} item={it} />));
+        for (const it of items) {
+          const html = renderToString(<CatchCard locale={locale} item={it} />);
+          (it.kind === 'entry' ? checked : screens).push(html);
+        }
       }
-      screens.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} />));
-      screens.push(renderToString(<Lost locale={locale} onRetry={noop} />));
+      checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} />));
+      checked.push(renderToString(<Lost locale={locale} onRetry={noop} />));
+      checked.push(renderToString(<Hud locale={locale} caught={1} missed={0} decoys={0} sight={false} paused={false} onPause={noop} />));
       screens.push(renderToString(<Paused locale={locale} onResume={noop} />));
-      screens.push(renderToString(<Hud locale={locale} caught={1} missed={0} decoys={0} sight={false} paused={false} onPause={noop} />));
     }
-    const all = screens.join('\n');
-    for (const n of eNames) expect(all, n).not.toContain(esc(n));
+    const strict = checked.join('\n');
+    expect(eNames).toContain('Abil Sudarman');
+    for (const n of eNames) expect(strict, n).not.toContain(esc(n));
+    const all = [strict, ...screens].join('\n');
     // The only "Sengkuni" outside the gate is the epic's own episode line of parva 1, on its intro card, with no names.
     const intro1 = renderToString(<Intro locale="id" chapterIndex={1} onNext={noop} />);
     for (const t of nonE) expect(intro1).not.toContain(esc(t.nama));
@@ -217,6 +228,24 @@ describe('catch cards and the fallback play', () => {
     expect(html).toContain(esc(GAME_COPY.id.catchSource));
     const en = renderToString(<CatchCard locale="en" item={catchItems(1, chapters, 'en')[0]} />);
     expect(en).toMatch(/href="\/en\/cases\/abil-sudarman\/timeline\/[^"]+"/);
+  });
+
+  it('every event catch card, every parva, ID and EN, carries the allegation line and the reply link', () => {
+    let n = 0;
+    for (const locale of ['id', 'en'] as const) {
+      for (let i = 1; i <= PARVAS.length; i++) {
+        const items = catchItems(i, chapters, locale);
+        const fb = renderToString(<FallbackPlay locale={locale} items={items} taken={items.length} onTake={noop} onDone={noop} />);
+        expect(fb.split(esc(GAME_COPY[locale].allegation)).length - 1).toBe(items.length);
+        for (const it of items) {
+          const html = renderToString(<CatchCard locale={locale} item={it} />);
+          expect(html).toContain(esc(GAME_COPY[locale].allegation));
+          expect(html).toContain(locale === 'id' ? 'href="/hak-jawab"' : 'href="/en/right-of-reply"');
+          n++;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(20);
   });
 
   it('prologue catches show each full entry earliest dated row, under the allegation frame', () => {
@@ -277,6 +306,14 @@ describe('island wiring (source)', () => {
     expect(src).toContain('PICK_RADIUS = 28');
     expect(src).toMatch(/pickNearest\([\s\S]*?PICK_RADIUS\)/);
     expect(src).toContain('350');
+    expect(src).toContain('Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS');
+    expect(src).toContain('MAX_PROLOGUE_ARROWS = 12');
+  });
+  it('restarts play once a new scene arrives, and never syncs a disposed layer', () => {
+    expect(src).toMatch(/\[playing3d, ready,/);
+    expect(src).toContain('setReady(0)');
+    expect(src).toContain('layerRef.current === layer');
+    expect(src).toContain('e.button === 0');
   });
   it('pauses when the tab is hidden', () => {
     expect(src).toContain('visibilitychange');

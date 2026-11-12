@@ -23,6 +23,7 @@ const PICK_RADIUS = 28;
 const LONG_PRESS_MS = 350;
 const RETICLE_STEP = 24;
 const MIN_PROLOGUE_ARROWS = 6;
+const MAX_PROLOGUE_ARROWS = 12;
 const EMPTY_RUN = startRun({ arrows: [] });
 
 const storage = (): Storage | undefined => {
@@ -121,6 +122,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
       scene?.dispose();
       sceneRef.current = null;
       layerRef.current = null;
+      setReady(0);
     };
   }, [wants3d]);
 
@@ -141,7 +143,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
     nextRevealRef.current = 0;
     const seed = 1009 * (i + 1) + attemptRef.current++;
     const wave = i === 0
-      ? buildWave(0, [], seed, Math.max(MIN_PROLOGUE_ARROWS, revealRef.current.length))
+      ? buildWave(0, [], seed, Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS, revealRef.current.length)))
       : buildWave(i, parvaEvents(PARVAS[i - 1]).map((e) => e.slug), seed);
     let run = startRun(wave);
     runRef.current = run;
@@ -167,10 +169,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
     return () => {
       off();
       runRef.current = null;
-      layer.sync(EMPTY_RUN);
+      // The scene's own cleanup may already have disposed the layer (fallback or unmount); only clear a live one.
+      if (layerRef.current === layer) layer.sync(EMPTY_RUN);
       setSight(false);
     };
-  }, [playing3d, flow.chapter, flow.screen, data, locale, setSight]);
+  }, [playing3d, ready, flow.chapter, flow.screen, data, locale, setSight]);
 
   // Fallback play starts from the first event each time a chapter's play begins.
   useEffect(() => { setTaken(0); }, [flow.screen, flow.chapter, flow.mode]);
@@ -191,7 +194,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
     if (arrow?.kind === 'real') {
       const item = arrow.eventSlug
         ? revealRef.current.find((it) => it.kind === 'event' && it.event.idSlug === arrow.eventSlug)
-        : revealRef.current[nextRevealRef.current++];
+        : revealRef.current[nextRevealRef.current++ % Math.max(1, revealRef.current.length)];
       if (item) setCard(item);
     }
   }, []);
@@ -235,13 +238,14 @@ export default function BowobharataGame({ locale, forceFallback, data: given }: 
 
   // Pointer: a mouse click catches at once; a touch catches on release, unless held long enough to be Krishna's sight.
   const press = useRef<{ timer: number; long: boolean } | null>(null);
+  useEffect(() => () => { if (press.current) window.clearTimeout(press.current.timer); }, []);
   const local = (e: ReactPointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const p = local(e);
-    if (e.pointerType === 'mouse') { catchAt(p.x, p.y); return; }
+    if (e.pointerType === 'mouse') { if (e.button === 0) catchAt(p.x, p.y); return; }
     const state = { timer: 0, long: false };
     state.timer = window.setTimeout(() => { state.long = true; setSight(true); }, LONG_PRESS_MS);
     press.current = state;
