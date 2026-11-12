@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { cardShift, dharmaMix, formation, groundHeight, poseAt, viewOffsetX } from './stage-math';
+import { cardShift, dharmaMix, formation, groundHeight, poseAt, viewOffsetX, type Pose } from './stage-math';
 import { createArmies } from './scene/army';
 import { createBattle } from './scene/battle';
 import { createChariot } from './scene/chariot';
@@ -14,18 +14,24 @@ import { createPost, type Post } from './scene/post';
 import { degrade, qualityFor, shouldDropBloom, type Effects } from './scene/quality';
 import { createProbe } from './scene/reflections';
 
-export interface SceneInit { canvas: HTMLCanvasElement; reducedMotion: boolean; mobile: boolean; onLost?: () => void }
+export interface SceneInit { canvas: HTMLCanvasElement; reducedMotion: boolean; mobile: boolean; onLost?: () => void; game?: true }
 export interface KurukshetraScene {
   setProgress(p: number): void;
   resize(w: number, h: number): void;
   setPaused(p: boolean): void;
   dispose(): void;
+  game?: {
+    camera: THREE.PerspectiveCamera;
+    root: THREE.Group;
+    setPose(p: Pose | null): void;
+    onFrame(cb: (time: number, dt: number) => void): () => void;
+  };
 }
 
 // Under reduced motion the battle is shown as a still: arrows mid-flight, flags caught mid-wave.
 const STILL_TIME = 3.2;
 
-export function createScene({ canvas, reducedMotion, mobile, onLost }: SceneInit): KurukshetraScene {
+export function createScene({ canvas, reducedMotion, mobile, onLost, game }: SceneInit): KurukshetraScene {
   const quality = qualityFor(mobile, window.devicePixelRatio || 1, navigator.hardwareConcurrency || 8);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: mobile ? 'low-power' : 'high-performance' });
   renderer.setPixelRatio(quality.pixelRatio);
@@ -99,13 +105,17 @@ export function createScene({ canvas, reducedMotion, mobile, onLost }: SceneInit
   let raf = 0;
   let last = 0;
   const look = new THREE.Vector3();
+  let poseOverride: Pose | null = null;
+  const frameListeners = new Set<(time: number, dt: number) => void>();
+  const root = new THREE.Group();
+  if (game) scene.add(root);
   const size = { w: 1, h: 1 };
 
   const draw = () => {
-    const pose = poseAt(progress);
+    const pose = poseOverride ?? poseAt(progress);
     // Keep the subject out from under the text card, which alternates sides from parva to parva.
     const offset = viewOffsetX(size.w, cardShift(progress), mobile);
-    if (offset === 0) camera.clearViewOffset();
+    if (game || offset === 0) camera.clearViewOffset();
     else camera.setViewOffset(size.w, size.h, offset, 0, size.w, size.h);
     const hand = handheld(time, reducedMotion ? 0 : 1);
     camera.position.set(pose.pos.x + hand.x, pose.pos.y + hand.y, pose.pos.z);
@@ -157,6 +167,7 @@ export function createScene({ canvas, reducedMotion, mobile, onLost }: SceneInit
         frameMs.length = 0;
       }
     }
+    for (const cb of frameListeners) cb(time, dt);
     draw();
     raf = requestAnimationFrame(frame);
   };
@@ -170,6 +181,12 @@ export function createScene({ canvas, reducedMotion, mobile, onLost }: SceneInit
   if (!reducedMotion) start();
 
   return {
+    game: game ? {
+      camera,
+      root,
+      setPose(p) { poseOverride = p; },
+      onFrame(cb) { frameListeners.add(cb); return () => { frameListeners.delete(cb); }; },
+    } : undefined,
     setProgress(p) {
       target = Math.min(1, Math.max(0, p));
       if (reducedMotion) { progress = target; draw(); }
