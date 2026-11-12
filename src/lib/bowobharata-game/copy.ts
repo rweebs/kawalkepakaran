@@ -53,7 +53,7 @@ export interface GameCopy {
 export const GAME_COPY: Record<Locale, GameCopy> = {
   id: {
     title: 'BOWOBHARATA',
-    description: 'Permainan alegori BOWOBHARATA dari dossier Gelar Perkara. Alegori dan opini penulis; isinya dugaan Pelapor, bukan temuan polisi.',
+    description: 'Permainan alegori BOWOBHARATA dari berkas Gelar Perkara. Alegori dan opini penulis; isinya dugaan Pelapor, bukan temuan polisi.',
     crumbMonitor: 'Pantau',
     entryLink: 'Main BOWOBHARATA',
     entryNote: 'Versi permainan dari alegori ini. Alegori dan opini penulis.',
@@ -108,7 +108,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
   },
   en: {
     title: 'BOWOBHARATA',
-    description: "BOWOBHARATA, an allegory game on the Gelar Perkara file. Allegory and the author's opinion; it consists of the Pelapor's allegations, not findings.",
+    description: "BOWOBHARATA, an allegory game on the Gelar Perkara file. Allegory and the author's opinion; the claims are the Pelapor's allegations, not police findings.",
     crumbMonitor: 'Monitor',
     entryLink: 'Play BOWOBHARATA',
     entryNote: "A playable version of this allegory. Allegory and the author's opinion.",

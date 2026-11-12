@@ -70,4 +70,9 @@ describe('bowobharata game routes', () => {
   it('the case page renders entryNote beside the button', () => {
     expect(read('src/pages/kasus/abil-sudarman/bowobharata.astro')).toContain('GAME_COPY[locale].entryNote');
   });
+  it('descriptions keep the allegation qualifier and avoid "dossier"', () => {
+    expect(GAME_COPY.en.description).toContain('not police findings');
+    expect(GAME_COPY.id.description).toContain('bukan temuan polisi');
+    for (const l of ['id', 'en'] as const) expect(GAME_COPY[l].description).not.toMatch(/dossier|dosir/i);
+  });
 });
