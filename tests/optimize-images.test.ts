@@ -22,7 +22,8 @@ async function site() {
   return dir;
 }
 
-describe('optimize-images', () => {
+// Each test encodes several images with sharp, which can pass 5s on a shared CI runner.
+describe('optimize-images', { timeout: 30_000 }, () => {
   it('shows a PNG as its WebP edition with a srcset for the reading column, and leaves links and meta tags alone', async () => {
     const dir = await site();
     writeFileSync(join(dir, 'index.html'), '<meta property="og:image" content="/img/shot.png"><a href="/img/shot.png"><img src="/img/shot.png" alt="Shot"></a>');
