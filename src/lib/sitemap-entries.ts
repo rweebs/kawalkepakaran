@@ -22,6 +22,7 @@ const EXTRA_SOURCES: Partial<Record<StaticPage, string[]>> = {
   '/tiktok': ['src/lib/tiktok.ts', 'src/content/tiktok'],
   '/buku': ['src/lib/buku.ts', 'src/content/buku'],
   '/pantau': ['src/components/FomoDashboard.tsx', 'src/lib/fomo.ts', 'src/data/fomo.json', 'src/components/PerkaraDashboard.tsx', 'src/lib/perkara.ts', 'src/data/perkara.json', 'src/components/SitemapDashboard.tsx', 'src/lib/sitemap-watch.ts', 'src/data/sitemap-watch.json'],
+  '/pantau/bowobharata': ['src/components/BowobharataGame.tsx', 'src/lib/bowobharata-game', 'src/data/perkara.json'],
   '/tentang': ['src/lib/tentang.ts', 'src/lib/tentang-en.ts'],
   '/kasus/abil-sudarman/linimasa': ['src/lib/linimasa.ts', 'src/lib/linimasa-en.ts'],
   '/kasus/abil-sudarman/linimasa-abil': ['src/lib/abil-timeline.ts'],
@@ -100,6 +101,7 @@ async function collect(): Promise<SitemapEntry[]> {
     { path: '/hak-jawab', lastmod: pageLastmod('/hak-jawab') },
     { path: ROUTES.suggest.id, lastmod: pageLastmod('/usulkan') },
     { path: ROUTES.monitor.id, lastmod: pageLastmod('/pantau') },
+    { path: ROUTES.bowobharataGame.id, lastmod: pageLastmod('/pantau/bowobharata') },
     { path: '/disclaimer', lastmod: pageLastmod('/disclaimer') },
     { path: '/kebijakan', lastmod: pageLastmod('/kebijakan') },
     ...posts.map((p) => {

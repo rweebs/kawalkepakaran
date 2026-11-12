@@ -6,6 +6,14 @@ import type { Totals } from './record';
 
 export interface GameCopy {
   title: string;
+  /** Page meta description. */
+  description: string;
+  /** Breadcrumb label of the Monitor page the game sits under. */
+  crumbMonitor: string;
+  /** Link/button label that leads to the game from /pantau and from the Bowobharata case page. */
+  entryLink: string;
+  /** Short line next to the link. */
+  entryNote: string;
   kicker: string;
   gateTitle: string;
   gateStart: string;
@@ -38,6 +46,10 @@ export interface GameCopy {
 export const GAME_COPY: Record<Locale, GameCopy> = {
   id: {
     title: 'BOWOBHARATA',
+    description: 'Permainan alegori BOWOBHARATA: tiap parva membawa peristiwa dari dossier Gelar Perkara. Alegori dan opini penulis; isi dugaan adalah klaim Pelapor, bukan temuan polisi.',
+    crumbMonitor: 'Pantau',
+    entryLink: 'Main BOWOBHARATA',
+    entryNote: 'Versi permainan dari alegori ini. Alegori dan opini penulis.',
     kicker: 'Kiasan Mahabharata yang bisa dimainkan',
     gateTitle: 'Sebelum bermain',
     gateStart: 'Mulai bermain',
@@ -85,6 +97,10 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
   },
   en: {
     title: 'BOWOBHARATA',
+    description: "The BOWOBHARATA allegory game: each parva carries events from the Gelar Perkara dossier. Allegory and the author's opinion; the allegations are the Pelapor's claims, not police findings.",
+    crumbMonitor: 'Monitor',
+    entryLink: 'Play BOWOBHARATA',
+    entryNote: "A playable version of this allegory. Allegory and the author's opinion.",
     kicker: 'A playable Mahabharata allegory',
     gateTitle: 'Before you play',
     gateStart: 'Start playing',

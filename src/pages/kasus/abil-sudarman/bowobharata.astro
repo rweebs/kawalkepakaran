@@ -15,6 +15,7 @@ import { SITE } from '../../../lib/site';
 import { UI } from '../../../i18n/ui';
 import { routePath, localizedPath, type Locale } from '../../../i18n';
 import { pageLd } from '../../../lib/schema-org';
+import { GAME_COPY } from '../../../lib/bowobharata-game/copy';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const DISCLAIMER = UI[locale].disclaimer;
 const en = locale === 'en';
@@ -36,6 +37,7 @@ const ld = pageLd({ name: PAGE.title, path, locale, description: PAGE.descriptio
       <p>{PAGE.lead}</p>
     </header>
     <p class="muted">{DISCLAIMER}</p>
+    <p><a class="btn" href={routePath('bowobharataGame', locale)}>{GAME_COPY[locale].entryLink}</a></p>
 
     <section class="bb-note callout" aria-label={U.notesLabel}>
       {FRAMING.map((t) => <p>{t}</p>)}

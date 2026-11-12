@@ -37,6 +37,7 @@ export const ROUTES = {
   policy: { id: '/kebijakan', en: '/en/policy' },
   suggest: { id: '/usulkan', en: '/en/suggest' },
   monitor: { id: '/pantau', en: '/en/monitor' },
+  bowobharataGame: { id: '/pantau/bowobharata', en: '/en/monitor/bowobharata' },
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 

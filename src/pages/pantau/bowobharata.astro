@@ -1,0 +1,20 @@
+---
+// BOWOBHARATA game: a subpage of Monitor. The island is client-only (three.js); it carries its own no-animation fallback.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import BowobharataGame from '../../components/BowobharataGame';
+import { UI } from '../../i18n/ui';
+import { localizedPath, routePath, type Locale } from '../../i18n';
+import { pageLd } from '../../lib/schema-org';
+import { GAME_COPY } from '../../lib/bowobharata-game/copy';
+const { locale = 'id' } = Astro.props as { locale?: Locale };
+const C = GAME_COPY[locale];
+const path = localizedPath('bowobharataGame', locale);
+const ld = pageLd({ name: C.title, path, locale, description: C.description });
+---
+<BaseLayout title={C.title} description={C.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: C.crumbMonitor, path: routePath('monitor', locale) }, { name: C.title, path }]}>
+  <div class="container pad-block">
+    <h1>{C.title}</h1>
+    <p class="muted">{UI[locale].disclaimer}</p>
+    <BowobharataGame client:only="react" locale={locale} />
+  </div>
+</BaseLayout>
