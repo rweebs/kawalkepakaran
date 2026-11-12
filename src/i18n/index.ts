@@ -36,6 +36,7 @@ export const ROUTES = {
   disclaimer: { id: '/disclaimer', en: '/en/disclaimer' },
   policy: { id: '/kebijakan', en: '/en/policy' },
   suggest: { id: '/usulkan', en: '/en/suggest' },
+  monitor: { id: '/pantau', en: '/en/monitor' },
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 

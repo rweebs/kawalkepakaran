@@ -5,8 +5,8 @@ import { NAV, NAV_GROUPS, isActive } from '../src/lib/site';
 const read = (p: string) => readFileSync(p, 'utf8');
 
 describe('menu structure', () => {
-  it('has seven top-level entries in reading order, with Hak jawab always visible', () => {
-    expect(NAV_GROUPS.map((e) => e.label)).toEqual(['Pakar', 'Cek klaim', 'Metode', 'Kasus', 'Media', 'Tentang', 'Hak jawab']);
+  it('has eight top-level entries in reading order, with Hak jawab always visible', () => {
+    expect(NAV_GROUPS.map((e) => e.label)).toEqual(['Pakar', 'Cek klaim', 'Metode', 'Kasus', 'Media', 'Tentang', 'Pantau', 'Hak jawab']);
     const hakJawab = NAV_GROUPS.find((e) => e.label === 'Hak jawab');
     expect(hakJawab && 'href' in hakJawab ? hakJawab.href : null).toBe('/hak-jawab');
   });

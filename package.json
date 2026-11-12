@@ -16,14 +16,15 @@
   "scripts": {
     "dev": "INCLUDE_DRAFTS=1 astro dev",
     "redirects": "node scripts/make-redirects.mjs",
-    "build": "node scripts/make-redirects.mjs && node scripts/make-thumbs.mjs && node scripts/make-og.mjs && node scripts/make-bowobharata-posters.mjs && astro build && node scripts/optimize-images.mjs && node scripts/prune-images.mjs && node scripts/size-images.mjs && node scripts/indexnow.mjs write-key dist && node scripts/check-dist.mjs && node scripts/check-jsonld.mjs",
+    "build": "node scripts/make-redirects.mjs && node scripts/snapshot-sitemap.mjs && node scripts/make-thumbs.mjs && node scripts/make-og.mjs && node scripts/make-bowobharata-posters.mjs && astro build && node scripts/optimize-images.mjs && node scripts/prune-images.mjs && node scripts/size-images.mjs && node scripts/indexnow.mjs write-key dist && node scripts/check-dist.mjs && node scripts/check-jsonld.mjs",
     "build:preview": "node scripts/make-redirects.mjs && node scripts/make-thumbs.mjs && INCLUDE_DRAFTS=1 astro build",
     "check": "node scripts/check-dist.mjs && node scripts/check-jsonld.mjs",
     "test": "vitest run",
     "og": "node scripts/make-og.mjs",
     "scan": "node scripts/scan-secrets.mjs",
     "typecheck": "astro sync && tsc --noEmit -p tsconfig.json",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "snapshot": "node scripts/snapshot-sitemap.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",

@@ -1,0 +1,60 @@
+/* Fullscreen 3D stage on /pantau (src/components/PantauFullscreen.tsx). Dots use the same validated palette as the 3D scene. */
+.stage3d__entry { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0.75rem 0 1rem; }
+.stage3d__entry .stage3d__hint { margin: 0; font-size: 0.85rem; flex: 1 1 18rem; }
+.stage3d__open { gap: 0.4rem; }
+html.stage3d-open { overflow: hidden; }
+.stage3d { position: fixed; inset: 0; z-index: 1000; background: #0b1020; color: var(--text-primary); display: grid;
+  grid-template: "bar bar bar" auto "left . right" 1fr "time time time" auto / minmax(0, 18rem) 1fr minmax(0, 22rem); }
+.stage3d__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.stage3d__canvas--pointer { cursor: pointer; }
+.stage3d__bar, .stage3d__panel, .stage3d__time, .stage3d__msg { position: relative; z-index: 1; }
+.stage3d__bar { grid-area: bar; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem;
+  background: linear-gradient(#0b1020ee, #0b102000); }
+.stage3d__bar h2 { margin: 0; font-size: 1.15rem; flex: 1 1 auto; }
+.stage3d__date { margin: 0; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.stage3d__close { margin-left: auto; }
+.stage3d__panel { margin: 0.5rem 1rem; padding: 0.85rem 1rem; max-height: calc(100vh - 11rem); overflow: auto; border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-lg); background: rgba(11, 16, 32, 0.82); backdrop-filter: blur(6px); font-size: 0.88rem; align-self: start; }
+.stage3d__panel--left { grid-area: left; }
+.stage3d__panel--right { grid-area: right; }
+.stage3d__totals p { margin: 0 0 0.35rem; color: var(--text-secondary); } .stage3d__totals strong { color: var(--text-primary); font-size: 1.15rem; margin-right: 0.25rem; }
+.stage3d__legend { list-style: none; margin: 0.75rem 0; padding: 0; display: grid; gap: 0.3rem; }
+.stage3d__kind { width: 100%; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.3rem 0.5rem;
+  border: 1px solid var(--bg-glass-border); border-radius: 0.5rem; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.stage3d__kind[aria-pressed="false"] { opacity: 0.45; }
+.stage3d__count { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.stage3d__dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-right: 0.35rem; flex: none; }
+.stage3d__dot--site { background: #3987e5; } .stage3d__dot--fomo { background: #d95926; } .stage3d__dot--act { background: #9085e9; }
+.stage3d__dot--resp { background: #199e70; } .stage3d__dot--against { background: #c3c2b7; }
+.stage3d__help { margin: 0; color: var(--text-secondary); font-size: 0.8rem; }
+.stage3d__detail h3 { margin: 0.25rem 0; font-size: 1rem; overflow-wrap: anywhere; }
+.stage3d__detail blockquote { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-left: 2px solid var(--bg-glass-border); white-space: pre-line; overflow-wrap: anywhere; }
+.stage3d__detail a { color: var(--text-accent); }
+.stage3d__meta { margin: 0; color: var(--text-secondary); font-size: 0.8rem; display: flex; align-items: center; flex-wrap: wrap; }
+.stage3d__warn { margin: 0.25rem 0; color: var(--verdict-partly); font-size: 0.8rem; }
+.stage3d__sub { margin: 1rem 0 0.4rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.stage3d__latest { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+.stage3d__latest button { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 0.4rem; align-items: center; min-height: 2.25rem; padding: 0.2rem 0.35rem;
+  border: 0; border-radius: 0.4rem; background: transparent; color: var(--text-primary); font: inherit; font-size: 0.8rem; text-align: left; cursor: pointer; }
+.stage3d__latest button:hover, .stage3d__latest button[aria-pressed="true"] { background: rgba(59, 130, 246, 0.14); }
+.stage3d__lt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .stage3d__ld { color: var(--text-secondary); white-space: nowrap; }
+.stage3d__time { grid-area: time; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.75rem 1rem; background: linear-gradient(#0b102000, #0b1020ee); }
+.stage3d__slider { flex: 1 1 14rem; display: flex; } .stage3d__slider input { width: 100%; accent-color: #e3b341; min-height: 2.75rem; }
+.stage3d__speed { display: flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); font-size: 0.85rem; }
+.stage3d__speed select { min-height: 2.5rem; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--bg-glass-border); border-radius: 0.4rem; color-scheme: dark; }
+.stage3d__msg { grid-area: 2 / 1 / 3 / 4; place-self: center; max-width: 32rem; padding: 1rem 1.25rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); background: #0b1020; }
+.stage3d__tip { position: fixed; left: 0; top: 0; z-index: 2; pointer-events: none; max-width: 18rem; padding: 0.4rem 0.6rem; border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.4rem; background: #0f1730; font-size: 0.8rem; display: grid; gap: 0.1rem; }
+.stage3d__tip strong { overflow-wrap: anywhere; } .stage3d__tip span { color: var(--text-secondary); }
+.stage3d .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.stage3d :focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
+@media (max-width: 860px) {
+  .stage3d { grid-template: "bar" auto "." 1fr "right" auto "time" auto / 1fr; }
+  .stage3d__panel--left { display: none; }
+  .stage3d__panel--right { max-height: 22vh; margin: 0 0.5rem; padding: 0.6rem 0.75rem; }
+  .stage3d__time { padding: 0.5rem 0.75rem; gap: 0.4rem 0.5rem; }
+  .stage3d__time .btn { min-height: 2.75rem; padding: 0.4rem 0.9rem; font-size: 0.85rem; }
+  .stage3d__slider { order: -1; flex-basis: 100%; }
+  .stage3d__bar h2 { font-size: 0.95rem; }
+}
+@media print { .stage3d__entry { display: none; } }

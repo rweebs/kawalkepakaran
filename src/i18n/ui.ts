@@ -88,7 +88,7 @@ export const UI: Record<Locale, UiStrings> = {
       '/pakar': 'Experts', '/klaim': 'Claim checks', '/metode': 'Method', Kasus: 'Cases',
       '/arsip': 'All cases', Media: 'Media', '/videos': 'Videos', '/tiktok': 'TikTok',
       '/buku': 'Books', Tentang: 'About', '/tentang': 'About the author', '/manifesto': 'Manifesto', '/kasus/abil-sudarman/bowobharata': 'Bowobharata', '/#kontribusi': 'Contribute',
-      '/disclaimer': 'Disclaimer', '/kebijakan': 'Policies', '/hak-jawab': 'Right of reply',
+      '/disclaimer': 'Disclaimer', '/kebijakan': 'Policies', '/hak-jawab': 'Right of reply', '/pantau': 'Monitor',
     },
     themeSong: {
       aria: 'Theme song', label: 'Theme song', playing: 'Playing', song: 'Song', stop: 'Stop', openMusic: 'Open in YouTube Music',

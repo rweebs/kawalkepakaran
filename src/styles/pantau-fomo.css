@@ -1,0 +1,61 @@
+/* Fomo section of /pantau: aegis gap fixes (split month chart, badge confidence, heatmap, Pareto, severity, posts).
+   Severity: ordinal orange ramp validated on #0b1020 (monotone, adjacent dL >= 0.06, light end 2.21:1).
+   Heatmap: sequential blue steps 600 -> 150 from the reference palette (lighter = more on the dark surface). */
+.fm { --fm-undated: #64748b; --fm-sev-hinaan: #7a3a1f; --fm-sev-tuduhan: #a8461f; --fm-sev-ancaman: #d95926; --fm-sev-doxxing: #f08a5d; }
+.fm-fill--undated { fill: var(--fm-undated); background: var(--fm-undated); }
+.fm-sev--hinaan { fill: var(--fm-sev-hinaan); background: var(--fm-sev-hinaan); }
+.fm-sev--tuduhan { fill: var(--fm-sev-tuduhan); background: var(--fm-sev-tuduhan); }
+.fm-sev--ancaman { fill: var(--fm-sev-ancaman); background: var(--fm-sev-ancaman); }
+.fm-sev--doxxing { fill: var(--fm-sev-doxxing); background: var(--fm-sev-doxxing); }
+
+.fm-cols:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
+.fm-gap line { stroke: var(--text-secondary); stroke-width: 1.5; }
+.fm-readout { margin: 0.35rem 0 0; font-size: 0.82rem; color: var(--text-secondary); min-height: 1.3em; }
+
+/* Badge confidence: solid = page text + screenshot, outline = screenshot only, hatched = flagged uncertain. */
+.fm-conf--teks { fill: #3987e5; background: #3987e5; }
+.fm-conf--gambar { fill: rgba(57, 135, 229, 0.12); stroke: #3987e5; stroke-width: 1.5; background: transparent; box-shadow: inset 0 0 0 1.5px #3987e5; }
+.fm-conf--ragu { stroke: #3987e5; stroke-width: 1; }
+.fm-key-hatch { background: repeating-linear-gradient(45deg, #3987e5 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px #3987e5; }
+.fm-hatch-bg { fill: rgba(57, 135, 229, 0.15); }
+.fm-hatch-line { stroke: #3987e5; stroke-width: 2; }
+.fm-dotline { stroke: rgba(148, 163, 184, 0.35); stroke-width: 1; }
+.fm-n1 .viz-label, .fm-n1 .viz-label--strong { opacity: 0.55; }
+.fm-n1 rect.fm-conf--teks, .fm-n1 circle { opacity: 0.55; }
+.fm-foot { margin: 0.4rem 0 0; font-size: 0.78rem; color: var(--text-secondary); }
+.fm-chip { display: inline-block; margin-right: 0.35rem; padding: 0 0.45rem; border-radius: var(--radius-full); border: 1px solid rgba(252, 211, 77, 0.5); color: var(--verdict-partly); font-size: 0.72rem; white-space: nowrap; }
+
+.fm-panel { margin-top: 0.75rem; padding: 0.75rem 0.9rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); background: rgba(57, 135, 229, 0.06); }
+.fm-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.fm-panel h4 { margin: 0; font-size: 0.95rem; }
+.fm-panel dl { margin: 0.5rem 0 0; display: grid; gap: 0.3rem; font-size: 0.86rem; }
+.fm-panel dt { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-top: 0.3rem; }
+.fm-panel dd { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; overflow-wrap: anywhere; }
+.fm-panel ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; }
+
+.fm-matrix svg { display: block; }
+.fm-matrix__name { font-size: 11px; }
+.fm-heat { stroke: none; }
+.fm-heat--0 { fill: rgba(148, 163, 184, 0.06); }
+.fm-heat--1 { fill: #184f95; } .fm-heat--2 { fill: #256abf; } .fm-heat--3 { fill: #3987e5; } .fm-heat--4 { fill: #6da7ec; } .fm-heat--5 { fill: #b7d3f6; }
+.fm-generic { text-decoration: underline dotted; text-underline-offset: 3px; }
+text.fm-generic { text-decoration: underline dotted; }
+
+.fm-even { stroke: rgba(148, 163, 184, 0.45); stroke-width: 1; }
+.fm-terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+.fm-terms h4 { margin: 0 0 0.35rem; font-size: 0.88rem; color: var(--text-secondary); font-weight: 600; }
+.fm-rules { margin: 0.35rem 0 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; font-size: 0.82rem; }
+.fm-repost { margin: 0.6rem 0 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; font-size: 0.86rem; }
+
+.fm-inline { display: block; margin-top: 0.25rem; }
+.fm-range { fill: #d95926; }
+.fm-len { fill: rgba(148, 163, 184, 0.6); }
+.fm-num { white-space: nowrap; }
+.fm-row--flag td { background: rgba(252, 211, 77, 0.07); }
+.fm-post .fm-inline { display: inline-block; margin: 0 0 0 0.25rem; vertical-align: middle; }
+.fm-flag { border-color: rgba(147, 197, 253, 0.35); color: var(--text-secondary); }
+.fm-badge--gambar { border-style: dashed; }
+.fm-badge--ragu { border-style: dotted; color: var(--verdict-partly); }
+.fm-quote--clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.fm-more { color: var(--text-accent); font-size: 0.82rem; }
+@media (max-width: 520px) { .fm-terms { grid-template-columns: minmax(0, 1fr); } }

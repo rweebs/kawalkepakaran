@@ -65,6 +65,23 @@ jobs:
           expect_redirect "https://www.kawalkepakaran.org/en?ref=monitor" "$SITE_URL/en?ref=monitor" "$WWW_FIX"
           exit $failed
 
+  watch-data:
+    # Separate from the site-down alert: a stale /pantau snapshot is a data problem, not an outage.
+    name: /pantau snapshot freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Newest rahmatwibowo.net snapshot is at most 14 days old
+        run: |
+          node -e '
+            const s = require("./src/data/sitemap-watch.json").snapshots.at(-1);
+            const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+            const age = Math.floor((Date.parse(today) - Date.parse(s.date)) / 864e5);
+            console.log(`newest snapshot ${s.date}, ${age} days old`);
+            if (age > 14) { console.log(`::error::/pantau data is ${age} days old; run npm run snapshot and commit src/data/sitemap-watch.json`); process.exit(1); }
+          '
+
   alert:
     name: Open the site-down issue
     needs: [live, domains]

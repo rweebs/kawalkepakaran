@@ -21,6 +21,7 @@ const EXTRA_SOURCES: Partial<Record<StaticPage, string[]>> = {
   '/videos': ['src/lib/videos.ts', 'src/content/videos'],
   '/tiktok': ['src/lib/tiktok.ts', 'src/content/tiktok'],
   '/buku': ['src/lib/buku.ts', 'src/content/buku'],
+  '/pantau': ['src/components/FomoDashboard.tsx', 'src/lib/fomo.ts', 'src/data/fomo.json', 'src/components/PerkaraDashboard.tsx', 'src/lib/perkara.ts', 'src/data/perkara.json', 'src/components/SitemapDashboard.tsx', 'src/lib/sitemap-watch.ts', 'src/data/sitemap-watch.json'],
   '/tentang': ['src/lib/tentang.ts', 'src/lib/tentang-en.ts'],
   '/kasus/abil-sudarman/linimasa': ['src/lib/linimasa.ts', 'src/lib/linimasa-en.ts'],
   '/kasus/abil-sudarman/linimasa-abil': ['src/lib/abil-timeline.ts'],
@@ -98,6 +99,7 @@ async function collect(): Promise<SitemapEntry[]> {
     ...EVENTS.map((e) => ({ path: eventUrl(e), lastmod: e.date, group: 'articles' as const })),
     { path: '/hak-jawab', lastmod: pageLastmod('/hak-jawab') },
     { path: ROUTES.suggest.id, lastmod: pageLastmod('/usulkan') },
+    { path: ROUTES.monitor.id, lastmod: pageLastmod('/pantau') },
     { path: '/disclaimer', lastmod: pageLastmod('/disclaimer') },
     { path: '/kebijakan', lastmod: pageLastmod('/kebijakan') },
     ...posts.map((p) => {

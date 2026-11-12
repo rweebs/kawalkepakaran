@@ -1,0 +1,115 @@
+/* /pantau page-level pieces: hero, chapters, harm charts, provenance strips, evidence and ledger panels, method,
+   and the print / save-as-PDF version. Colours reuse the validated dark steps: orange = content aimed at Rahmat,
+   aqua = his legal steps (same as the cross-source panel and the relationship map). */
+
+/* Hero */
+.ph { margin: 1rem 0 0.5rem; padding: 1.1rem 1.2rem; border: 1px solid var(--bg-glass-border); border-left: 3px solid #d95926; border-radius: var(--radius-lg); background: var(--bg-card); display: grid; gap: 0.75rem; }
+.ph-label { margin: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.ph-answer { margin: 0; font-family: var(--font-display); font-size: clamp(1.35rem, 3.2vw, 1.9rem); line-height: 1.25; }
+.ph-since { margin: 0; color: var(--text-primary); }
+.ph-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem; }
+.ph-tile { display: grid; gap: 0.1rem; padding: 0.8rem 0.9rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.5); color: var(--text-primary); text-decoration: none; min-height: 2.75rem; }
+.ph-tile:hover { border-color: rgba(147, 197, 253, 0.45); }
+.ph-tile:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
+.ph-tile__v { font-size: 1.8rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ph-tile__u { font-size: 0.85rem; font-weight: 600; color: var(--text-accent); }
+.ph-tile__k { font-size: 0.8rem; color: var(--text-secondary); }
+.ph-unit { margin: 0; font-size: 0.8rem; }
+.ph-chapters ol { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+.ph-chapters a { display: grid; grid-template-columns: auto 1fr; gap: 0 0.5rem; padding: 0.55rem 0.7rem; min-height: 2.75rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); color: var(--text-primary); text-decoration: none; }
+.ph-chapters a:hover { border-color: rgba(147, 197, 253, 0.45); }
+.ph-ch__n { grid-row: span 2; font-weight: 700; color: #d95926; font-variant-numeric: tabular-nums; }
+.ph-ch__when { font-size: 0.75rem; color: var(--text-secondary); }
+.ph-ch__t { font-size: 0.88rem; }
+.ph-story ol { padding-left: 1.2rem; display: grid; gap: 0.35rem; }
+
+/* Harm charts */
+.pg-fig { margin: 0.75rem 0 0; padding: 1rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg); background: var(--bg-card); min-width: 0; }
+.pg-fig figcaption h4 { margin: 0; font-size: 1rem; }
+.pg-fig figcaption p { margin: 0.25rem 0 0.5rem; font-size: 0.82rem; }
+.pg-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.pg-svg--tm { max-width: 640px; }
+.pg-fill--harm { fill: rgba(217, 89, 38, 0.35); background: #d95926; }
+.pg-area { stroke: #d95926; stroke-width: 2; }
+.pg-line { fill: none; stroke: #199e70; stroke-width: 3; stroke-linejoin: round; }
+.pg-key-line { display: inline-block; width: 1.1rem; height: 3px; margin-right: 0.45rem; vertical-align: 0.2rem; background: #199e70; border-radius: 2px; }
+.pg-wave { fill: rgba(148, 163, 184, 0.06); stroke: rgba(148, 163, 184, 0.25); stroke-width: 1; }
+.pg-wave__t { font-weight: 600; fill: var(--text-primary); }
+.pg-order { margin: 0.5rem 0 0; font-size: 0.82rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+.pg-how { margin-top: 0.5rem; font-size: 0.82rem; }
+.pg-how summary { cursor: pointer; color: var(--text-accent); min-height: 2.75rem; display: flex; align-items: center; }
+.pg-how p { margin: 0; color: var(--text-secondary); max-width: 75ch; }
+.pg-chip { display: inline-block; margin-left: 0.35rem; padding: 0 0.45rem; border-radius: var(--radius-full); border: 1px dashed rgba(252, 211, 77, 0.6); color: var(--verdict-partly); font-family: var(--font); font-size: 0.7rem; font-weight: 600; vertical-align: 0.15rem; }
+.pg-tm { fill: #3987e5; stroke: var(--bg-primary); stroke-width: 2; }
+.pg-tm__t { fill: #fff; font-size: 13px; font-weight: 600; font-family: var(--font); }
+.pg-tm__v { fill: #fff; font-size: 12px; font-family: var(--font); }
+.pg-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.pg-bars { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.45rem; }
+.pg-bars li { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 0.6rem; align-items: center; font-size: 0.85rem; }
+.pg-bars__l { overflow-wrap: anywhere; }
+.pg-bars__track { display: block; width: 100%; height: 12px; }
+.pg-bars__bg { fill: rgba(148, 163, 184, 0.08); }
+.pg-bars__fill { fill: #3987e5; }
+.pg-bars__v { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+
+/* Provenance strip (also the section's citation footer) */
+.pv { margin-top: 1rem; padding: 0.75rem 1rem; border: 1px dashed var(--bg-glass-border); border-radius: var(--radius-md); font-size: 0.82rem; }
+.pv-label { margin: 0 0 0.4rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.pv-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; counter-reset: pv; }
+.pv-steps li { position: relative; display: grid; gap: 0.15rem; padding: 0.45rem 0.6rem; border-radius: 0.5rem; background: rgba(148, 163, 184, 0.06); min-width: 0; }
+.pv-steps li + li::before { content: '→'; position: absolute; left: -0.55rem; top: 0.5rem; color: var(--text-secondary); }
+.pv-k { font-size: 0.72rem; color: var(--text-secondary); }
+.pv-v { overflow-wrap: anywhere; }
+.pv-cite { margin: 0.5rem 0 0; font-size: 0.75rem; overflow-wrap: anywhere; }
+
+/* Evidence and ledgers */
+.pe, .pl { margin-top: 1rem; }
+.pe h3, .pl h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
+.pe h4, .pl h4 { margin: 0.5rem 0 0.35rem; font-size: 0.95rem; }
+.pe-min { margin: 0 0 0.6rem; font-size: 0.9rem; }
+.pe-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.pe-card, .pl { padding: 0.9rem 1rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg); background: var(--bg-card); min-width: 0; }
+.pe-card p { font-size: 0.85rem; }
+.pe-bar { display: block; width: 100%; height: 10px; }
+.pe-ok { fill: #199e70; }
+.pe-removed { margin: 0; padding-left: 1.1rem; }
+.pl-fill { fill: #c98500; }
+.pl-fields { font-size: 0.82rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: baseline; }
+.pl-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; font-size: 0.88rem; }
+.pl-ok span[aria-hidden] { color: #6ee7a0; font-weight: 700; }
+.pl-bad span[aria-hidden], .pl-bad { color: #fda4af; font-weight: 700; }
+
+/* Method, changelog, print */
+.pm-method { display: grid; gap: 0.5rem; margin: 0; }
+.pm-method dt { font-weight: 600; }
+.pm-method dd { margin: 0; color: var(--text-secondary); max-width: 80ch; }
+.pm-log { padding-left: 1.1rem; display: grid; gap: 0.3rem; font-size: 0.88rem; }
+.pm-stamp { display: none; }
+
+@media (max-width: 900px) {
+  .ph-tiles, .ph-chapters ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-pair, .pe-grid { grid-template-columns: minmax(0, 1fr); }
+  .pv-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pv-steps li:nth-child(3)::before { content: none; }
+}
+@media (max-width: 520px) {
+  .ph { padding: 0.9rem; }
+  .ph-tile__v { font-size: 1.45rem; }
+  .ph-chapters ol { grid-template-columns: minmax(0, 1fr); }
+  .pv-steps { grid-template-columns: minmax(0, 1fr); }
+  .pv-steps li + li::before { content: none; }
+  .pg-bars li { grid-template-columns: minmax(0, 1fr) auto; }
+  .pg-bars__track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Print / save as PDF: white page, dark ink, every collapsible open, interactive controls hidden, stamped footer. */
+@media print {
+  .pantau, .pantau * { color: #000 !important; background: transparent !important; box-shadow: none !important; }
+  .pantau .viz-filters, .pantau .viz-reset, .pantau .viz-more, .pantau [data-pantau-print], .pantau .viz-hit, .ph-chapters { display: none !important; }
+  .pantau details > *:not(summary) { display: block !important; }
+  .pantau .viz-card, .pantau .pg-fig, .pantau .pe-card, .pantau .pl, .pantau .pv, .pantau .ph { border-color: #999 !important; break-inside: avoid; }
+  .pantau .viz-grid, .pantau .viz-baseline { stroke: #bbb !important; }
+  .pantau .viz-axis, .pantau .viz-label { fill: #333 !important; }
+  .pm-stamp { display: block !important; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid #999; font-size: 9pt; overflow-wrap: anywhere; }
+  .pantau a[href^="http"]::after { content: ' (' attr(href) ')'; font-size: 8pt; overflow-wrap: anywhere; }
+}

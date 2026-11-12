@@ -1,0 +1,24 @@
+/* Insight panels on /pantau (cross-source, Gelar Perkara, Fomo). Reuses the .viz-ins list styles from global.css.
+   Stream colors: validated dark categorical, adjacent rows situs -> fomo -> perbuatan -> respons (worst CVD dE 17.3 on
+   #0b1020); reports against Rahmat reuse the violet of "acts by others". Every row and bar is also labelled in text. */
+.ci-fill--situs { fill: #3987e5; background: #3987e5; }
+.ci-fill--fomo { fill: #d95926; background: #d95926; }
+.ci-fill--perbuatan { fill: #9085e9; background: #9085e9; }
+.ci-fill--respons { fill: #199e70; background: #199e70; }
+.ci-fill--against { fill: #9085e9; background: #9085e9; }
+.ci-figure { margin: 0 0 1rem; }
+.ci-caption { margin: 0; font-size: 0.85rem; color: var(--text-primary); }
+.ci-note { margin: 0.15rem 0 0.4rem; font-size: 0.8rem; }
+.ci-scroll { margin: 0; }
+.ci-svg { display: block; width: 100%; min-width: 560px; height: auto; }
+.ci-mirror-fig { margin: 0.5rem 0 0; max-width: 380px; }
+.ci-mirror { display: block; width: 100%; height: auto; }
+.ci-mirror-fig figcaption { display: flex; gap: 1rem; margin-top: 0.25rem; }
+.ci-mirror-fig figcaption > span { display: inline-flex; align-items: center; }
+.ci-table { font-size: 0.82rem; }
+.ci-table th, .ci-table td { white-space: nowrap; }
+.pi-week { display: block; margin-top: 0.4rem; max-width: 100%; height: auto; }
+.pi-week__bar { fill: rgba(148, 163, 184, 0.45); }
+.pi-week__bar--max { fill: #3987e5; }
+.pantau-cross { margin-top: 1.5rem; }
+.ci-row-label { fill: var(--text-primary); font-size: 12px; }
