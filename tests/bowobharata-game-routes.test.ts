@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { routePath, alternatesForPath } from '../src/i18n';
 import { PAGE_LASTMOD } from '../src/lib/site';
-import { perkara, islandData, ISLANDS } from '../src/lib/pantau-props';
+import { GAME_DATA_SRC } from '../src/lib/bowobharata-game/data';
+import { perkara, islandData, islandSrc, ISLANDS } from '../src/lib/pantau-props';
 import { kategoriKey } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 
@@ -59,5 +60,14 @@ describe('bowobharata game routes', () => {
     expect(read('src/components/BowobharataGame.tsx')).toContain('GAME_DATA_SRC');
     expect(read('src/pages/pantau/bowobharata.astro')).toMatch(/slot="fallback"[\s\S]*routePath\('bowobharata'/);
     expect(read('src/pages/pantau/bowobharata.astro')).toContain("widths: [400, 640]");
+  });
+  it('/pantau note uses the page\'s own terms, not "dossier"', () => {
+    for (const l of ['id', 'en'] as const) expect(GAME_COPY[l].monitorNote).not.toMatch(/dossier|dosir/i);
+  });
+  it('GAME_DATA_SRC is the endpoint the page serves', () => {
+    expect(GAME_DATA_SRC).toBe(islandSrc('bowobharata-game'));
+  });
+  it('the case page renders entryNote beside the button', () => {
+    expect(read('src/pages/kasus/abil-sudarman/bowobharata.astro')).toContain('GAME_COPY[locale].entryNote');
   });
 });

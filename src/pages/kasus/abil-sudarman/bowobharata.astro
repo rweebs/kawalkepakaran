@@ -37,7 +37,7 @@ const ld = pageLd({ name: PAGE.title, path, locale, description: PAGE.descriptio
       <p>{PAGE.lead}</p>
     </header>
     <p class="muted">{DISCLAIMER}</p>
-    <p><a class="btn" href={routePath('bowobharataGame', locale)}>{GAME_COPY[locale].entryLink}</a></p>
+    <p><a class="btn" href={routePath('bowobharataGame', locale)}>{GAME_COPY[locale].entryLink}</a> <span class="muted">{GAME_COPY[locale].entryNote}</span></p>
 
     <section class="bb-note callout" aria-label={U.notesLabel}>
       {FRAMING.map((t) => <p>{t}</p>)}

@@ -18,6 +18,8 @@ export interface GameCopy {
   monitorNote: string;
   /** Server-rendered text shown until the island loads, and the link to the readable case page. */
   noscript: string;
+  /** The dossier data did not load: message and the retry button. */
+  dataError: { message: string; retry: string };
   readLink: string;
   kicker: string;
   gateTitle: string;
@@ -55,8 +57,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     crumbMonitor: 'Pantau',
     entryLink: 'Main BOWOBHARATA',
     entryNote: 'Versi permainan dari alegori ini. Alegori dan opini penulis.',
-    monitorNote: 'Ada juga BOWOBHARATA, permainan alegori Mahabharata yang memakai dossier ini. Alegori dan opini penulis, bukan pernyataan fakta.',
-    noscript: 'Permainan ini butuh JavaScript. Kisahnya, dengan alegori dan opini penulis yang sama, bisa dibaca tanpa bermain.',
+    monitorNote: 'Ada juga BOWOBHARATA, permainan alegori Mahabharata yang memakai berkas gelar perkara ini. Alegori dan opini penulis, bukan pernyataan fakta.',
+    noscript: 'Memuat permainan… Jika tidak muncul, aktifkan JavaScript atau baca versi halaman.',
+    dataError: { message: 'Data permainan gagal dimuat.', retry: 'Coba lagi' },
     readLink: 'Baca kisah Bowobharata',
     kicker: 'Kiasan Mahabharata yang bisa dimainkan',
     gateTitle: 'Sebelum bermain',
@@ -105,12 +108,13 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
   },
   en: {
     title: 'BOWOBHARATA',
-    description: "BOWOBHARATA, an allegory game on the Gelar Perkara dossier. Allegory and the author's opinion; the content is the Pelapor's allegations, not police findings.",
+    description: "BOWOBHARATA, an allegory game on the Gelar Perkara dossier. Allegory and the author's opinion; the content consists of the Pelapor's allegations, not police findings.",
     crumbMonitor: 'Monitor',
     entryLink: 'Play BOWOBHARATA',
     entryNote: "A playable version of this allegory. Allegory and the author's opinion.",
-    monitorNote: "There is also BOWOBHARATA, a Mahabharata allegory game that uses this dossier. Allegory and the author's opinion, not a statement of fact.",
-    noscript: "This game needs JavaScript. The story, with the same allegory and the author's opinion, can be read without playing.",
+    monitorNote: "There is also BOWOBHARATA, a Mahabharata allegory game that uses this case-review file. Allegory and the author's opinion, not a statement of fact.",
+    noscript: 'Loading the game… If it does not appear, enable JavaScript or read the page version.',
+    dataError: { message: 'The game data failed to load.', retry: 'Try again' },
     readLink: 'Read the Bowobharata story',
     kicker: 'A playable Mahabharata allegory',
     gateTitle: 'Before you play',

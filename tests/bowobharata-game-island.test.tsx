@@ -7,7 +7,7 @@ import { kategoriKey, type Perkara } from '../src/lib/perkara';
 import { buildChapters, finaleTotals } from '../src/lib/bowobharata-game/record';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { initFlow, reduce, readSaved, writeSaved, type FlowState } from '../src/lib/bowobharata-game/flow';
-import { Gate, Intro, SanjayaReport, CatchCard, Finale, Hud, Lost, Paused, FallbackPlay, catchItems } from '../src/components/bowobharata-game/screens';
+import { Gate, Intro, SanjayaReport, CatchCard, Finale, Hud, Lost, Paused, DataError, FallbackPlay, catchItems } from '../src/components/bowobharata-game/screens';
 import BowobharataGame from '../src/components/BowobharataGame';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
@@ -317,5 +317,16 @@ describe('island wiring (source)', () => {
   });
   it('pauses when the tab is hidden', () => {
     expect(src).toContain('visibilitychange');
+  });
+});
+
+describe('data error screen', () => {
+  it('shows the message and a retry button in both locales', () => {
+    for (const l of ['id', 'en'] as const) {
+      const html = renderToString(<DataError locale={l} onRetry={noop} />);
+      expect(html).toContain(esc(GAME_COPY[l].dataError.message));
+      expect(html).toContain(esc(GAME_COPY[l].dataError.retry));
+      expect(html).toContain('role="alert"');
+    }
   });
 });

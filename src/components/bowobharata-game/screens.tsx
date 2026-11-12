@@ -217,6 +217,16 @@ export function Lost({ locale, onRetry }: { locale: Locale; onRetry: () => void 
   );
 }
 
+export function DataError({ locale, onRetry }: { locale: Locale; onRetry: () => void }) {
+  const c = GAME_COPY[locale];
+  return (
+    <section className="bg-screen bg-error" role="alert">
+      <p>{c.dataError.message}</p>
+      <div className="bg-actions"><button type="button" className="btn" onClick={onRetry}>{c.dataError.retry}</button></div>
+    </section>
+  );
+}
+
 export function Paused({ locale, onResume }: { locale: Locale; onResume: () => void }) {
   const c = GAME_COPY[locale];
   const framing = locale === 'en' ? FRAMING_EN : FRAMING;
