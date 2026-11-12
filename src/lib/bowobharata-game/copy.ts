@@ -30,6 +30,9 @@ export interface GameCopy {
   /** People and events, reports by direction, the excluded cases, then the label of the link to the full dossier. */
   finaleTotals: (t: Totals) => string[];
   finaleClose: string;
+  /** Button labels: start a chapter's play, go on, resume after a pause, take an event into the record (no-animation
+   * version), and start over from the gate. */
+  actions: { play: string; next: string; resume: string; take: string; again: string };
 }
 
 export const GAME_COPY: Record<Locale, GameCopy> = {
@@ -78,6 +81,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       'Baca dossier lengkapnya',
     ],
     finaleClose: 'Semua ini diarahkan kepada satu orang: Rahmat Wibowo.',
+    actions: { play: 'Mulai', next: 'Lanjut', resume: 'Lanjutkan', take: 'Masukkan ke catatan', again: 'Main lagi dari awal' },
   },
   en: {
     title: 'BOWOBHARATA',
@@ -124,5 +128,6 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       'Read the full dossier',
     ],
     finaleClose: 'All of it was aimed at one person: Rahmat Wibowo.',
+    actions: { play: 'Begin', next: 'Continue', resume: 'Resume', take: 'Take into the record', again: 'Play again from the start' },
   },
 };
