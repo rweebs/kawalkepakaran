@@ -549,6 +549,50 @@ describe('the guard at the ranks', () => {
       expect(f.s.cooldown).toBe(0);
     }
   });
+
+  it('held at the east face, then steering either way with throttle for 15 s, it never touches the ranks', () => {
+    const rammed = last(drive({ ...initChariot(40, -10, Math.PI), vx: -17 }, { throttle: 1 }, 180, 1 / 60, G, COLS)).s;
+    for (const steer of [1, -1]) {
+      const frames = drive(rammed, { throttle: 1, steer }, 900, 1 / 60, G, COLS);
+      expect(contacts(frames).filter((c) => c.figure)).toEqual([]);
+      expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(0.49);
+    }
+  });
+
+  it('reversing into the east face with the brake held for 20 s, it stops short', () => {
+    const frames = drive(initChariot(30, -10, 0), { brake: 1 }, 1200, 1 / 60, G, COLS);
+    expect(contacts(frames).filter((c) => c.figure)).toEqual([]);
+    const least = leastZoneClearance(frames);
+    expect(least).toBeGreaterThanOrEqual(0.49);
+    // It did back up to the stop distance.
+    expect(least).toBeLessThan(0.55);
+  });
+
+  it('shallow approaches to the east face at 2°, 5°, 10° and 20°, at 17 m/s, never touch the ranks', () => {
+    const lane = (ZONE_BOXES[1] as Box).maxX + HULL.r + GUARD.stop;
+    for (const deg of [2, 5, 10, 20]) {
+      // Southward, turned toward the face; the front circle's path meets the 0.5 m lane at z −40 after 1 s.
+      const yaw = -Math.PI / 2 - (deg * Math.PI) / 180;
+      const f = forward(yaw);
+      const front = { x: lane - 17 * f.x, z: -40 - 17 * f.z };
+      const start = moving(front.x - HULL.offsets[2] * f.x, front.z - HULL.offsets[2] * f.z, yaw, 17);
+      const frames = drive(start, { throttle: 1 }, 180, 1 / 60, G, COLS);
+      expect(contacts(frames).filter((c) => c.figure)).toEqual([]);
+      const least = leastZoneClearance(frames);
+      expect(least).toBeGreaterThanOrEqual(0.49);
+      expect(least).toBeLessThan(0.55);
+    }
+  });
+
+  it('started 0.05 m inside the 0.5 m buffer at 25 m/s with 0.05 s frames, it gets no closer and touches nothing', () => {
+    const face = (ZONE_BOXES[1] as Box).maxX;
+    const start = { ...initChariot(face + HULL.r + GUARD.stop - 0.05 + HULL.offsets[2], -10, Math.PI), vx: -25 };
+    const from = zoneClearance(start);
+    expect(from).toBeCloseTo(0.45, 9);
+    const frames = drive(start, { throttle: 1, boost: true }, 40, 0.05, G, COLS);
+    expect(contacts(frames)).toEqual([]);
+    expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(from - 1e-9);
+  });
 });
 
 describe('the backstop without the guard', () => {
