@@ -18,7 +18,6 @@ describe('route', () => {
     expect(r).not.toBeNull();
     expect(r![0]).toEqual({ x: a.x, z: a.z });
     expect(r![r!.length - 1]).toEqual({ x: b.x, z: b.z });
-    console.log(_n, 'length', pathLength(r!).toFixed(1), 'points', r!.length);
   });
 
   it('knows where the camp is', () => {
