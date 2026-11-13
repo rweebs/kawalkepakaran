@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mulberry32 } from '../src/lib/sky/rng';
 import { dist, type XZ } from '../src/lib/bowobharata-game/geom';
-import { ANCHORS, SPAWN, TOWER_EXIT, clearance, staticColliders } from '../src/lib/bowobharata-game/world';
+import { ANCHORS, PLAY, SPAWN, TOWER_EXIT, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
 import { buildNav, pathLength, routeTo } from '../src/lib/bowobharata-game/route';
 
 const cols = staticColliders();
@@ -38,6 +39,95 @@ describe('route', () => {
         expect(clearance(pt, cols)).toBeGreaterThanOrEqual(2.45 - 1e-9);
       }
     }
+  });
+
+  const isCentre = (p: XZ): boolean => {
+    const u = (p.x - nav.minX) / nav.cell - 0.5;
+    const v = (p.z - nav.minZ) / nav.cell - 0.5;
+    return Math.abs(u - Math.round(u)) < 1e-9 && Math.abs(v - Math.round(v)) < 1e-9;
+  };
+
+  it.each(PAIRS)('keeps clearance 2.45 at every sample outside the snap legs: %s', (_n, a, b) => {
+    const r = routeTo(nav, cols, a, b)!;
+    let checked = 0;
+    for (let k = 1; k < r.length; k++) {
+      const p = r[k - 1];
+      const q = r[k];
+      const snapLeg = (k === 1 && isCentre(q) && dist(p, q) <= 12) || (k === r.length - 1 && isCentre(p) && dist(p, q) <= 12);
+      if (snapLeg) continue;
+      const steps = Math.max(1, Math.ceil(dist(p, q)));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        expect(clearance({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t }, cols)).toBeGreaterThanOrEqual(2.45 - 1e-9);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('enters the camp through its east opening', () => {
+    const r = routeTo(nav, cols, TOWER_EXIT, CAMP)!;
+    let found: XZ | null = null;
+    for (let k = 1; k < r.length && !found; k++) {
+      const steps = Math.max(1, Math.ceil(dist(r[k - 1], r[k])));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const pt = { x: r[k - 1].x + (r[k].x - r[k - 1].x) * t, z: r[k - 1].z + (r[k].z - r[k - 1].z) * t };
+        if (dist(pt, CAMP) <= 12) {
+          found = pt;
+          break;
+        }
+      }
+    }
+    expect(found).not.toBeNull();
+    const bearing = (Math.atan2(found!.z - CAMP.z, found!.x - CAMP.x) * 180) / Math.PI;
+    expect(bearing).toBeGreaterThan(-49);
+    expect(bearing).toBeLessThan(49);
+  });
+
+  it('never cuts through a collider on 200 seeded pairs', () => {
+    const rng = mulberry32(14);
+    const pick = (): XZ => {
+      for (;;) {
+        const a = rng() * Math.PI * 2;
+        const d = Math.sqrt(rng()) * PLAY.r;
+        const p = { x: PLAY.cx + d * Math.cos(a), z: PLAY.cz + d * Math.sin(a) };
+        if (clearance(p, cols) >= 2.45) return p;
+      }
+    };
+    let routed = 0;
+    for (let n = 0; n < 200; n++) {
+      const a = pick();
+      const b = pick();
+      const r = routeTo(nav, cols, a, b);
+      if (!r) continue;
+      routed++;
+      for (let k = 1; k < r.length; k++) {
+        const p = r[k - 1];
+        const q = r[k];
+        const snapLeg = (k === 1 && isCentre(q) && dist(p, q) <= 12) || (k === r.length - 1 && isCentre(p) && dist(p, q) <= 12);
+        const steps = Math.max(1, Math.ceil(dist(p, q)));
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const c = clearance({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t }, cols);
+          expect(c).toBeGreaterThan(0);
+          if (!snapLeg) expect(c).toBeGreaterThanOrEqual(2.45 - 1e-9);
+        }
+      }
+    }
+    expect(routed).toBeGreaterThan(100);
+  });
+
+  it('returns null for an enclosed goal and for a start outside the play disc', () => {
+    const goal = { x: 60, z: 90 };
+    const ring: Collider[] = Array.from({ length: 24 }, (_, k) => {
+      const a = (k / 24) * Math.PI * 2;
+      return { kind: 'circle', id: `ring-${k}`, x: goal.x + 14 * Math.cos(a), z: goal.z + 14 * Math.sin(a), r: 4, figure: false, tall: false };
+    });
+    const ringCols = [...cols, ...ring];
+    const ringNav = buildNav(ringCols);
+    expect(routeTo(ringNav, ringCols, SPAWN, goal)).toBeNull();
+    expect(routeTo(nav, cols, { x: 0, z: 160 }, SPAWN)).toBeNull();
   });
 
   it('returns null for a goal outside the play disc', () => {

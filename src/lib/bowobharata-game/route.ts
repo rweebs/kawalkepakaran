@@ -55,14 +55,13 @@ function snap(nav: NavGrid, p: XZ): number {
   return best;
 }
 
-/** True when every sample (every SAMPLE m, ends included) along a→b keeps clearance ≥ clear; samples within `exempt.r` of `exempt.at` are skipped. */
-function segmentClear(a: XZ, b: XZ, cols: readonly Collider[], clear: number, exempt?: { at: XZ; r: number }[]): boolean {
+/** True when every sample (every SAMPLE m, ends included) along a→b keeps clearance ≥ clear. */
+function segmentClear(a: XZ, b: XZ, cols: readonly Collider[], clear: number): boolean {
   const len = dist(a, b);
   const steps = Math.max(1, Math.ceil(len / SAMPLE));
   for (let s = 0; s <= steps; s++) {
     const t = s / steps;
     const p = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
-    if (exempt?.some((e) => dist(p, e.at) <= e.r)) continue;
     if (clearance(p, cols) < clear) return false;
   }
   return true;
@@ -135,10 +134,12 @@ export function routeTo(nav: NavGrid, cols: readonly Collider[], from: XZ, to: X
   const goal = snap(nav, to);
   if (start < 0 || goal < 0) return null;
   const { n, cell, clear } = nav;
-  const gc = centre(nav, goal);
+  const gi = goal % n;
+  const gj = (goal - gi) / n;
   const h = (idx: number): number => {
-    const dx = Math.abs(centre(nav, idx).x - gc.x);
-    const dz = Math.abs(centre(nav, idx).z - gc.z);
+    const i = idx % n;
+    const dx = Math.abs(i - gi) * cell;
+    const dz = Math.abs((idx - i) / n - gj) * cell;
     return Math.max(dx, dz) + (Math.SQRT2 - 1) * Math.min(dx, dz);
   };
   const g = new Float64Array(n * n).fill(Infinity);
@@ -178,15 +179,14 @@ export function routeTo(nav: NavGrid, cols: readonly Collider[], from: XZ, to: X
   for (let k = goal; k >= 0; k = parent[k]) cells.push(centre(nav, k));
   cells.reverse();
   const pts: XZ[] = [{ x: from.x, z: from.z }, ...cells, { x: to.x, z: to.z }];
-  // String-pull: the first and last legs may start inside the snap radius of a point that is itself tight.
+  // String-pull, strictly: a tight endpoint keeps its snap leg through the b = a + 1 fallback.
   const last = pts.length - 1;
   const out: XZ[] = [pts[0]];
   let a = 0;
   while (a < last) {
     let b = a + 1;
     for (let k = last; k > a + 1; k--) {
-      const exempt = [...(a === 0 ? [{ at: pts[0], r: SNAP_R }] : []), ...(k === last ? [{ at: pts[last], r: SNAP_R }] : [])];
-      if (segmentClear(pts[a], pts[k], cols, clear, exempt)) {
+      if (segmentClear(pts[a], pts[k], cols, clear)) {
         b = k;
         break;
       }
