@@ -22,6 +22,8 @@ export interface Quality {
   ao: boolean;
   dof: boolean;
   pixelRatio: number;
+  /** Width and depth of the square terrain (m): 260 on the page, 720 in the game. */
+  terrainSize: number;
 }
 
 /** `cores` is navigator.hardwareConcurrency; a desktop reporting four or fewer gets a lighter army and shadow map. */
@@ -35,12 +37,30 @@ function fullQuality(mobile: boolean, dpr: number): Quality {
   return mobile
     ? {
       warriorsPerSide: 700, arrows: 48, dust: 140, embers: 90, terrainSegments: 96, skirmishPairs: 28, tufts: 360, rocks: 24, realRanks: 2, realFighters: 24, cavalry: 8, elephants: 2,
-      shadowMap: 0, bloom: false, shadows: false, ao: false, dof: false, pixelRatio: Math.min(dpr, 1.25),
+      shadowMap: 0, bloom: false, shadows: false, ao: false, dof: false, pixelRatio: Math.min(dpr, 1.25), terrainSize: 260,
     }
     : {
       warriorsPerSide: 1800, arrows: 140, dust: 360, embers: 240, terrainSegments: 200, skirmishPairs: 90, tufts: 1400, rocks: 70, realRanks: 6, realFighters: 120, cavalry: 28, elephants: 6,
-      shadowMap: 2048, bloom: true, shadows: true, ao: true, dof: true, pixelRatio: Math.min(dpr, 1.5),
+      shadowMap: 2048, bloom: true, shadows: true, ao: true, dof: true, pixelRatio: Math.min(dpr, 1.5), terrainSize: 260,
     };
+}
+
+export const GAME_WARRIORS_PER_SIDE = 1024;
+
+/**
+ * The game's tier, from the device's page tier: at most 1024 soldiers a side, nothing for the battle layer (skirmishes and
+ * their real fighters, cavalry, elephants), no arrows or rocks, no ambient occlusion or depth of field, and the 720 m terrain
+ * with more segments. Bloom, shadows and the pixel ratio stay the device's.
+ */
+export function gameQuality(q: Quality): Quality {
+  return {
+    ...q,
+    warriorsPerSide: Math.min(q.warriorsPerSide, GAME_WARRIORS_PER_SIDE),
+    skirmishPairs: 0, realFighters: 0, cavalry: 0, elephants: 0, arrows: 0, rocks: 0,
+    ao: false, dof: false,
+    terrainSize: 720,
+    terrainSegments: q.terrainSegments >= 200 ? 256 : 128,
+  };
 }
 
 /** The post-processing and lighting effects that can be switched off when the frame rate falls. */

@@ -22,12 +22,15 @@ function normalTexture(field: Float32Array, size: number, strength: number, repe
   return tex;
 }
 
-/** `size` is the texture edge in pixels: 256 on desktop, 128 on phones. */
-export function createDetail(size: number): Detail {
+/**
+ * `size` is the texture edge in pixels: 256 on desktop, 128 on phones. `terrainRepeat` is how many times the ground's map
+ * repeats across the terrain: 90 on the page's 260 m, more on a larger terrain so the grit keeps its scale.
+ */
+export function createDetail(size: number, terrainRepeat = 90): Detail {
   const aniso = size >= 256 ? 4 : 2;
   return {
     // Ground: broad undulation plus fine grit, repeated across the field.
-    terrain: normalTexture(heightField(size, 11, 4, 5), size, 4.5, 90, 90, aniso),
+    terrain: normalTexture(heightField(size, 11, 4, 5), size, 4.5, terrainRepeat, terrainRepeat, aniso),
     cloth: normalTexture(weaveField(size, 24), size, 2.2, 3, 3, aniso),
     // Wood: the grain runs one way, so the noise is stretched by repeating it less along that axis.
     wood: normalTexture(heightField(size, 23, 2, 4), size, 3.2, 1, 6, aniso),

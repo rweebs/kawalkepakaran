@@ -56,8 +56,8 @@ function createSky(uTime: { value: number }) {
   return { mesh, uniforms };
 }
 
-function createTerrain(segments: number, normalMap: THREE.Texture): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(260, 260, segments, segments).rotateX(-Math.PI / 2);
+function createTerrain(size: number, segments: number, normalMap: THREE.Texture): THREE.Mesh {
+  const geo = new THREE.PlaneGeometry(size, size, segments, segments).rotateX(-Math.PI / 2);
   const pos = geo.getAttribute('position') as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
   const earth = c('#3b2a1d');
@@ -85,6 +85,7 @@ function createTerrain(segments: number, normalMap: THREE.Texture): THREE.Mesh {
 function createDebris(): THREE.Group {
   const rnd = mulberry32(7);
   const g = new THREE.Group();
+  g.name = 'debris';
   const spears = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.02, 0.02, 2.2, 4), new THREE.MeshStandardMaterial({ color: '#4a3622', roughness: 0.9 }), 160);
   const shields = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 12), new THREE.MeshStandardMaterial({ color: '#5a4630', roughness: 0.6, metalness: 0.4 }), 60);
   const d = new THREE.Object3D();
@@ -115,11 +116,13 @@ export interface EnvironmentPart extends Part {
   sun: THREE.DirectionalLight;
 }
 
-export function createEnvironment(scene: THREE.Scene, camera: THREE.Camera, ctx: SceneContext): EnvironmentPart {
+/** The terrain is `ctx.quality.terrainSize` wide; `game` leaves out the broken spears and dropped shields. */
+export function createEnvironment(scene: THREE.Scene, camera: THREE.Camera, ctx: SceneContext, opts: { game?: boolean } = {}): EnvironmentPart {
   const group = new THREE.Group();
   const sky = createSky(ctx.uTime);
   sky.mesh.name = 'sky';
-  group.add(sky.mesh, createTerrain(ctx.quality.terrainSegments, ctx.detail.terrain), createDebris());
+  group.add(sky.mesh, createTerrain(ctx.quality.terrainSize, ctx.quality.terrainSegments, ctx.detail.terrain));
+  if (!opts.game) group.add(createDebris());
 
   const fog = new THREE.FogExp2(c(DUSK.fog), 0.009);
   scene.fog = fog;

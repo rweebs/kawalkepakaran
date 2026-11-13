@@ -21,3 +21,65 @@ describe('KurukshetraScene game API', () => {
     expect(stage).not.toMatch(/\bgame\b/);
   });
 });
+
+describe('KurukshetraScene game mode', () => {
+  it('switches every game-mode change on the game flag', () => {
+    for (const s of [
+      'const quality = game ? gameQuality(base) : base',
+      'createArmies(ctx, dharma, adharma, { still: !!game })',
+      '...(game ? [] : [createBattle(ctx)])',
+      'createChariot(ctx, { drivable: !!game })',
+      '...(game ? [] : [createPavilion(ctx)])',
+      '{ flashes: !game }',
+      '{ game: !!game }',
+      '(90 * quality.terrainSize) / 260',
+      '...(game ? [] : [createLightShafts(',
+      'time += dt * timeScale',
+      'chariot: ChariotRig',
+      'setTimeScale(',
+      'setPixelRatio(',
+      'refreshShadows(',
+      'frameListeners.clear()',
+      'poseOverride = null',
+    ]) expect(main, s).toContain(s);
+  });
+  it('keeps the page’s handheld camera and its dressing', () => {
+    expect(main).toContain('handheld(time, reducedMotion ? 0 : 1)');
+    expect(main).toContain('createDressing(ctx)');
+  });
+  it('holds the camera still in the game, where the chase camera has its own shake', () => {
+    expect(main).toContain('const STILL_HAND = { x: 0, y: 0, roll: 0 } as const;');
+    expect(main).toContain('const hand = game ? STILL_HAND : handheld(time, reducedMotion ? 0 : 1);');
+  });
+  it('builds the parts in the page’s order', () => {
+    const at = [
+      'createEnvironment(scene, camera, ctx, { game: !!game })',
+      'createArmies(ctx, dharma, adharma, { still: !!game })',
+      '...(game ? [] : [createBattle(ctx)])',
+      'createChariot(ctx, { drivable: !!game })',
+      '...(game ? [] : [createPavilion(ctx)])',
+      'createBattleEffects(ctx, dharma, adharma, groundHeight, { flashes: !game })',
+      '...(game ? [] : [createLightShafts(ctx, new THREE.Vector2(0.55, -0.83))])',
+      'createDressing(ctx)',
+    ].map((s) => [s, main.indexOf(s)] as const);
+    for (const [s, i] of at) expect(i, s).toBeGreaterThan(-1);
+    const positions = at.map(([, i]) => i);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+  it('declares the new handle members after onFrame', () => {
+    const start = main.indexOf('game?: {');
+    const block = main.slice(start, main.indexOf('\n  };', start));
+    const at = [
+      'onFrame(',
+      'chariot: ChariotRig;',
+      'quality: Quality;',
+      'textures: { glow: THREE.Texture; soft: THREE.Texture; shaft: THREE.Texture };',
+      'setTimeScale(k: number): void;',
+      'setPixelRatio(r: number): void;',
+      'refreshShadows(): void;',
+    ].map((s) => [s, block.indexOf(s)] as const);
+    for (const [s, i] of at) expect(i, s).toBeGreaterThan(-1);
+    const positions = at.map(([, i]) => i);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+});

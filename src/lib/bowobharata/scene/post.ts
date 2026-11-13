@@ -33,6 +33,8 @@ const GRADE = {
 export interface Post {
   render(): void;
   setSize(w: number, h: number): void;
+  /** The chain keeps its own pixel ratio for its buffers: set it beside the renderer's. */
+  setPixelRatio(r: number): void;
   setEffects(fx: Effects): void;
   /** Focus distance and blur amount (0..1) for this frame, the clock, and the dharma palette mix. */
   setShot(focus: number, dofAmount: number, time: number, mix: number): void;
@@ -76,6 +78,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   return {
     render: () => composer.render(),
     setSize(w, h) { composer.setSize(w, h); },
+    setPixelRatio(r) { composer.setPixelRatio(r); },
     setEffects: apply,
     setShot(focus, dofAmount, time, mix) {
       bokeh.enabled = wantDof && dofAmount > 0.03;

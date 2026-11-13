@@ -134,8 +134,11 @@ function nearFade(mat: THREE.PointsMaterial, from: number, to: number): THREE.Po
 
 const STICK_SECONDS = 1.6;
 
-/** Arrow volleys that stand in the ground where they land, impact dust, drifting haze, embers, and flashes along the clash line. */
-export function createBattleEffects(ctx: SceneContext, dharma: Slot[], adharma: Slot[], groundAt: (x: number, z: number) => number): Part {
+/**
+ * Arrow volleys that stand in the ground where they land, impact dust, drifting haze, embers, and flashes along the clash line.
+ * `flashes: false` leaves out the flashes (the game has no clash).
+ */
+export function createBattleEffects(ctx: SceneContext, dharma: Slot[], adharma: Slot[], groundAt: (x: number, z: number) => number, opts: { flashes?: boolean } = {}): Part {
   const { quality } = ctx;
   const rnd = mulberry32(42);
   const group = new THREE.Group();
@@ -197,8 +200,9 @@ export function createBattleEffects(ctx: SceneContext, dharma: Slot[], adharma: 
   group.add(fxLayer(new THREE.Points(emberGeo, emberMat)));
 
   // Flashes where the lines meet: brief bright pulses, like steel catching the light.
-  const flashes = Array.from({ length: 8 }, () => {
+  const flashes = opts.flashes === false ? [] : Array.from({ length: 8 }, () => {
     const s = glowSprite(ctx.glow, '#ffd9a0', 2.4, 0);
+    s.name = 'clash-flash';
     s.position.set((rnd() - 0.5) * 6, 1.4 + rnd(), 12 - rnd() * 50);
     group.add(s);
     return { sprite: s, speed: 0.6 + rnd() * 0.8, phase: rnd() * Math.PI * 2 };

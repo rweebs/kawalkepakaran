@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { cardShift, dharmaMix, formation, groundHeight, poseAt, viewOffsetX, type Pose } from './stage-math';
 import { createArmies } from './scene/army';
 import { createBattle } from './scene/battle';
-import { createChariot } from './scene/chariot';
+import { createChariot, type ChariotRig } from './scene/chariot';
 import { createDressing } from './scene/dressing';
 import { FX_LAYER, createBattleEffects, createContext, createLightShafts, type Part } from './scene/effects';
 import { createEnvironment } from './scene/environment';
@@ -11,7 +11,7 @@ import { loadModels } from './scene/models';
 import { dofFocus, easeToward, handheld, shadowFrame } from './scene/motion';
 import { createPavilion } from './scene/pavilion';
 import { createPost, type Post } from './scene/post';
-import { degrade, qualityFor, shouldDropBloom, type Effects } from './scene/quality';
+import { degrade, gameQuality, qualityFor, shouldDropBloom, type Effects, type Quality } from './scene/quality';
 import { createProbe } from './scene/reflections';
 
 export interface SceneInit { canvas: HTMLCanvasElement; reducedMotion: boolean; mobile: boolean; onLost?: () => void; game?: true }
@@ -25,14 +25,27 @@ export interface KurukshetraScene {
     root: THREE.Group;
     setPose(p: Pose | null): void;
     onFrame(cb: (time: number, dt: number) => void): () => void;
+    chariot: ChariotRig;
+    /** The game tier the scene was built with (see gameQuality). */
+    quality: Quality;
+    /** The scene's own procedural textures, for the game's layers to share; the scene disposes them. */
+    textures: { glow: THREE.Texture; soft: THREE.Texture; shaft: THREE.Texture };
+    /** How fast scene time runs, 1 being normal: Mata's slow motion and the outro's. The listeners still get real dt. */
+    setTimeScale(k: number): void;
+    setPixelRatio(r: number): void;
+    /** Applies the shadows again when they are on, so layers added since cast and receive them. */
+    refreshShadows(): void;
   };
 }
 
 // Under reduced motion the battle is shown as a still: arrows mid-flight, flags caught mid-wave.
 const STILL_TIME = 3.2;
+// The game's camera has no handheld drift: the chase camera has its own shake.
+const STILL_HAND = { x: 0, y: 0, roll: 0 } as const;
 
 export function createScene({ canvas, reducedMotion, mobile, onLost, game }: SceneInit): KurukshetraScene {
-  const quality = qualityFor(mobile, window.devicePixelRatio || 1, navigator.hardwareConcurrency || 8);
+  const base = qualityFor(mobile, window.devicePixelRatio || 1, navigator.hardwareConcurrency || 8);
+  const quality = game ? gameQuality(base) : base;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: mobile ? 'low-power' : 'high-performance' });
   renderer.setPixelRatio(quality.pixelRatio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -43,21 +56,28 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
   camera.layers.enable(FX_LAYER); // the colour pass draws glows, shafts and dust; the post passes switch it off (see post.ts)
-  const detail = createDetail(mobile ? 128 : 256);
+  // The ground's grit keeps its scale on the game's larger terrain: 90 repeats on the page's 260 m.
+  const detail = createDetail(mobile ? 128 : 256, (90 * quality.terrainSize) / 260);
   const ctx = createContext(quality, camera, detail);
   const dharma = formation(quality.warriorsPerSide, 'dharma', 5);
   const adharma = formation(quality.warriorsPerSide, 'adharma', 5);
-  const environment = createEnvironment(scene, camera, ctx);
+  const environment = createEnvironment(scene, camera, ctx, { game: !!game });
+  // Game mode calms the battle: the ranks stand still, the chariot is the player's, and the fighting, the pavilion, the clash
+  // flashes and the light shafts are left out. The parts are still made in the page's order; the chariot is kept for the handle.
   const parts: Part[] = [
     environment,
-    createArmies(ctx, dharma, adharma),
-    createBattle(ctx),
-    createChariot(ctx),
-    createPavilion(ctx),
-    createBattleEffects(ctx, dharma, adharma, groundHeight),
-    createLightShafts(ctx, new THREE.Vector2(0.55, -0.83)),
-    createDressing(ctx),
+    createArmies(ctx, dharma, adharma, { still: !!game }),
+    ...(game ? [] : [createBattle(ctx)]),
   ];
+  const chariot = createChariot(ctx, { drivable: !!game });
+  parts.push(
+    chariot,
+    ...(game ? [] : [createPavilion(ctx)]),
+    createBattleEffects(ctx, dharma, adharma, groundHeight, { flashes: !game }),
+    // In the game the page's horizon shafts would stand 111–147 m from (0, −10), inside the play disc.
+    ...(game ? [] : [createLightShafts(ctx, new THREE.Vector2(0.55, -0.83))]),
+    createDressing(ctx),
+  );
   for (const p of parts) scene.add(p.object);
 
   // The sky lights everything: reflections for the metals, and (desktop) a shadow-casting sun.
@@ -101,6 +121,7 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
   let progress = 0;
   let target = 0;
   let time = reducedMotion ? STILL_TIME : 0;
+  let timeScale = 1;
   let paused = false;
   let raf = 0;
   let last = 0;
@@ -117,7 +138,7 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
     const offset = viewOffsetX(size.w, cardShift(progress), mobile);
     if (game || offset === 0) camera.clearViewOffset();
     else camera.setViewOffset(size.w, size.h, offset, 0, size.w, size.h);
-    const hand = handheld(time, reducedMotion ? 0 : 1);
+    const hand = game ? STILL_HAND : handheld(time, reducedMotion ? 0 : 1);
     camera.position.set(pose.pos.x + hand.x, pose.pos.y + hand.y, pose.pos.z);
     look.set(pose.look.x, pose.look.y, pose.look.z);
     camera.lookAt(look);
@@ -153,7 +174,7 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
     const ms = now - last;
     const dt = Math.min(ms / 1000 || 0, 0.05);
     last = now;
-    time += dt;
+    time += dt * timeScale;
     // Real elapsed time, not the capped step: the camera reaches each shot as fast on a slow machine as on a fast one.
     progress = easeToward(progress, target, Math.min(ms / 1000 || 0, 0.5), 3);
     // Slow frames: shed the most expensive remaining effect, then judge the next stretch afresh.
@@ -186,6 +207,13 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
       root,
       setPose(p) { poseOverride = p; },
       onFrame(cb) { frameListeners.add(cb); return () => { frameListeners.delete(cb); }; },
+      chariot: chariot.rig!, // drivable in game mode, so it always has its rig
+      quality,
+      textures: { glow: ctx.glow, soft: ctx.soft, shaft: ctx.shaft },
+      // Scene time never runs backwards, and a scale that is not a finite number counts as 1: NaN would stay in the clock.
+      setTimeScale(k) { timeScale = Number.isFinite(k) ? Math.max(0, k) : 1; },
+      setPixelRatio(r) { renderer.setPixelRatio(r); post?.setPixelRatio(r); },
+      refreshShadows() { if (renderer.shadowMap.enabled) setShadows(true); },
     } : undefined,
     setProgress(p) {
       target = Math.min(1, Math.max(0, p));
@@ -208,6 +236,8 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
     dispose() {
       disposed = true;
       stop();
+      frameListeners.clear();
+      poseOverride = null;
       canvas.removeEventListener('webglcontextlost', onContextLost);
       scene.traverse((o) => {
         const mesh = o as THREE.Mesh;
