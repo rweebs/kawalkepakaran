@@ -95,6 +95,20 @@ function moving(x: number, z: number, yaw: number, speed: number): ChariotState 
 const zoneClearance = (s: ChariotState) => hullClearance(s.x, s.z, s.yaw, ZONE_BOXES);
 const leastZoneClearance = (frames: Frame[]) => Math.min(...frames.map((f) => zoneClearance(f.s)));
 const contacts = (frames: Frame[]) => frames.flatMap((f) => (f.contact ? [f.contact] : []));
+
+/** G's guard behind a watcher that records the largest speed any single call to cap takes off (m/s). */
+function watchedGuard(): { env: DriveEnv; cut: { largest: number } } {
+  const cut = { largest: 0 };
+  const guard: Guard = {
+    cap(x, z, yaw, vx, vz) {
+      const out = G.guard!.cap(x, z, yaw, vx, vz);
+      cut.largest = Math.max(cut.largest, Math.hypot(vx, vz) - Math.hypot(out.vx, out.vz));
+      return out;
+    },
+    blocksTurn: (x, z, fromYaw, toYaw) => G.guard!.blocksTurn(x, z, fromYaw, toYaw),
+  };
+  return { env: { cloud: false, guard }, cut };
+}
 const bounds = (b: Box) => [b.minX, b.maxX, b.minZ, b.maxZ];
 const byId = (id: string) => COLS.find((c) => c.id === id);
 
@@ -422,20 +436,12 @@ describe('the guard at the ranks', () => {
     // A 0.05 s frame spans six substeps of the wedge closing (both caps tightening at once, up to about 40 m/s²),
     // so its limit is 3 m/s; a one-substep stop, the jolt itself, shows in the per-call cut.
     for (const dt of [1 / 60, 0.05]) {
-      let largestCut = 0;
-      const watched: Guard = {
-        cap(x, z, yaw, vx, vz) {
-          const out = G.guard!.cap(x, z, yaw, vx, vz);
-          largestCut = Math.max(largestCut, Math.hypot(vx, vz) - Math.hypot(out.vx, out.vz));
-          return out;
-        },
-        blocksTurn: (x, z, fromYaw, toYaw) => G.guard!.blocksTurn(x, z, fromYaw, toYaw),
-      };
+      const { env, cut } = watchedGuard();
       const start = moving(5.17, 20.91, 2.2689, 8);
-      const frames = drive(start, { throttle: 1 }, Math.round(15 / dt), dt, { cloud: false, guard: watched }, COLS);
+      const frames = drive(start, { throttle: 1 }, Math.round(15 / dt), dt, env, COLS);
       const speeds = [start, ...frames.map((f) => f.s)].map((s) => Math.hypot(s.vx, s.vz));
       const worstLoss = Math.max(...speeds.slice(1).map((v, k) => speeds[k] - v));
-      expect(largestCut).toBeLessThanOrEqual(1);
+      expect(cut.largest).toBeLessThanOrEqual(1);
       expect(worstLoss).toBeLessThanOrEqual(dt * 60 + 1e-9);
       expect(contacts(frames)).toEqual([]);
       expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(0.49);
@@ -451,6 +457,7 @@ describe('the guard at the ranks', () => {
     ];
     const northward = Array.from({ length: 15 }, (_, k) => 100 + 5 * k);
     const failures: string[] = [];
+    let worstCut = { cut: 0, at: '' };
     for (const mouth of ['south', 'north'] as const) {
       const headings = [...northward, ...northward.map((d) => 180 - d)].map((d) => (mouth === 'south' ? d : -d));
       for (const deg of headings) {
@@ -464,17 +471,33 @@ describe('the guard at the ranks', () => {
           let back = 6;
           while (hullClearance(startAt(back).x, startAt(back).z, yaw, COLS) < 1) back += 1;
           const p = startAt(back);
-          const frames = drive(moving(p.x, p.z, yaw, 8), { throttle: 1 }, 480, 1 / 60, G, COLS);
+          const { env, cut } = watchedGuard();
+          const frames = drive(moving(p.x, p.z, yaw, 8), { throttle: 1 }, 480, 1 / 60, env, COLS);
           const least = leastZoneClearance(frames);
           const touched = contacts(frames).some((c) => c.figure);
-          if (least < 0.49 || touched) failures.push(`${mouth} mouth ${deg}° ${lane.army} lane: least ${least.toFixed(3)}${touched ? ', touched' : ''}`);
+          const run = `${mouth} mouth ${deg}° ${lane.army} lane`;
+          if (least < 0.49 || touched) failures.push(`${run}: least ${least.toFixed(3)}${touched ? ', touched' : ''}`);
+          if (cut.largest > worstCut.cut) worstCut = { cut: cut.largest, at: run };
         }
       }
     }
     expect(failures).toEqual([]);
+    // No guard call stops the chariot dead: the largest speed a single call takes off, over the whole sweep.
+    expect(worstCut.cut, `largest single-call cut, ${worstCut.at}`).toBeLessThanOrEqual(1);
   });
 
-  it('after one call to cap, no hull circle closes on a zone faster than guardCap allows, and removed is |Δv|', () => {
+  it('wedged across the south mouth, holding throttle and steering into the wedge for 120 s, it touches nothing', () => {
+    const wedged = last(drive(moving(5.17, 20.91, 2.2689, 8), { throttle: 1 }, 120, 1 / 60, G, COLS)).s;
+    // Pressed at the stop distance, at rest.
+    expect(zoneClearance(wedged)).toBeLessThan(0.55);
+    expect(Math.hypot(wedged.vx, wedged.vz)).toBeLessThan(0.1);
+    // Steer −1 turns further in, which blocksTurn refuses, so it stays wedged and pushing for the whole 120 s.
+    const frames = drive(wedged, { throttle: 1, steer: -1 }, 7200, 1 / 60, G, COLS);
+    expect(contacts(frames)).toEqual([]);
+    expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(0.49);
+  });
+
+  it('after one call to cap, no hull circle closes on a zone over 1e-5 m/s faster than guardCap allows; removed is |Δv|', () => {
     interface Moving {
       x: number;
       z: number;
@@ -518,7 +541,8 @@ describe('the guard at the ranks', () => {
         if (off > worstRemoved) [worstRemoved, worstRemovedAt] = [off, JSON.stringify({ ...p, in: v, out })];
       }
     }
-    expect(worst, worstAt).toBeLessThanOrEqual(1e-9);
+    // The guard may accept up to 1e-5 m/s of creep once its passes run out (plus rounding).
+    expect(worst, worstAt).toBeLessThanOrEqual(1e-5 + 1e-9);
     expect(worstRemoved, worstRemovedAt).toBeLessThanOrEqual(1e-12);
   });
 

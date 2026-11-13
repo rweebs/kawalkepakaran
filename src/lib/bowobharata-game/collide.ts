@@ -181,6 +181,12 @@ function guardNormal(c: XZ, b: Box, vx: number, vz: number): { nx: number; nz: n
 const GUARD_PASSES = 32;
 /** A pass whose largest removal is no more than this (m/s) has settled every pair. */
 const SETTLED = 1e-12;
+/**
+ * Excess closing speed (m/s) still accepted as settled once the passes run out: the chariot may creep toward a figure
+ * at most this fast, under 4 cm an hour. Only pairs above it set λ, so a residual near 0 on a pair whose guardCap is 0
+ * no longer stops the chariot dead.
+ */
+const GUARD_CREEP = 1e-5;
 
 /**
  * One pass over the (hull circle, box) pairs, rear circle to front and boxes in order: each pair's closing speed
@@ -205,7 +211,8 @@ function settlePass(circles: readonly Circle[], boxes: readonly Box[], vx: numbe
 
 /**
  * At velocity v, changing nothing: the largest excess of any pair's closing speed over guardCap(d), and λ, the
- * smallest guardCap(d) / closing speed over the pairs in excess (1 when none is). λ·v leaves no pair in excess.
+ * smallest guardCap(d) / closing speed over the pairs in excess by more than GUARD_CREEP (1 when none is). λ·v
+ * leaves no pair in excess by more than GUARD_CREEP.
  */
 function excessAt(circles: readonly Circle[], boxes: readonly Box[], vx: number, vz: number) {
   let most = 0;
@@ -218,7 +225,7 @@ function excessAt(circles: readonly Circle[], boxes: readonly Box[], vx: number,
       const cap = guardCap(g.d);
       if (closing <= cap) continue;
       most = Math.max(most, closing - cap);
-      lambda = Math.min(lambda, cap / closing);
+      if (closing - cap > GUARD_CREEP) lambda = Math.min(lambda, cap / closing);
     }
   }
   return { most, lambda };
@@ -229,9 +236,10 @@ function excessAt(circles: readonly Circle[], boxes: readonly Box[], vx: number,
  * - `cap` limits each hull circle's closing speed −v·n on each box within GUARD.range to guardCap(d), removing the
  *   excess along n. Across the corridor the two armies' normals oppose, so one pair's removal can reopen another's.
  *   So it repeats the pass until no pair removes more than SETTLED, for at most GUARD_PASSES passes. If a pair is
- *   still in excess after that, it scales v by λ (see excessAt); a λ above 0 keeps v's direction and with it every
- *   corner-ray result. Only if a pair is still in excess after that does it stop the chariot (every pair accepts
- *   v = 0, since guardCap ≥ 0). `removed` is the size of the change it made, |v_in − v_out|.
+ *   still in excess by more than GUARD_CREEP after that, it scales v by λ (see excessAt); a λ above 0 keeps v's
+ *   direction and with it every corner-ray result. Only if a pair is still in excess by more than GUARD_CREEP after
+ *   that does it stop the chariot (every pair accepts v = 0, since guardCap ≥ 0). `removed` is the size of the
+ *   change it made, |v_in − v_out|.
  * - `blocksTurn` refuses a turn that leaves the hull under GUARD.stop from a figure and closer than before.
  * Every figure must be a box: any other shape throws rather than go unguarded.
  */
@@ -252,10 +260,10 @@ export function figureGuard(figures: readonly Collider[]): Guard {
         if (p.most <= SETTLED) return result(vx, vz);
       }
       const left = excessAt(circles, boxes, vx, vz);
-      if (left.most <= SETTLED) return result(vx, vz);
+      if (left.most <= GUARD_CREEP) return result(vx, vz);
       vx *= left.lambda;
       vz *= left.lambda;
-      if (excessAt(circles, boxes, vx, vz).most <= SETTLED) return result(vx, vz);
+      if (excessAt(circles, boxes, vx, vz).most <= GUARD_CREEP) return result(vx, vz);
       return result(0, 0);
     },
     blocksTurn(x, z, fromYaw, toYaw) {
