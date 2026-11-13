@@ -6,7 +6,7 @@ import type { Vec3 } from '../sky/states';
 import { angleDiff, clamp, forward, smoothstep, yawOf, type XZ } from './geom';
 import { speedOf, type ChariotState } from './drive';
 import { CHASE } from './tuning';
-import type { Collider } from './world';
+import { distToCollider, type Collider } from './world';
 
 export interface ChaseCam {
   /** The boom's yaw: the camera sits along −forward(yaw) from the chariot. */
@@ -68,7 +68,7 @@ const BLEND_FROM = 8;
 const BLEND_SPAN = 9;
 const DEG = Math.PI / 180;
 
-/** The lakon shots and the finale's orbit: seconds, metres, radians and rad/s. */
+/** The lakon shots and the orbits: seconds, metres, radians and rad/s. */
 const SHOTS = {
   wide: { seconds: 1.2, up: 40, from: 30, to: 24 },
   /** Swings from `swing` rad one side of the line to the chariot to `swing` rad the other side while closing in. */
@@ -76,8 +76,12 @@ const SHOTS = {
   descend: { seconds: 1.1, back: 20, up: 8 },
   outro: { seconds: 2.5, out: 7, up: 2 },
   fail: { seconds: 1.2, back: 6, up: 12 },
-  /** Looks at the centre `look` m up, so the ring of lamps round the tower and the tower above it share the frame. */
-  orbit: { radius: 14, up: 6, rate: 0.08, look: 3 },
+  /**
+   * Looks at the centre `look` m up, so the ring of lamps round the tower and the tower above it share the frame. Round
+   * the chariot the radius eases in over `ease` rad of turn before a tall thing and back out after it, reading the sight
+   * lines at fixed angles every `grid` rad (see orbitRadius).
+   */
+  orbit: { radius: 14, up: 6, rate: 0.08, look: 3, ease: Math.PI / 3, grid: Math.PI / 360 },
   /** The shots look at a record or the chariot this high over its ground. */
   look: 1,
 } as const;
@@ -443,8 +447,50 @@ export function shotAt(shots: readonly Shot[], t: number): { pose: Pose; fov: nu
   return { ...within(shots[shots.length - 1], 1), done: true };
 }
 
-/** The finale's slow orbit round `at`: 14 m out, 6 m over the ground there, turning at 0.08 rad/s, looking at it. */
-export function orbitView(at: XZ, t: number, ground: Ground): { pose: Pose; fov: number } {
-  const { radius, up, rate, look } = SHOTS.orbit;
-  return { pose: { pos: behind(at, rate * t, radius, up, ground), look: over(at.x, at.z, look, ground) }, fov: CHASE.fov };
+/**
+ * How far from `at` along −forward(yaw), up to `dist`, the line stays boomMargin clear of every tall collider: a camera
+ * there has nothing tall between it and `at`. 0 when `at` itself is that close to one the line runs by.
+ */
+function clearSight(at: XZ, yaw: number, dist: number, tall: readonly Collider[]): number {
+  const f = forward(yaw);
+  const back = { x: -f.x, z: -f.z };
+  let run = dist;
+  for (const c of tall) {
+    const s = nearSpan(at, back, c, CHASE.boomMargin);
+    if (s && s[1] > 0) run = Math.min(run, Math.max(0, s[0]));
+  }
+  return run;
+}
+
+/**
+ * The orbit's radius at angle `yaw` round `at`: the full radius less the largest shortfall of clearSight, taken at yaw
+ * itself and at the fixed grid angles within `ease` of it, each weighed by 1 − smoothstep(0, ease, the angle between).
+ * The term at yaw keeps the camera's sight line to `at` boomMargin clear of everything tall, so it never stands in a tall
+ * thing or behind one; the weighed terms bring it in ahead of a tall thing and let it out after, with no snap and no kink
+ * (fixed angles, so no term jumps as the orbit turns). With nothing tall within reach it is the full radius.
+ */
+function orbitRadius(at: XZ, yaw: number, tall: readonly Collider[]): number {
+  const { radius, ease, grid } = SHOTS.orbit;
+  const near = tall.filter((c) => distToCollider(at, c) < radius + CHASE.boomMargin);
+  if (near.length === 0) return radius;
+  let short = radius - clearSight(at, yaw, radius, near);
+  for (let k = Math.ceil((yaw - ease) / grid); k * grid < yaw + ease; k++) {
+    const weight = 1 - smoothstep(0, ease, Math.abs(yaw - k * grid));
+    // A shortfall is at most the radius, so a weight that cannot beat the one in hand skips the sight line.
+    if (weight * radius > short) short = Math.max(short, weight * (radius - clearSight(at, k * grid, radius, near)));
+  }
+  return Math.max(CHASE.boomMin, radius - short);
+}
+
+/**
+ * The slow orbit round `at`: 14 m out, 6 m over the ground there, turning at 0.08 rad/s, looking at it. The chapter
+ * intro circles the chariot and passes the tall colliders: the radius then comes in, eased, wherever one would stand in
+ * or before the camera (orbitRadius), and away from them it is the same orbit. The finale circles the tower itself and
+ * passes none.
+ */
+export function orbitView(at: XZ, t: number, ground: Ground, tall: readonly Collider[] = []): { pose: Pose; fov: number } {
+  const { up, rate, look } = SHOTS.orbit;
+  const yaw = rate * t;
+  const pos = behind(at, yaw, orbitRadius(at, yaw, tall), up, ground);
+  return { pose: { pos, look: over(at.x, at.z, look, ground) }, fov: CHASE.fov };
 }

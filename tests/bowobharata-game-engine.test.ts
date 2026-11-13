@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { NO_INPUT, initChariot, type ChariotInput, type Guard } from '../src/lib/bowobharata-game/drive';
+import { NO_INPUT, REST_SPEED, initChariot, type ChariotInput, type Guard } from '../src/lib/bowobharata-game/drive';
 import { hullClearance, hullMid } from '../src/lib/bowobharata-game/collide';
 import { chaseView } from '../src/lib/bowobharata-game/chase';
-import { dist, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
+import { dist, forward, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
 import { missionFor, type MissionDef } from '../src/lib/bowobharata-game/missions';
 import { timeLeft, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { ANCHORS, PLAY, RECORD_CIRCLE, TOWER_EXIT } from '../src/lib/bowobharata-game/world';
@@ -748,6 +748,153 @@ describe('the soft wall', () => {
       if (d > PLAY.r - 1e-6) expect((s.car.vx * dx + s.car.vz * dz) / d).toBeLessThanOrEqual(1e-9);
     }
     expect(types(log).filter((t) => t === 'wall')).toEqual(['wall', 'wall', 'wall']);
+  });
+});
+
+describe('the edge brakes like the guard', () => {
+  const FRAME = 1 / 60;
+  const A = GUARD.decel;
+  /** 120 m due north of the field's centre, where outward is −z: chapter 1's roam, open ground out to the edge. */
+  const START = { x: PLAY.cx, z: PLAY.cz - 120 };
+
+  interface EdgeFrame {
+    r: number;
+    /** Speed out along the radius (negative inward) and along the edge, m/s. */
+    out: number;
+    along: number;
+    speed: number;
+    yaw: number;
+    boostT: number;
+    edgeCut: number;
+  }
+
+  function measure(s: GameState): EdgeFrame {
+    const dx = s.car.x - PLAY.cx;
+    const dz = s.car.z - PLAY.cz;
+    const r = Math.hypot(dx, dz);
+    return {
+      r,
+      out: (s.car.vx * dx + s.car.vz * dz) / r,
+      along: (s.car.vz * dx - s.car.vx * dz) / r,
+      speed: Math.hypot(s.car.vx, s.car.vz),
+      yaw: s.car.yaw,
+      boostT: s.car.boostT,
+      edgeCut: s.car.edgeCut,
+    };
+  }
+
+  /** `seconds` of 1/60 s frames of `drive` from `from`; frames[0] is the start. */
+  function ride(from: GameState, drive: (s: GameState) => Partial<ChariotInput>, seconds: number, dt = FRAME) {
+    let s = from;
+    const frames = [measure(s)];
+    const log: GameEvent[] = [];
+    for (let k = 0; k < Math.round(seconds / dt); k++) {
+      const r = advance(s, input(drive(s)), dt, desktop);
+      s = r.state;
+      log.push(...r.events);
+      frames.push(measure(s));
+    }
+    return { end: s, frames, log };
+  }
+
+  /** From START heading `yaw` at `speed` m/s. */
+  function outward(yaw: number, speed: number): GameState {
+    const s = startChapter(defOf(1), { ...START, yaw }, 1, desktop);
+    expect(s.run.phase).toBe('roam');
+    const f = forward(yaw);
+    return { ...s, car: { ...s.car, vx: speed * f.x, vz: speed * f.z } };
+  }
+
+  /** The brief's checks on one run: no dead stop, never past 160 m, at rest out along the radius within 2 s of braking. */
+  function expectBraked(frames: EdgeFrame[], log: GameEvent[]) {
+    const onset = frames.findIndex((f) => f.edgeCut > 0);
+    expect(onset).toBeGreaterThan(0);
+    expect(frames[onset].r).toBeLessThan(PLAY.r - 1);
+    let worst = 0;
+    for (let k = 1; k < frames.length; k++) {
+      expect(frames[k].r).toBeLessThanOrEqual(PLAY.r + 1e-9);
+      worst = Math.max(worst, (frames[k - 1].out - frames[k].out) / FRAME);
+    }
+    expect(worst).toBeLessThanOrEqual(A + 1);
+    const rest = frames.findIndex((f, k) => k >= onset && f.out <= REST_SPEED);
+    expect(rest).toBeGreaterThan(onset);
+    expect((rest - onset) * FRAME).toBeLessThanOrEqual(2);
+    // It stays at rest on the edge, held there: it neither creeps out nor falls back in.
+    for (const f of frames.slice(rest)) {
+      expect(f.out).toBeLessThanOrEqual(REST_SPEED);
+      expect(f.r).toBeGreaterThan(PLAY.r - 0.05);
+    }
+    // Like the guard: no shake, no bump, no held message; the wall's own message as before.
+    expect(types(log)).not.toContain('bump');
+    expect(types(log)).not.toContain('held');
+    expect(types(log).filter((t) => t === 'wall')).toEqual(['wall']);
+    return { onset, rest, worst };
+  }
+
+  it('straight out at 17 m/s: braked at 14 m/s² to rest on the edge, not stopped dead', () => {
+    const { frames, log, end } = ride(outward(Math.PI / 2, 17), () => ({ throttle: 1 }), 5);
+    const { onset } = expectBraked(frames, log);
+    for (let k = 1; k < frames.length; k++) expect((frames[k - 1].speed - frames[k].speed) / FRAME).toBeLessThanOrEqual(A + 1);
+    // The braking starts where 17 m/s needs about 10.3 m: from about 149.7 m.
+    expect(frames[onset].r).toBeGreaterThan(149);
+    expect(end.cam.shake).toBe(0);
+    expect(end.car.held).toBe(0);
+  });
+
+  it('at 25 m/s with Laju held: Laju is cancelled as the braking starts and never starts again against the edge', () => {
+    const { frames, log, end } = ride(outward(Math.PI / 2, 25), () => ({ throttle: 1, boost: true }), 5);
+    const { onset } = expectBraked(frames, log);
+    for (let k = 1; k < frames.length; k++) expect((frames[k - 1].speed - frames[k].speed) / FRAME).toBeLessThanOrEqual(A + 1);
+    // 25 m/s needs about 22.3 m: the braking starts near 137.7 m, with the surge still running.
+    expect(frames[onset].r).toBeLessThan(139);
+    expect(frames[onset - 1].boostT).toBeGreaterThan(0);
+    expect(frames[onset - 1].speed).toBeGreaterThan(24.9);
+    for (const f of frames.slice(onset)) expect(f.boostT).toBe(0);
+    // It ran 0.7 s before the edge cancelled it, so its cooldown stands.
+    expect(end.car.cooldown).toBeGreaterThan(0);
+  });
+
+  it('at 17 m/s at 45° to the radius: braked out along the radius only, and it keeps moving along the edge', () => {
+    const { frames, log } = ride(outward(Math.PI / 4, 17), () => ({ throttle: 1 }), 6);
+    const { onset, rest } = expectBraked(frames, log);
+    expect(Math.abs(frames[onset].along)).toBeGreaterThan(8);
+    // The 2 s after it comes to rest out along the radius: still sliding along the edge, every frame.
+    const after = frames.slice(rest, rest + 2 / FRAME);
+    expect(after).toHaveLength(2 / FRAME);
+    for (const f of after) expect(Math.abs(f.along)).toBeGreaterThan(0.15);
+    expect(after.reduce((m, f) => m + Math.abs(f.along) * FRAME, 0)).toBeGreaterThan(0.3);
+  });
+
+  it('with 0.05 s frames too, it brakes at most a + 1 a frame and stays inside 160 m', () => {
+    for (const [yaw, speed, drive] of [
+      [Math.PI / 2, 17, { throttle: 1 }],
+      [Math.PI / 2, 25, { throttle: 1, boost: true }],
+      [Math.PI / 4, 17, { throttle: 1 }],
+    ] as const) {
+      const { frames } = ride(outward(yaw, speed), () => drive, 6, 0.05);
+      for (let k = 1; k < frames.length; k++) {
+        expect(frames[k].r).toBeLessThanOrEqual(PLAY.r + 1e-9);
+        expect((frames[k - 1].out - frames[k].out) / 0.05).toBeLessThanOrEqual(A + 1);
+      }
+      expect(frames.some((f) => f.edgeCut > 0)).toBe(true);
+    }
+  });
+
+  it('steering back inward is never blocked: from rest on the edge it turns round and drives back in', () => {
+    const atEdge = ride(outward(Math.PI / 2, 17), () => ({ throttle: 1 }), 4).end;
+    expect(measure(atEdge).r).toBeGreaterThan(PLAY.r - 0.05);
+    // Full right rein until the heading is within 0.3 rad of straight in, then straight on.
+    const inward = (s: GameState) => yawOf({ x: PLAY.cx - s.car.x, z: PLAY.cz - s.car.z });
+    const back = ride(atEdge, (s) => ({ throttle: 1, steer: Math.abs(angleDiff(s.car.yaw, inward(s))) > 0.3 ? 1 : 0 }), 8);
+    const facing = back.frames.findIndex((f) => Math.abs(angleDiff(f.yaw, inward(atEdge))) <= 0.35);
+    expect(facing).toBeGreaterThan(0);
+    expect(facing * FRAME).toBeLessThan(5);
+    expect(Math.min(...back.frames.map((f) => f.out))).toBeLessThan(-10);
+    expect(measure(back.end).r).toBeLessThan(PLAY.wall);
+    // Once it has turned to move inward, the edge takes nothing off.
+    const turned = back.frames.findIndex((f) => f.out < -1);
+    expect(turned).toBeGreaterThan(0);
+    for (const f of back.frames.slice(turned)) expect(f.edgeCut).toBe(0);
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { groundHeight, PAVILION, type Pose } from '../src/lib/bowobharata/stage-math';
 import { mulberry32 } from '../src/lib/sky/rng';
 import type { Vec3 } from '../src/lib/sky/states';
-import { angleDiff, dist, forward, rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { angleDiff, dist, forward, rightOf, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
 import {
   NO_INPUT,
   initChariot,
@@ -12,7 +12,7 @@ import {
   type ChariotState,
   type DriveEnv,
 } from '../src/lib/bowobharata-game/drive';
-import { ANCHORS, PLAY, TREES, distToCollider, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
+import { ANCHORS, PLAY, SPAWN, TOWER_EXIT, TREES, distToCollider, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
 import { figureGuard, hullClearance, resolveContacts } from '../src/lib/bowobharata-game/collide';
 import { CHASE } from '../src/lib/bowobharata-game/tuning';
 import {
@@ -909,6 +909,114 @@ describe('lakon shots', () => {
       const { pos } = orbitView(ANCHORS.tower, t, groundHeight).pose;
       expect(dist(pos, ANCHORS.tower)).toBeCloseTo(14, 9);
       expect(pos.y).toBeGreaterThanOrEqual(groundHeight(pos.x, pos.z) + 1.4 - 1e-9);
+    }
+  });
+});
+
+describe('the chapter intro’s orbit round the chariot keeps tall things out of the shot', () => {
+  /** Frames of a full turn at 0.08 rad/s. */
+  const turn = (fps: number) => Math.ceil(((2 * Math.PI) / 0.08) * fps);
+
+  /** The least distance from the segment ab to the collider's edge: 0 or less when the segment meets it. */
+  function sightClearance(a: XZ, b: XZ, c: Collider): number {
+    if (c.kind === 'circle') return segPointDist(c, a, b) - c.r;
+    // Clip ab to the box: whatever is left of it lies inside.
+    let t0 = 0;
+    let t1 = 1;
+    for (const [p, d, lo, hi] of [
+      [a.x, b.x - a.x, c.minX, c.maxX],
+      [a.z, b.z - a.z, c.minZ, c.maxZ],
+    ]) {
+      if (d === 0) {
+        if (p < lo || p > hi) return Math.min(distToCollider(a, c), distToCollider(b, c), ...boxCorners(c).map((q) => segPointDist(q, a, b)));
+        continue;
+      }
+      t0 = Math.max(t0, Math.min((lo - p) / d, (hi - p) / d));
+      t1 = Math.min(t1, Math.max((lo - p) / d, (hi - p) / d));
+    }
+    if (t0 <= t1) return 0;
+    // Apart, a segment and a box are nearest at an end of the one or a corner of the other.
+    return Math.min(distToCollider(a, c), distToCollider(b, c), ...boxCorners(c).map((q) => segPointDist(q, a, b)));
+  }
+  const boxCorners = (c: Extract<Collider, { kind: 'box' }>): XZ[] => [
+    { x: c.minX, z: c.minZ },
+    { x: c.minX, z: c.maxZ },
+    { x: c.maxX, z: c.minZ },
+    { x: c.maxX, z: c.maxZ },
+  ];
+
+  /** One full turn round `at` at `fps`: the least clearances, the radius's largest step and its largest change of step. */
+  function circleOnce(at: XZ, fps: number) {
+    const radii: number[] = [];
+    let clear = Infinity;
+    let sight = Infinity;
+    let up = Infinity;
+    for (let k = 0; k <= turn(fps); k++) {
+      const { pose, fov } = orbitView(at, k / fps, groundHeight, TALL);
+      const { pos, look } = pose;
+      radii.push(dist(pos, at));
+      clear = Math.min(clear, clearanceOf(pos, TALL));
+      sight = Math.min(sight, ...TALL.map((c) => sightClearance(at, pos, c)));
+      up = Math.min(up, pos.y - groundHeight(pos.x, pos.z));
+      expect(look).toEqual(orbitView(at, k / fps, groundHeight).pose.look);
+      expect(fov).toBe(55);
+    }
+    let step = 0;
+    let bend = 0;
+    for (let k = 1; k < radii.length; k++) step = Math.max(step, Math.abs(radii[k] - radii[k - 1]));
+    for (let k = 2; k < radii.length; k++) bend = Math.max(bend, Math.abs(radii[k] - 2 * radii[k - 1] + radii[k - 2]));
+    return { clear, sight, up, step, bend, least: Math.min(...radii), most: Math.max(...radii) };
+  }
+
+  it('from TOWER_EXIT, a full turn at 60 fps: never in the tower or behind it, the radius eased, 1 m over the ground', () => {
+    const o = circleOnce(TOWER_EXIT, 60);
+    // Today's orbit stays 1.5 m out of the tower's collider here, but looks at the chariot through its frame.
+    expect(o.clear).toBeGreaterThanOrEqual(CHASE.boomMargin - 1e-9);
+    expect(o.sight).toBeGreaterThanOrEqual(CHASE.boomMargin - 1e-9);
+    expect(o.step).toBeLessThan(0.2);
+    expect(o.up).toBeGreaterThanOrEqual(1);
+    // It comes in to keep the tower behind it (10 m off, 3 m with the margin: 7 m), eased with no kink, and goes back out.
+    expect(o.least).toBeCloseTo(7, 3);
+    expect(o.most).toBeCloseTo(14, 9);
+    expect(o.step).toBeLessThan(0.02);
+    expect(o.bend).toBeLessThan(0.002);
+  });
+
+  it('by the tower all round, in the groves and by the gate: never in a tall thing or behind one, never under 1 m over the ground', () => {
+    const poses: XZ[] = [ANCHORS.groveNW, ANCHORS.groveSE, { x: 105, z: -20 }, { x: TREES[0].x + 4, z: TREES[0].z + 4 }];
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      for (const r of [6, 12, 15]) poses.push({ x: ANCHORS.tower.x + r * Math.cos(a), z: ANCHORS.tower.z + r * Math.sin(a) });
+    }
+    let entered = 0;
+    for (const at of poses) {
+      const where = `(${at.x.toFixed(1)}, ${at.z.toFixed(1)})`;
+      const o = circleOnce(at, 15);
+      expect(o.clear, where).toBeGreaterThanOrEqual(CHASE.boomMargin - 1e-9);
+      expect(o.sight, where).toBeGreaterThanOrEqual(CHASE.boomMargin - 1e-9);
+      expect(o.up, where).toBeGreaterThanOrEqual(1);
+      // 15 fps: a quarter of the steps a 60 fps turn takes, so four times its bound.
+      expect(o.step, where).toBeLessThan(4 * 0.2);
+      // How many of these today's 14 m orbit would carry into a tall collider's margin.
+      for (let f = 0; f <= turn(15); f++) {
+        if (clearanceOf(orbitView(at, f / 15, groundHeight).pose.pos, TALL) < CHASE.boomMargin) {
+          entered++;
+          break;
+        }
+      }
+    }
+    expect(entered).toBeGreaterThanOrEqual(10);
+  }, 30_000);
+
+  it('at 60 fps its radius moves under 0.2 m a frame wherever it starts by the tower, in a grove or by the gate', () => {
+    for (const at of [{ x: ANCHORS.tower.x - 6, z: ANCHORS.tower.z }, ANCHORS.groveNW, { x: 105, z: -20 }]) {
+      expect(circleOnce(at, 60).step, `(${at.x}, ${at.z})`).toBeLessThan(0.2);
+    }
+  }, 30_000);
+
+  it('away from every tall collider it is today’s orbit, exactly', () => {
+    for (const at of [SPAWN, { x: PLAY.cx, z: PLAY.cz }, { x: 60, z: -100 }]) {
+      for (let k = 0; k <= turn(4); k++) expect(orbitView(at, k / 4, groundHeight, TALL)).toEqual(orbitView(at, k / 4, groundHeight));
     }
   });
 });

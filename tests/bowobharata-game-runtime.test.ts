@@ -8,12 +8,12 @@ import { gameQuality, qualityFor, type Quality } from '../src/lib/bowobharata/sc
 import { dharmaMix, groundHeight, type Pose } from '../src/lib/bowobharata/stage-math';
 import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
 import { NO_INPUT } from '../src/lib/bowobharata-game/drive';
-import { angleDiff } from '../src/lib/bowobharata-game/geom';
+import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
 import { worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
 import type { GameEvent } from '../src/lib/bowobharata-game/mission-run';
-import { ANCHORS, SPAWN, TOWER_EXIT } from '../src/lib/bowobharata-game/world';
+import { ANCHORS, SPAWN, TOWER_EXIT, staticColliders } from '../src/lib/bowobharata-game/world';
 import { CHASE } from '../src/lib/bowobharata-game/tuning';
 import {
   GAP_MS,
@@ -551,6 +551,29 @@ describe('runtime', () => {
     expect(h.poses).toHaveLength(5);
     for (const p of h.poses) expect(Math.abs(xzDist(p!.pos, { x: -1.5, z: 9 }) - 14)).toBeLessThanOrEqual(0.01);
     expect(h.onHud).not.toHaveBeenCalled();
+  });
+
+  it('orbit() with the chariot by the tower: a full turn that never looks at it through the tower', () => {
+    const h = harness();
+    h.game.chariot.root.position.set(TOWER_EXIT.x, 0.4, TOWER_EXIT.z);
+    h.rt.orbit();
+    const frames = Math.ceil(((2 * Math.PI) / 0.08) * 60);
+    h.frames(frames);
+    expect(h.poses).toHaveLength(frames);
+    const tall = staticColliders().filter((c) => c.tall);
+    const tower = tall.find((c) => c.id === 'tower');
+    if (!tower || tower.kind !== 'circle') throw new Error('no tower');
+    let nearest = Infinity;
+    h.poses.forEach((p, k) => {
+      const want = orbitView(TOWER_EXIT, (k + 1) / 60, groundHeight, tall).pose;
+      expect(p!.pos.x).toBeCloseTo(want.pos.x, 9);
+      expect(p!.pos.y).toBeCloseTo(want.pos.y, 9);
+      expect(p!.pos.z).toBeCloseTo(want.pos.z, 9);
+      // The tower is 10 m from the chariot: the camera's sight line to it stays 0.5 m clear of the tower's collider.
+      expect(segPointDist(tower, TOWER_EXIT, p!.pos) - tower.r).toBeGreaterThanOrEqual(CHASE.boomMargin - 1e-9);
+      nearest = Math.min(nearest, xzDist(p!.pos, TOWER_EXIT));
+    });
+    expect(nearest).toBeLessThan(8);
   });
 
   it('retry() returns to the checkpoint at rest; skip() records the rest at once; toMarker() takes the car to the marker', () => {

@@ -1,6 +1,7 @@
 // One frame of the game as plain data. advance() runs Krishna's sight on real time, scales the world's dt, blends the
-// steering assist, drives the chariot (the guard keeps it off the ranks), applies the soft wall, resolves contacts,
-// reports the guard holding the chariot, steps the lakon rules, moves the camera and gives the hints, in that order.
+// steering assist, drives the chariot (the guard keeps it off the ranks; the field's edge brakes it to rest at 160 m,
+// as the guard does), applies the soft wall, resolves contacts, reports the guard holding the chariot, steps the lakon
+// rules, moves the camera and gives the hints, in that order.
 // Pure: no three.js, no DOM, no clock, no randomness; GameState holds no closures. `clock` counts real seconds, each
 // frame capped at DRIVE.maxDt as the drive is; the world runs at half speed while sight is on. Units are metres.
 // The engine imports nothing from the bot: the assist blends in pure pursuit along the same route the bot follows.
@@ -17,7 +18,7 @@ import {
   type Guard,
 } from './drive';
 import { GAME_WARRIORS, PLAY, ZONES, softWallAccel, staticColliders, type Collider, type Zone } from './world';
-import { figureGuard, hullMid, resolveContacts } from './collide';
+import { fieldEdge, figureGuard, hullMid, resolveContacts } from './collide';
 import {
   bump,
   chaseView,
@@ -107,6 +108,8 @@ const OUTRO_SLOW = { seconds: 1.2, scale: 0.35 } as const;
 const DAWN_FROM = 0.6;
 /** A cached route is replaced when the car is farther than this (m) from it. */
 const REROUTE_OFF = 20;
+/** The play disc's edge, which the drive brakes the chariot against at the guard's deceleration. */
+const EDGE = fieldEdge(PLAY);
 /** The aspect where no screen is known: the bot's input, and camera state that does not depend on the screen. */
 export const DEFAULT_ASPECT = 16 / 9;
 const DEG = Math.PI / 180;
@@ -221,7 +224,11 @@ function assisted(s: GameState, i: FrameInput): ChariotInput {
   return { ...i.drive, steer: assistSteer(i.drive.steer, path ? pursuit(s.car, path).steer : 0) };
 }
 
-/** The soft wall's pull toward the centre, then a hard stop at PLAY.r: back onto the edge, the outward speed removed. */
+/**
+ * The soft wall's pull toward the centre, then a hard stop at PLAY.r: back onto the edge, the outward speed removed.
+ * The drive's edge has already braked the chariot to rest there; the stop only takes back the hair that straight
+ * substeps along the curved edge carry it past.
+ */
 function softWall(car: ChariotState, dt: number): { car: ChariotState; pushed: boolean } {
   const a = softWallAccel(car);
   const pushed = a.x !== 0 || a.z !== 0;
@@ -418,9 +425,9 @@ export function advance(
   // 1–2. Sight runs on real time; the world's dt follows it.
   const sight = stepSight(s.sight, driving && input.sight, real);
   const dt = worldDtOf(realDt, sight);
-  // 3–4. The assist, then the drive with the guard at the ranks.
+  // 3–4. The assist, then the drive with the guard at the ranks and the brake at the field's edge.
   const drive = driving ? assisted(s, input) : holdStill(s.car);
-  const driven = stepChariot(s.car, drive, dt, { cloud: false, guard: w.guard });
+  const driven = stepChariot(s.car, drive, dt, { cloud: false, guard: w.guard, edge: EDGE });
   // 5. The soft wall.
   const walled = softWall(driven, dt);
   let { wallAt, heldAt } = s;

@@ -145,10 +145,13 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     if (out.events.length > 0 && !disposed) o.onEvents(out.events);
   }
 
-  /** Orbit and the finale: the camera circles `around`, `circled` real seconds on, widened for a narrow screen. */
+  /**
+   * Orbit and the finale: the camera circles `around`, `circled` real seconds on, widened for a narrow screen. Round the
+   * chariot it comes in to keep the tall things out of the shot; round the tower in the finale it keeps its 14 m.
+   */
   function circle(real: number): void {
     circled += real;
-    const view = orbitView(around, circled, world.ground);
+    const view = orbitView(around, circled, world.ground, mode === 'orbit' ? world.tall : []);
     game.setPose(view.pose);
     setFov(fovForAspect(view.fov, aspectNow()));
   }

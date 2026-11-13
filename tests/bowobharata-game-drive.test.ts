@@ -24,6 +24,7 @@ import {
   type ChariotInput,
   type ChariotState,
   type DriveEnv,
+  type Edge,
   type Guard,
 } from '../src/lib/bowobharata-game/drive';
 import { DRIVE } from '../src/lib/bowobharata-game/tuning';
@@ -442,6 +443,104 @@ describe('the guard hook', () => {
 
   it('a surge cancelled within 0.2 s of its start is refunded; one cancelled after 1 s keeps its cooldown', () => {
     const { env } = eastCap(8);
+    const started = stepChariot(moving(15), surge, 1 / 60);
+    expect(started.boostT).toBeGreaterThan(DRIVE.boostTime - 0.2);
+    const early = stepChariot(started, pull, 1 / 60, env);
+    expect(early.boostT).toBe(0);
+    expect(early.cooldown).toBe(0);
+    const running = last(run(started, { throttle: 1 }, 59));
+    expect(running.boostT).toBeGreaterThan(0);
+    const late = stepChariot(running, pull, 1 / 60, env);
+    expect(late.boostT).toBe(0);
+    expect(late.cooldown).toBeGreaterThan(5.9);
+    expect(late.cooldown).toBe(stepChariot(running, pull, 1 / 60).cooldown);
+  });
+});
+
+describe('the edge hook', () => {
+  const surge = { ...NO_INPUT, throttle: 1, boost: true };
+  const pull = { ...NO_INPUT, throttle: 1 };
+
+  /** Caps eastward speed at `limit` (Infinity removes nothing), logging each removal and the substep it was given. */
+  function eastEdge(limit: number) {
+    const removed: number[] = [];
+    const steps: number[] = [];
+    const edge: Edge = {
+      cap: (_x, _z, vx, vz, h) => {
+        steps.push(h);
+        removed.push(Math.max(0, vx - limit));
+        return { vx: Math.min(vx, limit), vz, removed: removed[removed.length - 1] };
+      },
+    };
+    return { env: { cloud: false, edge }, removed, steps };
+  }
+
+  it('is given each substep, after the guard, and one that removes nothing changes nothing', () => {
+    const { env, steps } = eastEdge(Infinity);
+    const i = { ...pull, steer: 1 };
+    expect(stepChariot(moving(10), i, 1 / 60, env)).toEqual(stepChariot(moving(10), i, 1 / 60));
+    expect(steps).toEqual([1 / 120, 1 / 120]);
+    stepChariot(moving(10), i, 0.05, env);
+    expect(steps.slice(2)).toEqual(Array(6).fill(0.05 / 6));
+    // The guard's capped velocity is what the edge sees.
+    const order: string[] = [];
+    const guard: Guard = {
+      cap: (_x, _z, _yaw, vx, vz) => {
+        order.push('guard');
+        return { vx: vx / 2, vz, removed: vx / 2 };
+      },
+      blocksTurn: () => false,
+    };
+    const seen: number[] = [];
+    const edge: Edge = {
+      cap: (_x, _z, vx, vz) => {
+        order.push('edge');
+        seen.push(vx);
+        return { vx, vz, removed: 0 };
+      },
+    };
+    stepChariot(moving(16), NO_INPUT, 1 / 120, { cloud: false, guard, edge });
+    expect(order).toEqual(['guard', 'edge']);
+    expect(seen[0]).toBeLessThan(8.1);
+  });
+
+  it('cap sets the velocity the chariot keeps and moves with', () => {
+    const fixed: Edge = { cap: () => ({ vx: 2, vz: -3, removed: 0 }) };
+    const s = stepChariot(moving(15), pull, 1 / 60, { cloud: false, edge: fixed });
+    expect([s.vx, s.vz]).toEqual([2, -3]);
+    expect(s.x).toBeCloseTo(4 / 120, 12);
+    expect(s.z).toBeCloseTo(-6 / 120, 12);
+  });
+
+  it('edgeCut is the largest speed it took off during the step, and held stays 0: the edge is not the ranks', () => {
+    const { env, removed } = eastEdge(8);
+    const s = stepChariot(moving(15), pull, 1 / 60, env);
+    expect(removed).toHaveLength(2);
+    expect(s.edgeCut).toBe(Math.max(...removed));
+    expect(s.edgeCut).toBeGreaterThan(removed[1]);
+    expect(s.held).toBe(0);
+    expect(stepChariot(s, NO_INPUT, 1 / 60, env).edgeCut).toBe(0);
+    expect(initChariot(0, 0, 0).edgeCut).toBe(0);
+  });
+
+  it('a removal cancels a surge already running, as the guard does', () => {
+    const { env } = eastEdge(8);
+    expect(stepChariot(moving(15, { boostT: 1, cooldown: 5 }), pull, 1 / 60, env).boostT).toBe(0);
+  });
+
+  it('no surge starts from a state the edge braked, nor against an edge braking in the same step', () => {
+    const braked = stepChariot(moving(15, { edgeCut: 2 }), surge, 1 / 60);
+    expect(braked.boostT).toBe(0);
+    expect(braked.edgeCut).toBe(0);
+    expect(stepChariot(moving(15), surge, 1 / 60).boostT).toBeGreaterThan(0);
+    const { env } = eastEdge(8);
+    const s = stepChariot(moving(15), surge, 1 / 60, env);
+    expect(s.boostT).toBe(0);
+    expect(s.cooldown).toBe(0);
+  });
+
+  it('a surge cancelled within 0.2 s of its start is refunded; one cancelled after 1 s keeps its cooldown', () => {
+    const { env } = eastEdge(8);
     const started = stepChariot(moving(15), surge, 1 / 60);
     expect(started.boostT).toBeGreaterThan(DRIVE.boostTime - 0.2);
     const early = stepChariot(started, pull, 1 / 60, env);

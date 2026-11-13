@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formation } from '../src/lib/bowobharata/stage-math';
-import { clamp, forward, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { clamp, forward, nextRand, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import {
   NO_INPUT,
   initChariot,
@@ -40,6 +40,8 @@ import {
   HULL,
   circleContact,
   crossesSegment,
+  edgeCap,
+  fieldEdge,
   figureGuard,
   guardCap,
   hullCircles,
@@ -779,5 +781,94 @@ describe('the soft wall', () => {
         expect(a.z).toBeCloseTo(-accel * Math.sin(angle), 9);
       }
     }
+  });
+});
+
+describe('the edge brakes like the guard', () => {
+  const H = 1 / 120;
+  const A = GUARD.decel;
+
+  it('edgeCap allows nothing out on or past the edge, and within a·h under sqrt(2·a·d) inside it', () => {
+    expect(edgeCap(0, H)).toBe(0);
+    expect(edgeCap(-0.5, H)).toBe(0);
+    for (const d of [1e-4, 0.01, 0.5, 1, 289 / 28, 22.3, 40]) {
+      const smooth = Math.sqrt(2 * A * d);
+      expect(edgeCap(d, H), `${d}`).toBeLessThanOrEqual(smooth);
+      expect(edgeCap(d, H), `${d}`).toBeGreaterThanOrEqual(smooth - A * H);
+    }
+    // 17 m/s needs about 10.3 m to stop at the guard's 14 m/s², 25 m/s about 22.3 m.
+    expect(Math.abs(edgeCap(289 / 28, H) - 17)).toBeLessThanOrEqual(A * H);
+    expect(Math.abs(edgeCap(625 / 28, H) - 25)).toBeLessThanOrEqual(A * H);
+  });
+
+  it('braking along it loses at most a·h a substep, the last one included, and stops on the edge, not past it', () => {
+    for (const h of [1 / 120, 1 / 144, 0.05 / 6]) {
+      for (const start of [0.004, 0.3, 289 / 28, 625 / 28]) {
+        // The drive moves each substep at the speed the cap leaves it.
+        let d = start;
+        let v = edgeCap(d, h);
+        let worst = 0;
+        let steps = 0;
+        while (v > 0 && steps < 10_000) {
+          d -= v * h;
+          const next = edgeCap(d, h);
+          worst = Math.max(worst, v - next);
+          v = next;
+          steps++;
+        }
+        expect(v).toBe(0);
+        expect(worst / h, `${start} m at h ${h}`).toBeLessThanOrEqual(A + 1e-9);
+        expect(Math.abs(d), `${start} m at h ${h}`).toBeLessThanOrEqual(1e-9);
+      }
+    }
+  });
+
+  it('fieldEdge takes off only the outward speed beyond the cap, along the radius', () => {
+    const edge = fieldEdge(PLAY);
+    // On the edge due north of the centre, where outward is −z and the edge runs east–west.
+    const x = PLAY.cx;
+    const z = PLAY.cz - PLAY.r;
+    expect(edge.cap(x, z, 6, -4, H)).toEqual({ vx: 6, vz: 0, removed: 4 });
+    expect(edge.cap(x, z, 6, 3, H)).toEqual({ vx: 6, vz: 3, removed: 0 });
+    expect(edge.cap(x, z - 2, -5, -1, H)).toEqual({ vx: -5, vz: 0, removed: 1 });
+    // 10 m inside, 20 m/s out: down to edgeCap(10), the speed along the edge kept.
+    const inside = edge.cap(x, z + 10, 7, -20, H);
+    expect(inside.vx).toBe(7);
+    expect(inside.vz).toBeCloseTo(-edgeCap(10, H), 12);
+    expect(inside.removed).toBeCloseTo(20 - edgeCap(10, H), 12);
+    // Slow enough to stop in the room left: untouched.
+    expect(edge.cap(x, z + 10, 7, -5, H)).toEqual({ vx: 7, vz: -5, removed: 0 });
+    expect(edge.cap(PLAY.cx, PLAY.cz, 30, 0, H)).toEqual({ vx: 30, vz: 0, removed: 0 });
+  });
+
+  it('at any place and velocity: the outward speed ends at most the cap, the inward speed and the speed along the edge untouched', () => {
+    const edge = fieldEdge(PLAY);
+    let state = 7;
+    const rnd = () => {
+      const r = nextRand(state);
+      state = r.a;
+      return r.v;
+    };
+    let braked = 0;
+    for (let k = 0; k < 2000; k++) {
+      const a = 2 * Math.PI * rnd();
+      const d = 120 + 45 * rnd();
+      const p = { x: PLAY.cx + d * Math.cos(a), z: PLAY.cz + d * Math.sin(a) };
+      const n = { x: Math.cos(a), z: Math.sin(a) };
+      const vx = 50 * rnd() - 25;
+      const vz = 50 * rnd() - 25;
+      const out = edge.cap(p.x, p.z, vx, vz, H);
+      const along = (v: { vx: number; vz: number }) => -v.vx * n.z + v.vz * n.x;
+      const outward = (v: { vx: number; vz: number }) => v.vx * n.x + v.vz * n.z;
+      expect(along(out)).toBeCloseTo(along({ vx, vz }), 9);
+      expect(outward(out)).toBeLessThanOrEqual(edgeCap(PLAY.r - d, H) + 1e-9);
+      if (outward({ vx, vz }) <= 0) expect(out).toEqual({ vx, vz, removed: 0 });
+      if (out.removed > 0) {
+        braked++;
+        expect(outward(out)).toBeCloseTo(edgeCap(PLAY.r - d, H), 9);
+        expect(out.removed).toBeCloseTo(outward({ vx, vz }) - outward(out), 9);
+      }
+    }
+    expect(braked).toBeGreaterThan(200);
   });
 });

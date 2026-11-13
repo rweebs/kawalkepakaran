@@ -1,8 +1,8 @@
-// Collision for the chariot: its hull as three circles, contact resolution against the field's colliders, and the
-// guard that stops it short of the ranks. Pure: no three.js, no DOM, no clock. Axis-aligned boxes and circles only,
-// scanned linearly (at most 50 colliders × 3 circles per call).
+// Collision for the chariot: its hull as three circles, contact resolution against the field's colliders, the guard
+// that stops it short of the ranks, and the field's edge, which brakes it to rest the same way. Pure: no three.js, no
+// DOM, no clock. Axis-aligned boxes and circles only, scanned linearly (at most 50 colliders × 3 circles per call).
 import { clamp, forward, segPointDist, type XZ } from './geom';
-import type { ChariotState, Guard } from './drive';
+import type { ChariotState, Edge, Guard } from './drive';
 import { DRIVE, GUARD } from './tuning';
 import { distToCollider, type Collider } from './world';
 
@@ -115,6 +115,42 @@ export function resolveContacts(car: ChariotState, cols: readonly Collider[]): {
 /** The closing speed (m/s) from which the guard can still stop the hull GUARD.stop m short, `d` m from a figure. */
 export function guardCap(d: number): number {
   return Math.sqrt(2 * GUARD.decel * Math.max(0, d - GUARD.stop));
+}
+
+/**
+ * The outward speed (m/s) from which the field's edge, braking at the guard's GUARD.decel one substep of h s at a time,
+ * stops the chariot's origin on the edge `d` m further out. The drive moves each substep at the speed the cap leaves it,
+ * so braking from v covers h·(v + (v − a·h) + (v − 2a·h) + …) over the terms above 0; the cap is the largest v whose stop
+ * fits in d. It lies within a·h under sqrt(2·a·d) (guardCap's curve, with no stop distance), and every substep of the
+ * braking, the last one included, loses at most a·h, so the chariot comes to rest on the edge with no jolt at the end
+ * and never passes it.
+ */
+export function edgeCap(d: number, h: number): number {
+  if (!(d > 0)) return 0;
+  if (!(h > 0)) return Math.sqrt(2 * GUARD.decel * d);
+  const lost = GUARD.decel * h; // the speed one substep of braking takes off
+  const units = d / (lost * h); // d in a·h²: a stop from k·a·h covers k(k + 1)/2 of them
+  const k = Math.floor((Math.sqrt(1 + 8 * units) - 1) / 2);
+  return (k + units / (k + 1) - k / 2) * lost;
+}
+
+/**
+ * The field's edge, braking like the guard: it caps the chariot origin's speed out along the radius of `disc` at
+ * edgeCap(the room left, h), taking the excess off along the radius. The speed along the edge and any inward speed
+ * are left as they are, so the chariot slides along the edge and turns back in freely. `removed` is the outward speed
+ * taken off.
+ */
+export function fieldEdge(disc: { cx: number; cz: number; r: number }): Edge {
+  return {
+    cap(x, z, vx, vz, h) {
+      const dx = x - disc.cx;
+      const dz = z - disc.cz;
+      const d = Math.hypot(dx, dz);
+      const excess = d > 0 ? (vx * dx + vz * dz) / d - edgeCap(disc.r - d, h) : 0;
+      if (!(excess > 0)) return { vx, vz, removed: 0 };
+      return { vx: vx - (excess * dx) / d, vz: vz - (excess * dz) / d, removed: excess };
+    },
+  };
 }
 
 /** Whether the ray from o along (dx, dz) meets the box (slab test); a ray starting inside meets it at once. */
