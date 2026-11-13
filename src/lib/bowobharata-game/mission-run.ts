@@ -2,9 +2,9 @@
 // (collect, reach), the copies, the fail checks, checkpoints and the ending. No physics, no clock, no randomness; state
 // is immutable. Course, laps and the letter come with Task 31, until then stepRun throws on those step kinds.
 import { dist, type XZ } from './geom';
-import { speedOf, type ChariotState } from './drive';
+import type { ChariotState } from './drive';
 import { sweptHit } from './collide';
-import type { MissionDef, PickupDef, StepDef } from './missions';
+import { realTargets, type MissionDef, type PickupDef, type StepDef } from './missions';
 import { MISSION_TIMING } from './tuning';
 
 export type Phase = 'roam' | 'intro' | 'active' | 'outro' | 'failed' | 'done';
@@ -44,6 +44,8 @@ export interface RunState {
   laps: number[];
   matched: boolean;
   stopT: number;
+  /** Seconds added to the lakon's time limit by a retry; reset when a new leg begins. */
+  extraTime: number;
   legT: number;
   leg: number;
   decoysTaken: number;
@@ -102,16 +104,30 @@ type Target = { kind: 'pickup' | 'gate' | 'reach' | 'post' | 'marker'; id: strin
 export function startRun(def: MissionDef): RunState {
   return {
     def, phase: def.marker ? 'roam' : 'intro', phaseT: 0, t: 0, step: 0, recorded: [], dayIndex: 0, lapStart: null,
-    lapPost: 0, laps: [], matched: false, stopT: 0, legT: 0, leg: 0, decoysTaken: 0, filed: 0, score: 0, fails: 0,
+    lapPost: 0, laps: [], matched: false, stopT: 0, extraTime: 0, legT: 0, leg: 0, decoysTaken: 0, filed: 0, score: 0, fails: 0,
     failReason: null, whole: true, checkpoint: null,
   };
 }
 
 export function totalReal(def: MissionDef): number {
-  return def.steps.reduce((n, s) => n + (s.kind === 'collect' ? s.items.length : 0), 0);
+  return realTargets(def).length;
 }
 
-const addScore = (run: RunState, by: number): RunState => ({ ...run, score: Math.max(0, run.score + by) });
+/** The running score is not clamped; only the delivered score is. */
+const addScore = (run: RunState, by: number): RunState => ({ ...run, score: run.score + by });
+
+const pace = (car: ChariotState) => Math.hypot(car.vx, car.vz);
+
+/** Seconds left on the tightest timer (softTime, or the current leg's limit), extraTime included; null with no timer. */
+export function timeLeft(run: RunState): number | null {
+  const { softTime, legTimes } = run.def;
+  const leg = legTimes?.filter((l) => l.fromStep <= run.step).at(-1);
+  const left = [
+    softTime === null ? null : softTime + run.extraTime - run.t,
+    leg ? leg.seconds + run.extraTime - run.legT : null,
+  ].filter((x): x is number => x !== null);
+  return left.length ? Math.min(...left) : null;
+}
 
 export function checkpoint(run: RunState, car: { x: number; z: number; yaw: number }, riuh: number): RunState {
   const cp: Checkpoint = {
@@ -121,26 +137,17 @@ export function checkpoint(run: RunState, car: { x: number; z: number; yaw: numb
   return { ...run, checkpoint: cp };
 }
 
-/** The lakon's own time limits, extended so that a retry from this checkpoint has at least 60 s left. */
-function extendTimes(def: MissionDef, step: number, t: number, legT: number): MissionDef {
-  const min = MISSION_TIMING.retryMinSeconds;
-  const softTime = def.softTime === null ? null : Math.max(def.softTime, t + min);
-  const legTimes = def.legTimes && def.legTimes.map((l) => (l.fromStep <= step ? { ...l, seconds: Math.max(l.seconds, legT + min) } : l));
-  return { ...def, softTime, legTimes };
-}
-
+/**
+ * Back to the checkpoint's car at the current step. What was recorded, scored and filed stays (nothing scores twice), as
+ * do the fails; the copies taken are forgiven, the clamour drops to 1 at most, and the clock gets 60 s if it had less.
+ */
 export function restore(run: RunState): { run: RunState; car: { x: number; z: number; yaw: number }; riuh: number } {
   const cp = run.checkpoint;
   if (!cp) throw new Error('restore: no checkpoint');
-  return {
-    run: {
-      ...run, def: extendTimes(run.def, cp.step, cp.t, cp.legT), phase: 'active', phaseT: 0, t: cp.t, step: cp.step,
-      recorded: [...cp.recorded], dayIndex: cp.dayIndex, stopT: 0, legT: cp.legT, leg: cp.leg, decoysTaken: 0,
-      failReason: null,
-    },
-    car: { ...cp.car },
-    riuh: Math.min(cp.riuh, 1),
-  };
+  const base: RunState = { ...run, phase: 'active', phaseT: 0, stopT: 0, decoysTaken: 0, failReason: null };
+  const left = timeLeft(base);
+  const extraTime = left === null ? base.extraTime : base.extraTime + Math.ceil(Math.max(0, MISSION_TIMING.retryMinSeconds - left) * 1000) / 1000;
+  return { run: { ...base, extraTime }, car: { ...cp.car }, riuh: Math.min(cp.riuh, 1) };
 }
 
 function unsupported(s: StepDef): never {
@@ -152,15 +159,24 @@ const stepOf = (run: RunState): StepDef | undefined => run.def.steps[run.step];
 /** Closes the current step: a checkpoint, or the outro (with the calm and time bonuses) when it was the last one. */
 function finishStep(run: RunState, f: RunFrame): Out {
   const events: GameEvent[] = [{ type: 'stepDone', step: run.step }];
-  const next: RunState = { ...run, step: run.step + 1, stopT: 0, legT: 0, leg: run.leg + 1 };
+  const next: RunState = { ...run, step: run.step + 1, stopT: 0 };
+  const newLeg = run.def.legTimes?.some((l) => l.fromStep === next.step) ?? false;
+  const legged: RunState = newLeg ? { ...next, legT: 0, leg: next.leg + 1, extraTime: 0 } : next;
   if (next.step < run.def.steps.length) {
-    return { run: checkpoint(next, f.car, f.riuh), events: [...events, { type: 'checkpoint' }] };
+    return { run: checkpoint(legged, f.car, f.riuh), events: [...events, { type: 'checkpoint' }] };
   }
-  let out = next;
+  // The last step goes straight to the outro without a checkpoint: the outro cannot fail.
+  let out = legged;
   if (f.riuh <= 1) out = addScore(out, SCORE.calm);
   const { softTime } = run.def;
   if (softTime !== null) out = addScore(out, Math.floor(SCORE.perSecond * Math.max(0, SCORE.par * softTime - run.t)));
   return { run: { ...out, phase: 'outro', phaseT: 0 }, events: [...events, { type: 'outroStart' }] };
+}
+
+function recordTarget(run: RunState, item: PickupDef, points: number): { run: RunState; event: GameEvent } {
+  const recorded = [...run.recorded, item.id];
+  const event: GameEvent = { type: 'recorded', id: item.id, card: item.card, n: recorded.length, total: totalReal(run.def) };
+  return { run: addScore({ ...run, recorded }, points), event };
 }
 
 function stepCollect(run: RunState, f: RunFrame, items: readonly PickupDef[]): Out {
@@ -168,9 +184,9 @@ function stepCollect(run: RunState, f: RunFrame, items: readonly PickupDef[]): O
   const events: GameEvent[] = [];
   for (const item of items) {
     if (cur.recorded.includes(item.id) || !sweptHit(f.midPrev, f.mid, item.at, MISSION_TIMING.pickupR)) continue;
-    const recorded = [...cur.recorded, item.id];
-    cur = addScore({ ...cur, recorded }, SCORE.real);
-    events.push({ type: 'recorded', id: item.id, card: item.card, n: recorded.length, total: totalReal(run.def) });
+    const r = recordTarget(cur, item, SCORE.real);
+    cur = r.run;
+    events.push(r.event);
   }
   if (items.every((i) => cur.recorded.includes(i.id))) {
     const fin = finishStep(cur, f);
@@ -180,7 +196,7 @@ function stepCollect(run: RunState, f: RunFrame, items: readonly PickupDef[]): O
 }
 
 function stepReach(run: RunState, f: RunFrame, s: Extract<StepDef, { kind: 'reach' }>): Out {
-  const holding = dist(f.mid, s.at) <= s.r && speedOf(f.car) < MISSION_TIMING.stopSpeed;
+  const holding = dist(f.mid, s.at) <= s.r && pace(f.car) < MISSION_TIMING.stopSpeed;
   const stopT = holding ? run.stopT + f.dt : 0;
   if (stopT >= s.stopFor) return finishStep({ ...run, stopT: 0 }, f);
   return { run: { ...run, stopT }, events: [] };
@@ -205,10 +221,9 @@ function stepCopies(run: RunState, f: RunFrame): Step {
 
 function failReason(run: RunState): FailReason | null {
   if (run.t < GRACE) return null;
-  const { softTime, legTimes, decoyLimit } = run.def;
-  if (softTime !== null && run.t > softTime) return 'time';
-  const leg = legTimes?.filter((l) => l.fromStep <= run.step).at(-1);
-  if (leg && run.legT > leg.seconds) return 'time';
+  const left = timeLeft(run);
+  if (left !== null && left < 0) return 'time';
+  const { decoyLimit } = run.def;
   if (decoyLimit !== null && run.decoysTaken >= decoyLimit) return 'muddied';
   return null;
 }
@@ -242,12 +257,13 @@ function stepIntro(run: RunState, f: RunFrame): Out {
   return { run: { ...run, phaseT }, events: [] };
 }
 
-export function stepRun(run: RunState, f: RunFrame): Step {
+export function stepRun(run: RunState, frame: RunFrame): Step {
+  const f = Number.isFinite(frame.dt) && frame.dt > 0 ? frame : { ...frame, dt: 0 };
   const plain = (o: Out): Step => ({ ...o, decoys: [...f.decoys] });
   switch (run.phase) {
     case 'roam': {
       const m = run.def.marker;
-      if (m && dist(f.mid, m) <= MISSION_TIMING.markerR && speedOf(f.car) < MISSION_TIMING.markerSpeed) {
+      if (m && dist(f.mid, m) <= MISSION_TIMING.markerR && pace(f.car) < MISSION_TIMING.markerSpeed) {
         return plain({ run: { ...run, phase: 'intro', phaseT: 0 }, events: [{ type: 'introStart' }] });
       }
       return plain({ run, events: [] });
@@ -259,7 +275,7 @@ export function stepRun(run: RunState, f: RunFrame): Step {
     case 'outro': {
       const phaseT = run.phaseT + f.dt;
       if (phaseT < MISSION_TIMING.outroSeconds) return plain({ run: { ...run, phaseT }, events: [] });
-      return plain({ run: { ...run, phase: 'done', phaseT: 0 }, events: [{ type: 'done', score: run.score, whole: run.whole }] });
+      return plain({ run: { ...run, phase: 'done', phaseT: 0 }, events: [{ type: 'done', score: Math.max(0, run.score), whole: run.whole }] });
     }
     default:
       return plain({ run, events: [] });
@@ -275,13 +291,13 @@ export function autoRecord(run: RunState): Out {
     if (s.kind !== 'collect') unsupported(s);
     for (const item of s.items) {
       if (cur.recorded.includes(item.id)) continue;
-      const recorded = [...cur.recorded, item.id];
-      cur = { ...cur, recorded };
-      events.push({ type: 'recorded', id: item.id, card: item.card, n: recorded.length, total: totalReal(run.def) });
+      const r = recordTarget(cur, item, 0);
+      cur = r.run;
+      events.push(r.event);
     }
   }
   events.push({ type: 'outroStart' });
-  return { run: { ...cur, step: run.def.steps.length, phase: 'outro', phaseT: 0, whole: false }, events };
+  return { run: { ...cur, step: run.def.steps.length, phase: 'outro', phaseT: 0, whole: false, failReason: null }, events };
 }
 
 export function openTargets(run: RunState): Target[] {
