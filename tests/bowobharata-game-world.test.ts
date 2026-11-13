@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formation } from '../src/lib/bowobharata/stage-math';
-import { forward, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { clamp, forward, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import {
   NO_INPUT,
   initChariot,
@@ -96,6 +96,45 @@ const leastZoneClearance = (frames: Frame[]) => Math.min(...frames.map((f) => zo
 const contacts = (frames: Frame[]) => frames.flatMap((f) => (f.contact ? [f.contact] : []));
 const bounds = (b: Box) => [b.minX, b.maxX, b.minZ, b.maxZ];
 const byId = (id: string) => COLS.find((c) => c.id === id);
+
+/** Whether the ray from o along (dx, dz) meets the box grown by g on every side. */
+function rayMeetsGrown(o: XZ, dx: number, dz: number, b: Box, g: number): boolean {
+  let near = 0;
+  let far = Infinity;
+  for (const [p, d, lo, hi] of [
+    [o.x, dx, b.minX - g, b.maxX + g],
+    [o.z, dz, b.minZ - g, b.maxZ + g],
+  ]) {
+    if (d === 0) {
+      if (p < lo || p > hi) return false;
+      continue;
+    }
+    near = Math.max(near, Math.min((lo - p) / d, (hi - p) / d));
+    far = Math.min(far, Math.max((lo - p) / d, (hi - p) / d));
+  }
+  return near <= far;
+}
+
+/**
+ * How much faster than guardCap(d) the hull at (x, z, yaw) moving at (vx, vz) closes on a zone, by the brief's rule:
+ * a circle in a zone's x- or z-slab always counts, along the face normal; one in a corner region counts, along the
+ * corner's normal, when the ray from it along v meets the zone grown by 1.45 + 0.5 m. At most 0 when none does.
+ */
+function worstClosingExcess(x: number, z: number, yaw: number, vx: number, vz: number): number {
+  let worst = -Infinity;
+  for (const c of hullCircles(x, z, yaw)) {
+    for (const b of ZONE_BOXES as Box[]) {
+      const qx = clamp(c.x, b.minX, b.maxX);
+      const qz = clamp(c.z, b.minZ, b.maxZ);
+      const gap = Math.hypot(c.x - qx, c.z - qz);
+      if (gap === 0 || gap - HULL.r > GUARD.range) continue;
+      if (qx !== c.x && qz !== c.z && !rayMeetsGrown(c, vx, vz, b, HULL.r + GUARD.stop)) continue;
+      const closing = -(vx * (c.x - qx) + vz * (c.z - qz)) / gap;
+      worst = Math.max(worst, closing - guardCap(gap - HULL.r));
+    }
+  }
+  return worst;
+}
 
 describe('the ranks', () => {
   it('each army zone is the bounding box of its formation, grown by 0.9 m', () => {
@@ -350,6 +389,91 @@ describe('the guard at the ranks', () => {
       }
     });
   }
+
+  it('wedged diagonally across the south mouth for 15 s, the hull touches nothing (the review reproduction)', () => {
+    for (const dt of [1 / 60, 0.05]) {
+      for (const input of [{ throttle: 1 }, { throttle: 1, boost: true }]) {
+        const frames = drive(moving(5.17, 20.91, 2.2689, 8), input, Math.round(15 / dt), dt, G, COLS);
+        expect(contacts(frames)).toEqual([]);
+        expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(0.49);
+      }
+    }
+  });
+
+  it('a sweep of headings into both corridor mouths never lets the hull touch or crowd either army', () => {
+    const [dharma, adharma] = ZONE_BOXES as Box[];
+    const stopGap = HULL.r + GUARD.stop;
+    const lanes = [
+      { army: 'dharma', x: dharma.maxX + stopGap, box: dharma },
+      { army: 'adharma', x: adharma.minX - stopGap, box: adharma },
+    ];
+    const northward = Array.from({ length: 15 }, (_, k) => 100 + 5 * k);
+    const failures: string[] = [];
+    for (const mouth of ['south', 'north'] as const) {
+      const headings = [...northward, ...northward.map((d) => 180 - d)].map((d) => (mouth === 'south' ? d : -d));
+      for (const deg of headings) {
+        for (const lane of lanes) {
+          // The front circle's path crosses the army's 0.5 m lane on the mouth's line.
+          const aim = { x: lane.x, z: mouth === 'south' ? lane.box.maxZ : lane.box.minZ };
+          const yaw = (deg * Math.PI) / 180;
+          const f = forward(yaw);
+          const startAt = (back: number) => ({ x: aim.x - (back + HULL.offsets[2]) * f.x, z: aim.z - (back + HULL.offsets[2]) * f.z });
+          // 6 m back along the heading, or further until the hull stands 1 m clear of every collider.
+          let back = 6;
+          while (hullClearance(startAt(back).x, startAt(back).z, yaw, COLS) < 1) back += 1;
+          const p = startAt(back);
+          const frames = drive(moving(p.x, p.z, yaw, 8), { throttle: 1 }, 480, 1 / 60, G, COLS);
+          const least = leastZoneClearance(frames);
+          const touched = contacts(frames).some((c) => c.figure);
+          if (least < 0.49 || touched) failures.push(`${mouth} mouth ${deg}° ${lane.army} lane: least ${least.toFixed(3)}${touched ? ', touched' : ''}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('after one call to cap, no hull circle closes on a zone faster than guardCap allows, in wedged poses', () => {
+    interface Moving {
+      x: number;
+      z: number;
+      yaw: number;
+      vx: number;
+      vz: number;
+    }
+    const heading = forward(2.2689);
+    const wedged: Moving[] = [
+      // The review's single call: the rear circle 0.03 m from army-dharma's south-east corner.
+      { x: -1.255, z: 15.069, yaw: 0.89, vx: 0.08, vz: -0.49 },
+      // The reproduction's start, and its poses under a single-pass cap at 2, 4, 6 and 6.8 s as it crept in.
+      { x: 5.17, z: 20.91, yaw: 2.2689, vx: 8 * heading.x, vz: 8 * heading.z },
+      { x: 1.3111, z: 15.9956, yaw: 2.2689, vx: 0, vz: -0.0993 },
+      { x: 1.3111, z: 15.7667, yaw: 2.2689, vx: 0, vz: -0.134 },
+      { x: 1.3111, z: 15.4177, yaw: 2.2689, vx: 0, vz: -0.2395 },
+      { x: 1.3111, z: 15.1766, yaw: 2.2689, vx: 0, vz: -0.3861 },
+    ];
+    // Mirrored across the corridor's axis (x = 0) and to the north mouth (about the zones' middle z).
+    const midZ = ((ZONE_BOXES[1] as Box).minZ + (ZONE_BOXES[1] as Box).maxZ) / 2;
+    const poses = wedged.flatMap((p) => [
+      p,
+      { x: -p.x, z: p.z, yaw: Math.PI - p.yaw, vx: -p.vx, vz: p.vz },
+      { x: p.x, z: 2 * midZ - p.z, yaw: -p.yaw, vx: p.vx, vz: -p.vz },
+      { x: -p.x, z: 2 * midZ - p.z, yaw: p.yaw - Math.PI, vx: -p.vx, vz: -p.vz },
+    ]);
+    let worst = -Infinity;
+    let worstAt = '';
+    for (const p of poses) {
+      const velocities = [{ vx: p.vx, vz: p.vz }];
+      for (let k = 0; k < 24; k++) {
+        for (const speed of [2, 8, 17]) velocities.push({ vx: speed * Math.cos((k * Math.PI) / 12), vz: speed * Math.sin((k * Math.PI) / 12) });
+      }
+      for (const v of velocities) {
+        const out = G.guard!.cap(p.x, p.z, p.yaw, v.vx, v.vz);
+        const excess = worstClosingExcess(p.x, p.z, p.yaw, out.vx, out.vz);
+        if (excess > worst) [worst, worstAt] = [excess, JSON.stringify({ ...p, in: v, out })];
+      }
+    }
+    expect(worst, worstAt).toBeLessThanOrEqual(1e-9);
+  });
 
   it('ramming stops short: held from 0.3 s, at rest with the front circle 0.5 m from the face', () => {
     const frames = drive({ ...initChariot(40, -10, Math.PI), vx: -17 }, { throttle: 1 }, 180, 1 / 60, G, COLS);

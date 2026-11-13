@@ -177,29 +177,58 @@ function guardNormal(c: XZ, b: Box, vx: number, vz: number): { nx: number; nz: n
   return { nx, nz, d };
 }
 
+/** Passes over the (hull circle, figure) pairs before the guard stops the chariot instead. */
+const GUARD_PASSES = 8;
+/** A pass whose largest removal is no more than this (m/s) has settled every pair. */
+const SETTLED = 1e-12;
+
 /**
- * The guard at the ranks, over the figure boxes. `cap` limits, for each hull circle and each box within GUARD.range,
- * the closing speed −v·n to guardCap(d), removing the excess along n (circles rear to front, boxes in order, each
- * seeing the velocity left by the one before); `removed` is the total closing speed taken off. `blocksTurn` refuses
- * a turn that leaves the hull under GUARD.stop from a figure and closer than before.
+ * One pass over the (hull circle, box) pairs, rear circle to front and boxes in order. With `apply`, each pair's
+ * closing speed −v·n above guardCap(d) is removed along n before the next pair is checked. Returns the velocity
+ * left, the closing speed removed, and the largest excess met.
+ */
+function guardPass(circles: readonly Circle[], boxes: readonly Box[], vx: number, vz: number, apply: boolean) {
+  let removed = 0;
+  let most = 0;
+  for (const c of circles) {
+    for (const b of boxes) {
+      const g = guardNormal(c, b, vx, vz);
+      if (!g) continue;
+      const excess = -(vx * g.nx + vz * g.nz) - guardCap(g.d);
+      if (excess <= 0) continue;
+      most = Math.max(most, excess);
+      if (!apply) continue;
+      vx += excess * g.nx;
+      vz += excess * g.nz;
+      removed += excess;
+    }
+  }
+  return { vx, vz, removed, most };
+}
+
+/**
+ * The guard at the ranks, over the figure boxes.
+ * - `cap` limits each hull circle's closing speed −v·n on each box within GUARD.range to guardCap(d), removing the
+ *   excess along n. Across the corridor the two armies' normals oppose, so one pair's removal can reopen another's:
+ *   it repeats the pass until no pair removes more than SETTLED, and after GUARD_PASSES it stops the chariot if any
+ *   pair still closes too fast (every pair accepts v = 0, since guardCap ≥ 0). `removed` is the total closing speed
+ *   taken off, plus the speed taken by such a stop.
+ * - `blocksTurn` refuses a turn that leaves the hull under GUARD.stop from a figure and closer than before.
  */
 export function figureGuard(figures: readonly Collider[]): Guard {
   const boxes = figures.filter((c): c is Box => c.kind === 'box');
   return {
     cap(x, z, yaw, vx, vz) {
+      const circles = hullCircles(x, z, yaw);
       let removed = 0;
-      for (const c of hullCircles(x, z, yaw)) {
-        for (const b of boxes) {
-          const g = guardNormal(c, b, vx, vz);
-          if (!g) continue;
-          const excess = -(vx * g.nx + vz * g.nz) - guardCap(g.d);
-          if (excess <= 0) continue;
-          vx += excess * g.nx;
-          vz += excess * g.nz;
-          removed += excess;
-        }
+      for (let pass = 0; pass < GUARD_PASSES; pass++) {
+        const p = guardPass(circles, boxes, vx, vz, true);
+        ({ vx, vz } = p);
+        removed += p.removed;
+        if (p.most <= SETTLED) return { vx, vz, removed };
       }
-      return { vx, vz, removed };
+      if (guardPass(circles, boxes, vx, vz, false).most <= SETTLED) return { vx, vz, removed };
+      return { vx: 0, vz: 0, removed: removed + Math.hypot(vx, vz) };
     },
     blocksTurn(x, z, fromYaw, toYaw) {
       const after = hullClearance(x, z, toYaw, boxes);
