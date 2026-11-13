@@ -12,6 +12,7 @@ import { correctionsFor } from '../lib/corrections';
 import { formatDateLocale } from '../i18n';
 import { buildTitle, truncateAtWord, breadcrumbLd } from '../lib/seo';
 import { siteOg, type OgImage } from '../lib/og';
+import { SITEMAP_LATEST } from '../lib/sitemap-latest';
 
 interface Crumb { name: string; path: string }
 const { title, description, path, jsonLd, noindex, ogType = 'website', breadcrumbs, author, locale: localeProp, alternates: alternatesProp, image: imageProp, ogTitle, publishedTime, modifiedTime, section, feeds = [] } = Astro.props as {
@@ -42,7 +43,11 @@ const abs = (p: string) => new URL(p, SITE.url).toString();
 const fullTitle = buildTitle(title, SITE.name);
 const desc = truncateAtWord(description, 160);
 const corrections = correctionsFor(path, undefined, Object.values(alternates ?? {}).filter((p): p is string => !!p));
-const FOOT = { id: { log: 'Catatan koreksi', updates: 'Pembaruan' }, en: { log: 'Corrections log', updates: 'Updates' } }[locale];
+const FOOT = {
+  id: { log: 'Catatan koreksi', updates: 'Pembaruan', info: 'Informasi terbaru dari rahmatwibowo.net (sitemap.xml)', checked: 'dipantau', monitor: 'Lihat Pantau' },
+  en: { log: 'Corrections log', updates: 'Updates', info: 'Latest information from rahmatwibowo.net (sitemap.xml)', checked: 'last checked', monitor: 'See Monitor' },
+}[locale];
+const { lastmod: infoDay, checked: checkedDay } = SITEMAP_LATEST;
 const socialTitle = ogTitle ? truncateAtWord(ogTitle, 95) : fullTitle;
 const feedHref = locale === 'en' ? '/en/rss.xml' : '/rss.xml';
 const crumbs = breadcrumbs ? [{ name: ui.home, path: routePath('home', locale) }, ...breadcrumbs] : [];
@@ -146,6 +151,9 @@ const lds = [
     <script>if (document.querySelector('[data-reveal]')) import('../scripts/reveal');</script>
     <footer class="footer"><div class="container">
       <p>{ui.footer(SITE.author)} {ui.corrections}: <a href={`mailto:${SITE.correctionsEmail}`}>{SITE.correctionsEmail}</a>. {ui.projectOf} <a href="https://www.infraloka.co.id" rel="noopener noreferrer">InfraLoka</a>. <a href={routePath('policy', locale)}>{ui.policies}</a> · <a href={`${routePath('policy', locale)}#catatan-koreksi`}>{FOOT.log}</a> · <a href={routePath('updates', locale)}>{FOOT.updates}</a> · <a href={feedHref}>{ui.rss}</a> · <a href="/klaim.json">{ui.data}</a></p>
+      {infoDay && (
+        <p class="muted footer__info">{FOOT.info}: <time datetime={infoDay}>{formatDateLocale(infoDay, locale)}</time>{checkedDay && <> · {FOOT.checked} <time datetime={checkedDay}>{formatDateLocale(checkedDay, locale)}</time></>} · <a href={routePath('monitor', locale)}>{FOOT.monitor}</a></p>
+      )}
       <p class="muted">{ui.license} <a href={`${SITE.repo}/blob/main/LICENSE-CONTENT.md`} rel="noopener noreferrer">LICENSE-CONTENT</a></p>
     </div></footer>
   </body>
