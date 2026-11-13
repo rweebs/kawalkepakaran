@@ -13,7 +13,7 @@ import { PARVAS } from '../lib/bowobharata';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
 import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
 import { speedOf } from '../lib/bowobharata-game/drive';
-import type { FrameInput } from '../lib/bowobharata-game/engine';
+import type { FrameInput, GameState } from '../lib/bowobharata-game/engine';
 import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
 import { sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
 import { keyAction, keyboardInput } from '../lib/bowobharata-game/input';
@@ -42,6 +42,13 @@ const WIPE_HOLD_MS = 150;
 const storage = (): Storage | undefined => {
   try { return window.localStorage; } catch { return undefined; }
 };
+
+/**
+ * Development only, for the slice check in the browser: input that stands in for the keyboard while set, through
+ * window.__bowo.setInputOverride. A production build sets import.meta.env.DEV to false and drops every use of it.
+ */
+type DevInput = (s: GameState) => Omit<FrameInput, 'aspect'>;
+let devInput: DevInput | null = null;
 
 /** Whether a key went to a text field of the page, which the game leaves alone. */
 function typing(target: EventTarget | null): boolean {
@@ -200,6 +207,10 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
 
   /** The frame's input: the held keys (the steer ramped on real time), a skip once, and the session's settings. */
   const readInput = (): Omit<FrameInput, 'aspect'> => {
+    if (import.meta.env.DEV) {
+      const s = devInput ? runtimeRef.current?.state() : null;
+      if (devInput && s) return devInput(s);
+    }
     const now = performance.now();
     const dt = readAt.current > 0 ? Math.min(DRIVE.maxDt, Math.max(0, (now - readAt.current) / 1000)) : 1 / 60;
     readAt.current = now;
@@ -237,6 +248,20 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   useEffect(() => {
     if (flow.screen !== 'gate') writeSaved(storage(), { best: flow.best, chapter: flow.chapter });
   }, [flow.screen, flow.chapter, flow.best]);
+
+  // Development only, for the slice check in the browser: window.__bowo reads the runtime (null before the scene) and
+  // sets or clears the input that stands in for the keyboard. A production build drops it.
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      const w = window as Window & { __bowo?: { runtime(): Runtime | null; setInputOverride(fn: DevInput | null): void } };
+      w.__bowo = { runtime: () => runtimeRef.current, setInputOverride: (fn) => { devInput = fn; } };
+      return () => {
+        delete w.__bowo;
+        devInput = null;
+      };
+    }
+    return undefined;
+  }, []);
 
   // The device: a coarse pointer words the hints for touch and leaves the rings to the touch buttons; full screen only
   // where the browser allows it.

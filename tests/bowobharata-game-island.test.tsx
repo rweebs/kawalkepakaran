@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderToString } from 'react-dom/server';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { FRAMING, PARVAS } from '../src/lib/bowobharata';
 import { FRAMING_EN } from '../src/lib/bowobharata-en';
 import { kategoriKey, type Perkara } from '../src/lib/perkara';
@@ -454,6 +454,34 @@ describe('island wiring (source)', () => {
       .filter((part) => part.includes('<CatchCard'))
       .map((part) => part.match(/^(?:export )?(?:function|const) (\w+)/)?.[1]);
     expect(renderers.sort()).toEqual(['FallbackPlay', 'Recorded']);
+  });
+  it('keeps the slice check\'s automation hook (window.__bowo) behind import.meta.env.DEV, so a production build drops it', () => {
+    // Comments become spaces of the same length, so the indices still point into the source.
+    const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => ' '.repeat(c.length));
+    /** Every `if (import.meta.env.DEV) {` block, from the `if` to its matching brace. */
+    const guarded = [...code.matchAll(/if \(import\.meta\.env\.DEV\) \{/g)].map((m): [number, number] => {
+      let depth = 1;
+      let i = m.index! + m[0].length;
+      for (; i < code.length && depth > 0; i++) depth += code[i] === '{' ? 1 : code[i] === '}' ? -1 : 0;
+      return [m.index!, i];
+    });
+    const inside = (i: number) => guarded.some(([a, b]) => i >= a && i < b);
+    const uses = (word: string) => [...code.matchAll(new RegExp(`\\b${word}\\b`, 'g'))].map((m) => m.index!);
+    // The hook on window, and the override inside readInput, each sit in a guarded block.
+    expect(code).toMatch(/useEffect\(\(\) => \{\s*if \(import\.meta\.env\.DEV\) \{\s*const w = window as /);
+    expect(code).toMatch(/const readInput = \(\): Omit<FrameInput, 'aspect'> => \{\s*if \(import\.meta\.env\.DEV\) \{/);
+    for (const word of ['__bowo', 'setInputOverride']) {
+      expect(uses(word).length, word).toBeGreaterThan(0);
+      for (const i of uses(word)) expect(inside(i), `${word} at ${i}`).toBe(true);
+    }
+    // The override itself is used only in guarded blocks; its declaration is the one use outside them.
+    const declared = code.indexOf('let devInput: DevInput | null = null;');
+    expect(declared).toBeGreaterThan(-1);
+    for (const i of uses('devInput')) if (i !== declared + 'let '.length) expect(inside(i), `devInput at ${i}`).toBe(true);
+    // Nothing else in src/ knows of the hook.
+    const others = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+      d.isDirectory() ? others(`${dir}/${d.name}`) : [`${dir}/${d.name}`]);
+    for (const f of others('src')) if (f !== 'src/components/BowobharataGame.tsx') expect(readFileSync(f, 'utf8'), f).not.toContain('__bowo');
   });
 });
 
