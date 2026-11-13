@@ -177,18 +177,17 @@ function guardNormal(c: XZ, b: Box, vx: number, vz: number): { nx: number; nz: n
   return { nx, nz, d };
 }
 
-/** Passes over the (hull circle, figure) pairs before the guard stops the chariot instead. */
-const GUARD_PASSES = 8;
+/** Passes over the (hull circle, figure) pairs before the guard scales the velocity down instead. */
+const GUARD_PASSES = 32;
 /** A pass whose largest removal is no more than this (m/s) has settled every pair. */
 const SETTLED = 1e-12;
 
 /**
- * One pass over the (hull circle, box) pairs, rear circle to front and boxes in order. With `apply`, each pair's
- * closing speed −v·n above guardCap(d) is removed along n before the next pair is checked. Returns the velocity
- * left, the closing speed removed, and the largest excess met.
+ * One pass over the (hull circle, box) pairs, rear circle to front and boxes in order: each pair's closing speed
+ * −v·n above guardCap(d) is removed along n before the next pair is checked. Returns the velocity left and the
+ * largest removal.
  */
-function guardPass(circles: readonly Circle[], boxes: readonly Box[], vx: number, vz: number, apply: boolean) {
-  let removed = 0;
+function settlePass(circles: readonly Circle[], boxes: readonly Box[], vx: number, vz: number) {
   let most = 0;
   for (const c of circles) {
     for (const b of boxes) {
@@ -197,22 +196,42 @@ function guardPass(circles: readonly Circle[], boxes: readonly Box[], vx: number
       const excess = -(vx * g.nx + vz * g.nz) - guardCap(g.d);
       if (excess <= 0) continue;
       most = Math.max(most, excess);
-      if (!apply) continue;
       vx += excess * g.nx;
       vz += excess * g.nz;
-      removed += excess;
     }
   }
-  return { vx, vz, removed, most };
+  return { vx, vz, most };
+}
+
+/**
+ * At velocity v, changing nothing: the largest excess of any pair's closing speed over guardCap(d), and λ, the
+ * smallest guardCap(d) / closing speed over the pairs in excess (1 when none is). λ·v leaves no pair in excess.
+ */
+function excessAt(circles: readonly Circle[], boxes: readonly Box[], vx: number, vz: number) {
+  let most = 0;
+  let lambda = 1;
+  for (const c of circles) {
+    for (const b of boxes) {
+      const g = guardNormal(c, b, vx, vz);
+      if (!g) continue;
+      const closing = -(vx * g.nx + vz * g.nz);
+      const cap = guardCap(g.d);
+      if (closing <= cap) continue;
+      most = Math.max(most, closing - cap);
+      lambda = Math.min(lambda, cap / closing);
+    }
+  }
+  return { most, lambda };
 }
 
 /**
  * The guard at the ranks, over the figure boxes.
  * - `cap` limits each hull circle's closing speed −v·n on each box within GUARD.range to guardCap(d), removing the
- *   excess along n. Across the corridor the two armies' normals oppose, so one pair's removal can reopen another's:
- *   it repeats the pass until no pair removes more than SETTLED, and after GUARD_PASSES it stops the chariot if any
- *   pair still closes too fast (every pair accepts v = 0, since guardCap ≥ 0). `removed` is the total closing speed
- *   taken off, plus the speed taken by such a stop.
+ *   excess along n. Across the corridor the two armies' normals oppose, so one pair's removal can reopen another's.
+ *   So it repeats the pass until no pair removes more than SETTLED, for at most GUARD_PASSES passes. If a pair is
+ *   still in excess after that, it scales v by λ (see excessAt); a λ above 0 keeps v's direction and with it every
+ *   corner-ray result. Only if a pair is still in excess after that does it stop the chariot (every pair accepts
+ *   v = 0, since guardCap ≥ 0). `removed` is the size of the change it made, |v_in − v_out|.
  * - `blocksTurn` refuses a turn that leaves the hull under GUARD.stop from a figure and closer than before.
  * Every figure must be a box: any other shape throws rather than go unguarded.
  */
@@ -222,17 +241,22 @@ export function figureGuard(figures: readonly Collider[]): Guard {
     return c;
   });
   return {
-    cap(x, z, yaw, vx, vz) {
+    cap(x, z, yaw, vxIn, vzIn) {
       const circles = hullCircles(x, z, yaw);
-      let removed = 0;
+      const result = (vx: number, vz: number) => ({ vx, vz, removed: Math.hypot(vxIn - vx, vzIn - vz) });
+      let vx = vxIn;
+      let vz = vzIn;
       for (let pass = 0; pass < GUARD_PASSES; pass++) {
-        const p = guardPass(circles, boxes, vx, vz, true);
+        const p = settlePass(circles, boxes, vx, vz);
         ({ vx, vz } = p);
-        removed += p.removed;
-        if (p.most <= SETTLED) return { vx, vz, removed };
+        if (p.most <= SETTLED) return result(vx, vz);
       }
-      if (guardPass(circles, boxes, vx, vz, false).most <= SETTLED) return { vx, vz, removed };
-      return { vx: 0, vz: 0, removed: removed + Math.hypot(vx, vz) };
+      const left = excessAt(circles, boxes, vx, vz);
+      if (left.most <= SETTLED) return result(vx, vz);
+      vx *= left.lambda;
+      vz *= left.lambda;
+      if (excessAt(circles, boxes, vx, vz).most <= SETTLED) return result(vx, vz);
+      return result(0, 0);
     },
     blocksTurn(x, z, fromYaw, toYaw) {
       const after = hullClearance(x, z, toYaw, figures);

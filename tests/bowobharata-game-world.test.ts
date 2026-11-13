@@ -9,6 +9,7 @@ import {
   type ChariotInput,
   type ChariotState,
   type DriveEnv,
+  type Guard,
 } from '../src/lib/bowobharata-game/drive';
 import {
   ANCHORS,
@@ -417,6 +418,30 @@ describe('the guard at the ranks', () => {
     }
   });
 
+  it('settling that wedge never jolts: no guard call cuts more than 1 m/s, nor a frame more than 1 m/s per 1/60 s', () => {
+    // A 0.05 s frame spans six substeps of the wedge closing (both caps tightening at once, up to about 40 m/s²),
+    // so its limit is 3 m/s; a one-substep stop, the jolt itself, shows in the per-call cut.
+    for (const dt of [1 / 60, 0.05]) {
+      let largestCut = 0;
+      const watched: Guard = {
+        cap(x, z, yaw, vx, vz) {
+          const out = G.guard!.cap(x, z, yaw, vx, vz);
+          largestCut = Math.max(largestCut, Math.hypot(vx, vz) - Math.hypot(out.vx, out.vz));
+          return out;
+        },
+        blocksTurn: (x, z, fromYaw, toYaw) => G.guard!.blocksTurn(x, z, fromYaw, toYaw),
+      };
+      const start = moving(5.17, 20.91, 2.2689, 8);
+      const frames = drive(start, { throttle: 1 }, Math.round(15 / dt), dt, { cloud: false, guard: watched }, COLS);
+      const speeds = [start, ...frames.map((f) => f.s)].map((s) => Math.hypot(s.vx, s.vz));
+      const worstLoss = Math.max(...speeds.slice(1).map((v, k) => speeds[k] - v));
+      expect(largestCut).toBeLessThanOrEqual(1);
+      expect(worstLoss).toBeLessThanOrEqual(dt * 60 + 1e-9);
+      expect(contacts(frames)).toEqual([]);
+      expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(0.49);
+    }
+  });
+
   it('a sweep of headings into both corridor mouths never lets the hull touch or crowd either army', () => {
     const [dharma, adharma] = ZONE_BOXES as Box[];
     const stopGap = HULL.r + GUARD.stop;
@@ -449,7 +474,7 @@ describe('the guard at the ranks', () => {
     expect(failures).toEqual([]);
   });
 
-  it('after one call to cap, no hull circle closes on a zone faster than guardCap allows, in wedged poses', () => {
+  it('after one call to cap, no hull circle closes on a zone faster than guardCap allows, and removed is |Δv|', () => {
     interface Moving {
       x: number;
       z: number;
@@ -478,6 +503,8 @@ describe('the guard at the ranks', () => {
     ]);
     let worst = -Infinity;
     let worstAt = '';
+    let worstRemoved = 0;
+    let worstRemovedAt = '';
     for (const p of poses) {
       const velocities = [{ vx: p.vx, vz: p.vz }];
       for (let k = 0; k < 24; k++) {
@@ -487,9 +514,12 @@ describe('the guard at the ranks', () => {
         const out = G.guard!.cap(p.x, p.z, p.yaw, v.vx, v.vz);
         const excess = worstClosingExcess(p.x, p.z, p.yaw, out.vx, out.vz);
         if (excess > worst) [worst, worstAt] = [excess, JSON.stringify({ ...p, in: v, out })];
+        const off = Math.abs(out.removed - Math.hypot(v.vx - out.vx, v.vz - out.vz));
+        if (off > worstRemoved) [worstRemoved, worstRemovedAt] = [off, JSON.stringify({ ...p, in: v, out })];
       }
     }
     expect(worst, worstAt).toBeLessThanOrEqual(1e-9);
+    expect(worstRemoved, worstRemovedAt).toBeLessThanOrEqual(1e-12);
   });
 
   it('ramming stops short: held from 0.3 s, at rest with the front circle 0.5 m from the face', () => {
