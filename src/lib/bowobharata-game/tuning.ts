@@ -33,3 +33,6 @@ export const MISSION_TIMING = {
   gateWidth: 6, gateGap: 3, dayLineHalf: 11.5, postWidth: 8,
   lapMatch: 0.15, maxLaps: 5, retryMinSeconds: 60,
 } as const;
+
+/** Krishna's sight: `seconds` of slowed world per full charge, `rechargeSeconds` to refill from empty. */
+export const SIGHT = { seconds: 4, rechargeSeconds: 10, minStart: 0.15, worldScale: 0.5 } as const;
