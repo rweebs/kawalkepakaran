@@ -398,6 +398,17 @@ describe('island wiring (source)', () => {
     }
   });
 
+  it('claims the game keys only once the chapter has started on this runtime: a play still waiting for its data leaves Enter and Space to the data error\'s Retry', () => {
+    const driving = src.match(/const driving = \(\) => \{([\s\S]*?)\n {4}\};/)?.[1] ?? '';
+    expect(driving).toContain("f.screen === 'play' && f.mode === '3d' && !f.paused");
+    expect(driving).toContain("issued.current.rt === rt && issued.current.screen === 'play'");
+    // The play is marked as issued only after the data check, so a play without data never claims the keys.
+    expect(src).toMatch(/if \(flow\.screen === 'play' && !data\) return;\s*issued\.current = \{ rt, screen: flow\.screen, chapter: flow\.chapter \};/);
+    // Both key handlers ask driving() before they claim a key.
+    expect(src).toMatch(/if \(!driving\(\)\) return;\s*e\.preventDefault\(\);/);
+    expect(src).toMatch(/keyAction\(e\.code\) !== null && driving\(\)\) e\.preventDefault\(\);/);
+  });
+
   it('feeds the session settings to the input: steering assist and easy control', () => {
     expect(src).toContain('const [settings, setSettings] = useState<Settings>({ assist: false, easy: false });');
     expect(src).toMatch(/keyboardInput\(keys\.current, steer\.current, dt, \{ on: s\.easy, speed: /);

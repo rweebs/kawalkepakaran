@@ -273,13 +273,16 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   }, []);
 
   // The keyboard, on window and by e.code. The page's text fields keep their keys, and so does any key with Ctrl, Alt or
-  // Cmd. While a 3D play runs, Esc or P pauses and resumes, and the game's keys drive (their default action is
-  // suppressed, so arrows do not scroll and Space does not press a focused button); while paused the keys are the
-  // page's again. A lost focus or a hidden tab lets go of every held key.
+  // Cmd. While a 3D play runs, Esc or P pauses and resumes, and once its chapter has started the game's keys drive (their
+  // default action is suppressed, so arrows do not scroll and Space does not press a focused button); while paused, and
+  // while a play still waits for its data, the keys are the page's, so the data error's Retry takes Enter and Space. A
+  // lost focus or a hidden tab lets go of every held key.
   useEffect(() => {
     const driving = () => {
       const f = flowRef.current;
-      return f.screen === 'play' && f.mode === '3d' && !f.paused && runtimeRef.current !== null;
+      const rt = runtimeRef.current;
+      // The command effect marks a play as issued only once it has started (or retried) the chapter on this runtime.
+      return f.screen === 'play' && f.mode === '3d' && !f.paused && rt !== null && issued.current.rt === rt && issued.current.screen === 'play';
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
