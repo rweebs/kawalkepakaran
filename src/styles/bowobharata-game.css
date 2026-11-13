@@ -1,6 +1,6 @@
 /* BOWOBHARATA game island. Uses the site tokens from global.css; cards wrap long names and dossier text. */
 .bg-game { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; color: var(--text-primary); }
-.bg-game[data-mode='3d']:not([data-screen='gate']) { min-height: min(88vh, 46rem); }
+.bg-game[data-mode='3d']:not([data-screen='gate']) { height: min(100svh, 56rem); grid-template-rows: minmax(0, 1fr); }
 
 .bg-stage { position: absolute; inset: 0; border-radius: var(--radius-lg); overflow: hidden; background: var(--gradient-hero); }
 .bg-canvas { display: block; width: 100%; height: 100%; }
@@ -8,10 +8,10 @@
 .bg-surface:focus-visible { outline: 2px solid var(--text-accent); outline-offset: -2px; }
 .bg-reticle { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border: 2px solid var(--accent-amber); border-radius: var(--radius-full); pointer-events: none; }
 
-.bg-screen, .bg-hud, .bg-cards { position: relative; z-index: 1; }
-.bg-screen { display: grid; gap: 0.75rem; max-width: 46rem; width: 100%; margin: 0 auto; padding: 1.25rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg);
+.bg-screen, .bg-cards { position: relative; z-index: 1; }
+.bg-screen { display: grid; align-content: start; gap: 0.75rem; max-width: 46rem; width: 100%; margin: 0 auto; padding: 1.25rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg);
   background: var(--bg-card); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); overflow-wrap: anywhere; box-sizing: border-box; }
-.bg-game[data-mode='3d'] .bg-screen { background: rgba(11, 16, 32, 0.86); }
+.bg-game[data-mode='3d'] .bg-screen { background: rgba(11, 16, 32, 0.86); min-height: 0; max-height: 100%; overflow-y: auto; align-self: start; }
 .bg-screen h2, .bg-screen h3 { margin: 0; }
 .bg-screen p { margin: 0; }
 .bg-title { font-size: clamp(1.8rem, 6vw, 2.6rem); letter-spacing: 0.08em; }
@@ -19,8 +19,8 @@
 .bg-note { color: var(--text-secondary); }
 .bg-episode { color: var(--text-secondary); font-style: italic; }
 .bg-krishna { margin: 0; padding-left: 0.9rem; border-left: 3px solid var(--accent-blue); color: var(--text-accent); }
-.bg-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.25rem; }
-.bg-game .btn { min-height: 44px; min-width: 44px; }
+.bg-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.75rem; margin-top: 0.25rem; }
+.bg-game .btn { min-height: 44px; min-width: 44px; align-self: flex-start; }
 .bg-game a { color: var(--text-accent); display: inline-block; min-height: 44px; line-height: 44px; }
 .bg-game .bg-allegation a, .bg-game .bg-rows a { min-height: 0; line-height: inherit; padding: 0.6rem 0; margin: -0.6rem 0; }
 
@@ -41,7 +41,15 @@
 .bg-catch__meta { color: var(--accent-amber); font-size: 0.85rem; }
 .bg-taken { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
 
-.bg-hud { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.5rem 0.75rem; margin: 0.75rem 0.75rem 0; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
+/* HUD: transparent overlay over the stage; each panel is pinned to a corner. */
+.bg-hud { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.bg-hud button { pointer-events: auto; }
+.bg-objective { position: absolute; top: 0.75rem; left: 0.75rem; max-width: min(22rem, 46%); display: grid; gap: 0.25rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
+.bg-hint { margin: 0; color: var(--text-secondary); font-size: 0.8rem; background: none; }
+.bg-radar-slot { position: absolute; top: 0.75rem; right: 0.75rem; }
+.bg-gauges { position: absolute; bottom: 0.75rem; right: 0.75rem; display: grid; gap: 0.35rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
+.bg-toasts { position: absolute; bottom: 0.75rem; left: 0.75rem; display: grid; gap: 0.35rem; max-width: min(22rem, 60%); }
+.bg-hud[data-touch] .bg-toasts { top: 5.5rem; bottom: auto; }
 .bg-hud dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; }
 .bg-hud dl div { display: flex; gap: 0.35rem; }
 .bg-hud dt { color: var(--text-secondary); font-size: 0.85rem; }
@@ -52,10 +60,26 @@
 .bg-cards .bg-catch { max-width: 28rem; background: rgba(11, 16, 32, 0.88); pointer-events: auto; }
 .bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 2; }
 
+/* Play surface and intro cinema. */
+.bg-stage[data-play='on'] { touch-action: none; }
+.bg-stage[data-cine='on']::before, .bg-stage[data-cine='on']::after { content: ''; position: absolute; left: 0; right: 0; height: 8%; background: #000; pointer-events: none; z-index: 2; }
+.bg-stage[data-cine='on']::before { top: 0; }
+.bg-stage[data-cine='on']::after { bottom: 0; }
+.bg-mission { position: absolute; left: 0.75rem; bottom: calc(8% + 0.75rem); max-width: min(28rem, 80%); z-index: 3; }
+.bg-wipe { display: none; }
+.bg-stage[data-cine='on'] .bg-wipe { display: block; position: absolute; inset: 0; background: var(--bg-primary, #0b1020); pointer-events: none; z-index: 3;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%); transition: clip-path 1.2s ease-in; }
+
 @media (max-width: 480px) {
   .bg-screen { padding: 1rem; }
   .bg-posters { grid-template-columns: minmax(0, 1fr); }
-  .bg-hud { margin: 0.5rem 0.5rem 0; }
+  .bg-objective { top: 0.5rem; left: 0.5rem; }
+  .bg-radar-slot { top: 0.5rem; right: 0.5rem; }
+  .bg-gauges { bottom: 0.5rem; right: 0.5rem; }
+  .bg-toasts { left: 0.5rem; }
   .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
 }
-@media (prefers-reduced-motion: reduce) { .bg-game * { transition: none !important; animation: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .bg-game * { transition: none !important; animation: none !important; }
+  .bg-stage[data-cine='on'] .bg-wipe { display: none; clip-path: none; }
+}
