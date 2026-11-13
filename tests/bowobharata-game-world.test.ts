@@ -497,6 +497,31 @@ describe('the guard at the ranks', () => {
     expect(leastZoneClearance(frames)).toBeGreaterThanOrEqual(0.49);
   });
 
+  it('held in creeping wedges for 120 s at 0.05 s frames, the hull never gets 2 mm inside the stop distance', () => {
+    const wedges = [
+      // The review's fastest creep under 32 passes.
+      { start: moving(1.3674878804013133, 17.695108172949404, 2.1700499659657444, 2.717661920003593), steer: 0 },
+      // A wedge whose passes leave a residual above 1e-5 m/s: a looser creep tolerance lets it in by about 2 cm.
+      { start: moving(-1.2807483784854412, 16.478228389285505, 1.1241694589474183, 5.6438326220959425), steer: 0.5 },
+    ];
+    for (const { start, steer } of wedges) {
+      const frames = drive(start, { throttle: 1, steer }, 2400, 0.05, G, COLS);
+      expect(contacts(frames)).toEqual([]);
+      expect(GUARD.stop - leastZoneClearance(frames)).toBeLessThanOrEqual(0.002);
+    }
+  });
+
+  it('no needless stop: settling the review wedge keeps its speed (one call, and the drive that meets it)', () => {
+    // A full settle keeps 1.976 m/s here; a pass bound too low left a residual above the creep and stopped it dead.
+    const out = G.guard!.cap(-0.98493161915214478, -46.029557933779756, 5.2905521816484296, 1.0952485035921367, 2.3428806390908026);
+    expect(Math.abs(Math.hypot(out.vx, out.vz) - 1.976)).toBeLessThanOrEqual(0.05);
+    const { env, cut } = watchedGuard();
+    const start = moving(-1.9250847101211548, -47.732484102249146, 5.2905521816484296, 5.8991140723228455);
+    const frames = drive(start, { throttle: 1, boost: true }, 60, 1 / 60, env, COLS);
+    expect(contacts(frames).filter((c) => c.figure)).toEqual([]);
+    expect(cut.largest).toBeLessThanOrEqual(1);
+  });
+
   it('after one call to cap, no hull circle closes on a zone over 1e-5 m/s faster than guardCap allows; removed is |Δv|', () => {
     interface Moving {
       x: number;

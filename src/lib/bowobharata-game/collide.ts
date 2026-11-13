@@ -177,8 +177,11 @@ function guardNormal(c: XZ, b: Box, vx: number, vz: number): { nx: number; nz: n
   return { nx, nz, d };
 }
 
-/** Passes over the (hull circle, figure) pairs before the guard scales the velocity down instead. */
-const GUARD_PASSES = 32;
+/**
+ * Passes over the (hull circle, figure) pairs before the guard scales the velocity down instead. Wedges across a
+ * corridor mouth can need over 100; with fewer, a residual just above GUARD_CREEP gave λ = 0 and a needless stop.
+ */
+const GUARD_PASSES = 128;
 /** A pass whose largest removal is no more than this (m/s) has settled every pair. */
 const SETTLED = 1e-12;
 /**
