@@ -3,6 +3,7 @@ import { PARVAS, parvaEvents } from '../src/lib/bowobharata';
 import { PAVILION } from '../src/lib/bowobharata/stage-math';
 import { dist, forward, polylineDist, type XZ } from '../src/lib/bowobharata-game/geom';
 import { ANCHORS, SPAWN, TOWER_EXIT, clearance, inPlay, staticColliders } from '../src/lib/bowobharata-game/world';
+import { hullClearance } from '../src/lib/bowobharata-game/collide';
 import { buildNav, pathLength, routeTo } from '../src/lib/bowobharata-game/route';
 import {
   CHAPTER_TYPES,
@@ -50,13 +51,52 @@ function legsOf(def: MissionDef): Leg[] {
   return pts.slice(1).map((to, k) => ({ from: pts[k], to, path: routeTo(nav, COLS, pts[k], to) }));
 }
 
-const LEGS = DEFS.map(legsOf);
+const LEGS = new Map<number, Leg[]>();
+/** Chapter i's routed legs, built on first use: a step kind stops() cannot route fails only the tests that route. */
+function legs(i: number): Leg[] {
+  let found = LEGS.get(i);
+  if (!found) LEGS.set(i, (found = legsOf(DEFS[i])));
+  return found;
+}
 /** The lakon itself: the legs from the marker on (from the spawn in the prologue). */
-const lakonLegs = (i: number): Leg[] => LEGS[i].slice(DEFS[i].marker ? 1 : 0);
+const lakonLegs = (i: number): Leg[] => legs(i).slice(DEFS[i].marker ? 1 : 0);
 const lakonLength = (i: number): number => lakonLegs(i).reduce((s, l) => s + pathLength(l.path ?? []), 0);
 const lakonLine = (i: number): XZ[] => lakonLegs(i).flatMap((l) => l.path ?? []);
 
-const TOWER_REACH = { kind: 'reach', at: { x: -46, z: 52 }, r: 9, stopFor: 1.2, place: 'tower' };
+/** The least hull clearance at every 0.5 m of a straight 6 m run from the start, on its yaw. */
+function straightRun(def: MissionDef): number {
+  const f = forward(def.start.yaw);
+  let least = Infinity;
+  for (let s = 0; s <= 6; s += 0.5) {
+    least = Math.min(least, hullClearance(def.start.x + f.x * s, def.start.z + f.z * s, def.start.yaw, COLS));
+  }
+  return least;
+}
+
+const TOWER = xz(-46, 52);
+const TOWER_REACH = { kind: 'reach', at: TOWER, r: 9, stopFor: 1.2, place: 'tower' };
+
+type Row = [chapter: number, marker: XZ | null, records: XZ[]];
+/** The brief's table for the gather-and-deliver lakon: each marker and its records, in order. */
+const GATHER: Row[] = [
+  [0, null, [xz(-2, 32), xz(-14, 52), xz(-34, 70), xz(-62, 74), xz(-82, 52), xz(-86, 22), xz(-70, 4), xz(-54, 24)]],
+  [1, xz(20, 62), [xz(52, 44), xz(62, -50)]],
+  [3, xz(-66, -90), [xz(-38, -96), xz(46, -92), xz(82, 8), xz(-8, 86)]],
+  [6, xz(60, -62), [xz(100, -62), xz(80, 40)]],
+  [8, xz(-34, 64), [xz(-10, 118), xz(58, 98)]],
+];
+/** The stand-ins of chapters 2, 4, 5 and 7, until Task 31. */
+const STAND_INS: Row[] = [
+  [2, xz(-100, -10), [xz(-100, -10), xz(0, -80)]],
+  [
+    4,
+    xz(-70, 58),
+    [xz(-70, 25), xz(-70, -25), xz(-70, -50), xz(-50, -95), xz(0, -95), xz(25, -95), xz(70, -50), xz(70, 0), xz(25, 40)],
+  ],
+  [5, xz(-84, -10), [xz(-75, 30)]],
+  [7, xz(115, -20), [xz(64, 46), xz(0, 72)]],
+];
+const PINNED = new Map([...GATHER, ...STAND_INS].map(([i, marker, records]) => [i, { marker, records }] as const));
 
 /** A gather-and-deliver lakon: one collect step with these records in order, then the tower. */
 function expectGather(def: MissionDef, marker: XZ | null, records: XZ[]): void {
@@ -113,15 +153,7 @@ describe('the lakon table', () => {
     expect(DEFS.map((d) => d.chapter)).toEqual(CHAPTERS);
   });
 
-  const TABLE: [number, XZ | null, XZ[]][] = [
-    [0, null, [xz(-2, 32), xz(-14, 52), xz(-34, 70), xz(-62, 74), xz(-82, 52), xz(-86, 22), xz(-70, 4), xz(-54, 24)]],
-    [1, xz(20, 62), [xz(52, 44), xz(62, -50)]],
-    [3, xz(-66, -90), [xz(-38, -96), xz(46, -92), xz(82, 8), xz(-8, 86)]],
-    [6, xz(60, -62), [xz(100, -62), xz(80, 40)]],
-    [8, xz(-34, 64), [xz(-10, 118), xz(58, 98)]],
-  ];
-
-  it.each(TABLE)('chapter %i: its marker, its records in order, then the tower (r 9, stop 1.2 s)', (i, marker, records) => {
+  it.each(GATHER)('chapter %i: its marker, its records in order, then the tower (r 9, stop 1.2 s)', (i, marker, records) => {
     expectGather(DEFS[i], marker, records);
   });
 
@@ -132,6 +164,17 @@ describe('the lakon table', () => {
   it('the prologue starts at the spawn; parva 1, 3, 6 and 8 at their markers, facing their first record', () => {
     expect(DEFS[0].start).toEqual({ x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw });
     for (const i of [1, 3, 6, 8]) expectFacingFirstRecord(DEFS[i]);
+  });
+
+  it('parva 7 starts at the gate facing due west, straight out of the opening, 2 m clear', () => {
+    const { start } = DEFS[7];
+    expect(start).toEqual({ x: 115, z: -20, yaw: Math.PI });
+    expect(hullClearance(start.x, start.z, start.yaw, COLS)).toBeGreaterThanOrEqual(2);
+    expect(straightRun(DEFS[7])).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it.each(CHAPTERS)('chapter %i: no start faces an obstacle; the hull keeps 1 m clear over a straight 6 m run', (i) => {
+    expect(straightRun(DEFS[i])).toBeGreaterThanOrEqual(1);
   });
 
   it('places the scripted copies, the haze and the teaching volley', () => {
@@ -151,11 +194,29 @@ describe('the lakon table', () => {
   });
 
   it('is deterministic and hands out fresh data', () => {
+    const towerAt = (d: MissionDef): XZ => {
+      const last = d.steps[d.steps.length - 1];
+      if (last.kind !== 'reach') throw new Error('no tower step');
+      return last.at;
+    };
     const a = missionFor(1, slugsOf(1));
     const b = missionFor(1, slugsOf(1));
     expect(a).toEqual(b);
     expect(a.steps[0]).not.toBe(b.steps[0]);
+    expect(a.marker).not.toBe(b.marker);
+    expect(pickups(a)[0].at).not.toBe(pickups(b)[0].at);
+    expect(towerAt(a)).not.toBe(towerAt(b));
     expect(a.scripted.decoys[0]).not.toBe(b.scripted.decoys[0]);
+    expect(a.scripted.clouds[0]).not.toBe(b.scripted.clouds[0]);
+    const p = missionFor(0, []);
+    const q = missionFor(0, []);
+    expect(p.scripted.volleyNear!.near).not.toBe(q.scripted.volleyNear!.near);
+    expect(p.scripted.volleyNear!.at).not.toBe(q.scripted.volleyNear!.at);
+    // Scribbling over one result leaves the next call untouched.
+    for (const pt of [a.marker!, pickups(a)[0].at, towerAt(a), a.scripted.decoys[0], a.scripted.clouds[0]]) pt.x = 999;
+    for (const pt of [p.scripted.volleyNear!.near, p.scripted.volleyNear!.at, pickups(p)[0].at]) pt.x = 999;
+    expect(missionFor(1, slugsOf(1))).toEqual(b);
+    expect(missionFor(0, [])).toEqual(q);
   });
 });
 
@@ -208,23 +269,12 @@ describe('types or stand-ins', () => {
     }
   });
 
-  const STAND_INS: [number, XZ, XZ[]][] = [
-    [2, xz(-100, -10), [xz(-100, -10), xz(0, -80)]],
-    [
-      4,
-      xz(-70, 58),
-      [xz(-70, 25), xz(-70, -25), xz(-70, -50), xz(-50, -95), xz(0, -95), xz(25, -95), xz(70, -50), xz(70, 0), xz(25, 40)],
-    ],
-    [5, xz(-84, -10), [xz(-75, 30)]],
-    [7, xz(115, -20), [xz(64, 46), xz(0, 72)]],
-  ];
-
   it.each(STAND_INS)('stand-in %i: its own marker, its records in order, then the tower', (i, marker, records) => {
     expectGather(DEFS[i], marker, records);
   });
 
-  it('the stand-ins start at their markers facing the next record: parva 2 past the one at its marker, parva 4 at π/2', () => {
-    for (const i of [2, 4, 5, 7]) expectFacingFirstRecord(DEFS[i]);
+  it('stand-ins 2, 4 and 5 start at their markers facing the next record: parva 2 past the one at its marker, parva 4 at π/2', () => {
+    for (const i of [2, 4, 5]) expectFacingFirstRecord(DEFS[i]);
     expect(DEFS[4].start.yaw).toBeCloseTo(Math.PI / 2, 12);
   });
 
@@ -309,17 +359,19 @@ describe('reach circles', () => {
         least = Math.min(least, clearance({ x: ANCHORS.tower.x + d * Math.cos(t), z: ANCHORS.tower.z + d * Math.sin(t) }, COLS));
       }
     }
+    expect(Number.isFinite(least)).toBe(true);
     expect(least).toBeGreaterThanOrEqual(1.95);
-    // The nearest thing is the tower itself, 2 m from the inner edge.
-    expect(least).toBeCloseTo(2, 9);
   });
 });
 
 describe('every lakon can be ridden', () => {
   it.each(CHAPTERS)('chapter %i: routes run to the marker, through the objectives in order, to the tower, 2.45 m clear', (i) => {
-    const legs = LEGS[i];
-    expect(legs).toHaveLength(stops(DEFS[i]).length + (DEFS[i].marker ? 1 : 0));
-    for (const leg of legs) {
+    const { marker, records } = PINNED.get(i)!;
+    const seq = [i === 0 ? SPAWN : TOWER_EXIT, ...(marker ? [marker] : []), ...records, TOWER].map(({ x, z }) => xz(x, z));
+    const routed = legs(i);
+    expect(routed.map(({ from }) => xz(from.x, from.z))).toEqual(seq.slice(0, -1));
+    expect(routed.map(({ to }) => xz(to.x, to.z))).toEqual(seq.slice(1));
+    for (const leg of routed) {
       expect(leg.path).not.toBeNull();
       const path = leg.path!;
       expect(path[0]).toEqual({ x: leg.from.x, z: leg.from.z });

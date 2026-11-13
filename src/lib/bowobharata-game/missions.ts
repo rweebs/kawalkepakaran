@@ -62,10 +62,14 @@ export const REAL_DAYS_P4 = [1, 3, 4, 6, 8, 9, 12, 14, 17] as const;
 
 const xz = (x: number, z: number): XZ => ({ x, z });
 
-/** One row of the lakon table. `records` are in slug order: record k carries slug k and card k. */
+/**
+ * One row of the lakon table. `records` are in slug order: record k carries slug k and card k. The start faces the
+ * first record away from the marker unless `yaw` sets it.
+ */
 interface Lakon {
   marker: XZ | null;
   records: XZ[];
+  yaw: number | null;
   standIn: boolean;
   softTime: number | null;
   decoyLimit: number | null;
@@ -77,6 +81,7 @@ interface Lakon {
 }
 
 const BASE: Omit<Lakon, 'marker' | 'records' | 'softTime' | 'decoyLimit'> = {
+  yaw: null,
   standIn: false,
   decoys: [],
   clouds: [],
@@ -131,6 +136,7 @@ const LAKON: Lakon[] = [
     ...BASE,
     marker: xz(115, -20),
     records: [xz(64, 46), xz(0, 72)],
+    yaw: Math.PI, // Due west, straight out of the gate opening: the one start that does not face its first objective.
     standIn: true,
     softTime: 120,
     decoyLimit: 3,
@@ -140,7 +146,7 @@ const LAKON: Lakon[] = [
   { ...BASE, marker: xz(-34, 64), records: [xz(-10, 118), xz(58, 98)], softTime: null, decoyLimit: null, dawn: true },
 ];
 
-const copy = (p: XZ): XZ => ({ x: p.x, z: p.z });
+const clonePt = (p: XZ): XZ => ({ x: p.x, z: p.z });
 
 /** The yaw from the marker toward the first record away from it, or toward the tower when there is none. */
 function facing(marker: XZ, records: readonly XZ[]): number {
@@ -161,28 +167,30 @@ export function missionFor(chapter: number, slugs: readonly string[]): MissionDe
   }
   const items: PickupDef[] = row.records.map((at, k) => ({
     id: prologue ? `L${k + 1}` : String.fromCharCode(65 + k),
-    at: copy(at),
+    at: clonePt(at),
     slug: prologue ? null : slugs[k],
     visual: prologue ? 'arrow' : 'lontar',
     card: k,
   }));
-  const tower: StepDef = { kind: 'reach', at: copy(ANCHORS.tower), r: RECORD_CIRCLE, stopFor: MISSION_TIMING.stopFor, place: 'tower' };
+  const tower: StepDef = { kind: 'reach', at: clonePt(ANCHORS.tower), r: RECORD_CIRCLE, stopFor: MISSION_TIMING.stopFor, place: 'tower' };
   const { marker } = row;
   return {
     chapter,
     type: row.standIn ? 'himpun' : CHAPTER_TYPES[chapter],
     standIn: row.standIn,
-    marker: marker && copy(marker),
-    start: marker ? { x: marker.x, z: marker.z, yaw: facing(marker, row.records) } : { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw },
+    marker: marker && clonePt(marker),
+    start: marker
+      ? { x: marker.x, z: marker.z, yaw: row.yaw ?? facing(marker, row.records) }
+      : { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw },
     steps: [{ kind: 'collect', items }, tower],
     softTime: row.softTime,
     legTimes: null,
     decoyLimit: row.decoyLimit,
     riuh: { start: 0, frozen: false, volleys: true },
     scripted: {
-      decoys: row.decoys.map(copy),
-      clouds: row.clouds.map(copy),
-      volleyNear: row.volleyNear && { near: copy(row.volleyNear.near), r: row.volleyNear.r, at: copy(row.volleyNear.at) },
+      decoys: row.decoys.map(clonePt),
+      clouds: row.clouds.map(clonePt),
+      volleyNear: row.volleyNear && { near: clonePt(row.volleyNear.near), r: row.volleyNear.r, at: clonePt(row.volleyNear.at) },
     },
     dawn: row.dawn,
     hints: row.hints,
