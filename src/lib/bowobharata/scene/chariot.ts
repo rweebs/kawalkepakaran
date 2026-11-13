@@ -159,14 +159,16 @@ function flagTexture(): THREE.CanvasTexture {
   });
 }
 
+/** The chakra's glowing metal, shared by its rings and spikes. */
+const chakraFire = () => std('#ffd76a', 0.3, 0.6, { emissive: '#ffc04a', emissiveIntensity: 2.6 });
+
 /**
  * The Sudarshana chakra's rings and spikes, emissive so the bloom pass (or the halo sprites beside them, on phones) makes them glow.
  * Given `spikes`, the spikes go in that group so it can turn them alone: a ring looks the same at any angle, and an unturned ring
- * keeps its bounding box square to the world (a turned one's box corners reach 0.54 m out).
+ * keeps its bounding box square to the world (a turned one's box corners reach 0.54 m out). `fire` is their material.
  */
-function chakraWheel(spikes?: THREE.Group): THREE.Group {
+function chakraWheel(spikes?: THREE.Group, fire = chakraFire()): THREE.Group {
   const g = new THREE.Group();
-  const fire = std('#ffd76a', 0.3, 0.6, { emissive: '#ffc04a', emissiveIntensity: 2.6 });
   g.add(mesh(new THREE.TorusGeometry(0.34, 0.04, 10, 48), fire), mesh(new THREE.TorusGeometry(0.18, 0.022, 8, 32), fire));
   const spike = new THREE.ConeGeometry(0.035, 0.15, 4);
   for (let i = 0; i < 16; i++) {
@@ -197,7 +199,7 @@ const crown = (M: Palette, y: number, tall = 1) => {
  * The page's Krishna: dark blue skin, yellow dhoti, a blue scarf, garland and armlets, the crown with its peacock feather, one
  * hand on the reins and the other raised to the chakra.
  */
-function pageKrishna(M: Palette): { group: THREE.Group; reinHand: THREE.Vector3; otherHand: THREE.Vector3; scarfJoints: THREE.Group[]; gear: THREE.Object3D[] } {
+function pageKrishna(M: Palette): { group: THREE.Group; reinHand: THREE.Vector3; otherHand: THREE.Vector3; gear: THREE.Object3D[] } {
   const f = humanFigure({
     skin: M.krishnaSkin,
     cloth: M.pitambara,
@@ -221,19 +223,14 @@ function pageKrishna(M: Palette): { group: THREE.Group; reinHand: THREE.Vector3;
   feather.name = 'krishna-feather';
   feather.rotation.z = 0.3;
   g.add(feather);
-  // The loose end of the scarf, streaming back from his shoulder in the wind.
-  const scarfEnd = hangingChain(3, 0.24, [0.07, 0.014], [0.05, 0.01], M.scarf, 'down');
-  scarfEnd.root.position.set(-0.08, 1.4, 0.1);
-  scarfEnd.root.rotation.z = -0.35;
-  g.add(scarfEnd.root);
-  return { group: g, reinHand: f.leftHand, otherHand: f.rightHand, scarfJoints: scarfEnd.joints, gear: [hair, crownMesh, feather] };
+  return { group: g, reinHand: f.leftHand, otherHand: f.rightHand, gear: [hair, crownMesh, feather] };
 }
 
 /**
  * Krishna as charioteer, with the chakra raised over him on the page. Driven, he is the game's rider (riders.ts) with both
  * hands on the reins, and the chakra becomes the prabha, a halo behind his head that only turns slowly.
  */
-function krishna(M: Palette, ctx: SceneContext, rider?: THREE.Group): { group: THREE.Group; wheelOfLight: THREE.Group; turning: THREE.Group; halo: THREE.Sprite; glows: THREE.Sprite[]; reinHand: THREE.Vector3; otherHand: THREE.Vector3; scarfJoints: THREE.Group[]; gear: THREE.Object3D[] } {
+function krishna(M: Palette, ctx: SceneContext, rider?: THREE.Group): { group: THREE.Group; wheelOfLight: THREE.Group; turning: THREE.Group; halo: THREE.Sprite; glows: THREE.Sprite[]; fire?: THREE.MeshStandardMaterial; reinHand: THREE.Vector3; otherHand: THREE.Vector3; scarfJoints: THREE.Group[]; gear: THREE.Object3D[] } {
   const drivable = !!rider;
   const page = rider ? undefined : pageKrishna(M);
   const g = rider ?? page!.group;
@@ -243,11 +240,13 @@ function krishna(M: Palette, ctx: SceneContext, rider?: THREE.Group): { group: T
   // What turns: the whole chakra on the page, the prabha's spikes alone when driven.
   let turning: THREE.Group;
   const glows: THREE.Sprite[] = [];
+  let fire: THREE.MeshStandardMaterial | undefined;
   if (drivable) {
     // The prabha holds only the rings and spikes, so its bounds are the metal the chase camera sees past (CHARIOT_SILHOUETTE in
     // chase.ts). Its glows hang beside it in his group: a sprite counts its whole quad in a bounding box.
     turning = new THREE.Group();
-    wheelOfLight = chakraWheel(turning);
+    fire = chakraFire();
+    wheelOfLight = chakraWheel(turning, fire);
     wheelOfLight.name = 'prabha';
     wheelOfLight.position.set(-0.1, 1.75, 0);
     wheelOfLight.rotation.y = Math.PI / 2;
@@ -267,9 +266,18 @@ function krishna(M: Palette, ctx: SceneContext, rider?: THREE.Group): { group: T
   halo.name = 'krishna-halo';
   halo.position.set(0, 1.4, 0);
   g.add(wheelOfLight, halo);
+  let scarfJoints: THREE.Group[] = [];
+  if (page) {
+    // The loose end of the scarf, streaming back from his shoulder in the wind.
+    const scarfEnd = hangingChain(3, 0.24, [0.07, 0.014], [0.05, 0.01], M.scarf, 'down');
+    scarfEnd.root.position.set(-0.08, 1.4, 0.1);
+    scarfEnd.root.rotation.z = -0.35;
+    g.add(scarfEnd.root);
+    scarfJoints = scarfEnd.joints;
+  }
   // Driven, the reins start at his wrists.
   const wrist = (side: 'left' | 'right') => new THREE.Vector3(...KRISHNA_ARMS.reins[side][2]);
-  return { group: g, wheelOfLight, turning, halo, glows, reinHand: page?.reinHand ?? wrist('left'), otherHand: page?.otherHand ?? wrist('right'), scarfJoints: page?.scarfJoints ?? [], gear: page?.gear ?? [] };
+  return { group: g, wheelOfLight, turning, halo, glows, fire, reinHand: page?.reinHand ?? wrist('left'), otherHand: page?.otherHand ?? wrist('right'), scarfJoints, gear: page?.gear ?? [] };
 }
 
 /** The page's Arjuna behind him in silver armour, the bow drawn: stave in the left hand, string to the right. */
@@ -395,8 +403,7 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
   let pulseQueued = false;
   let pulseFrom = -Infinity;
   // The prabha's rings and its two glows at full light, how lit it is now (0..1), and where it and the camera are.
-  const fire = drivable ? ((k.wheelOfLight.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial) : undefined;
-  const fireFull = fire?.emissiveIntensity ?? 0;
+  const fireFull = k.fire?.emissiveIntensity ?? 0;
   const glowFull = k.glows.map((s) => s.material.opacity);
   let prabhaLit = 1;
   const prabhaAt = new THREE.Vector3();
@@ -463,7 +470,9 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
           attr.needsUpdate = true;
         }
       });
-      scarfDriver(Math.sin(time * 1.9) * 0.3 + Math.sin(time * 0.7 + 1) * 0.15, dt);
+      // The wind that swings the page's scarf, and with the speed, the game riders' cloth.
+      const wind = Math.sin(time * 1.9) * 0.3 + Math.sin(time * 0.7 + 1) * 0.15;
+      if (!drivable) scarfDriver(wind, dt);
       if (drivable) {
         // The prabha only turns, slowly; the halo flares on a pulse and falls back over PULSE_FALL. A pulse called during a fall
         // waits for it to end, so calls coalesce, none is lost, and the halo rises at most twice a second.
@@ -472,7 +481,7 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
         const pulseK = Math.min(1, Math.max(0, 1 - (time - pulseFrom) / PULSE_FALL));
         (k.halo.material as THREE.SpriteMaterial).opacity = 0.12 + 0.2 * mix + 0.48 * pulseK;
         rollWheels(dt);
-        riders?.update(time, dt, motion);
+        riders?.update(time, dt, motion, wind);
         // The prabha dims as the camera comes round to its edge (prabhaLight), easing; face-on it keeps its full light.
         k.wheelOfLight.getWorldPosition(prabhaAt);
         k.wheelOfLight.getWorldDirection(prabhaAxis);
@@ -481,7 +490,7 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
         const lit = prabhaLight(facing);
         // The last millionth snaps, so face-on comes back to exactly its full light.
         prabhaLit = Math.abs(lit - prabhaLit) < 1e-6 ? lit : prabhaLit + (lit - prabhaLit) * (1 - Math.exp(-dt / PRABHA_EASE));
-        fire!.emissiveIntensity = fireFull * prabhaLit;
+        k.fire!.emissiveIntensity = fireFull * prabhaLit;
         for (let i = 0; i < k.glows.length; i++) k.glows[i].material.opacity = glowFull[i] * prabhaLit;
       } else {
         k.wheelOfLight.rotation.z = time * 2.2;

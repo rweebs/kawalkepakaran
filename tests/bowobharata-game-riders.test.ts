@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
-import { createChariot, type ChariotPart } from '../src/lib/bowobharata/scene/chariot';
+import { ARJUNA_ARMS, KRISHNA_ARMS, createChariot, type ChariotPart } from '../src/lib/bowobharata/scene/chariot';
+import { createRiders } from '../src/lib/bowobharata/scene/riders';
 import { createContext } from '../src/lib/bowobharata/scene/effects';
 import { createDetail } from '../src/lib/bowobharata/scene/materials';
 import { qualityFor } from '../src/lib/bowobharata/scene/quality';
 import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
+import { pagePrint } from './bowobharata-page-riders-print';
 
 // No DOM under vitest: a canvas whose 2D context swallows every call, so the texture painters run without drawing.
 function stubCanvas() {
@@ -54,37 +56,14 @@ function drive(part: ChariotPart, t: number, seconds: number, speed: number, yaw
 const worldOf = (o: THREE.Object3D) => o.getWorldPosition(new THREE.Vector3());
 
 describe('the page’s riders', () => {
-  // Recorded from the page chariot before the game's riders were built (drivable: false, root at the origin, before any
-  // update), on both tiers alike: mesh and line counts, vertex counts, the box and coordinate sum of the solid parts (the
-  // glows are left out: Krishna's 6 m halo would swallow any change), and the material colours.
-  const PAGE = {
-    krishna: { meshes: 44, lines: 0, sprites: 3, verts: 4729, sum: 15923.359, min: [0.175, 1.301, -0.3615], max: [1.165, 4.045, 0.3005], colours: ['120c0a', '1e3c96', '2f4c8c', 'd4a24a', 'f0b62a', 'f6f1e4', 'ffd76a', 'ffffff'] },
-    arjuna: { meshes: 20, lines: 1, sprites: 0, verts: 2879, sum: 6523.263, min: [-0.7156, 1.301, -0.194], max: [-0.035, 3.5215, 0.4192], colours: ['120c0a', '5b3a1e', '7a1e2a', 'b07e5a', 'c9ced8', 'd4a24a', 'efe6cf'] },
-  };
-  function fingerprint(rider: THREE.Object3D) {
-    let meshes = 0; let lines = 0; let sprites = 0; let verts = 0; let sum = 0;
-    const box = new THREE.Box3();
-    const colours = new Set<string>();
-    const p = new THREE.Vector3();
-    rider.traverse((n) => {
-      if ((n as THREE.Sprite).isSprite) sprites++;
-      if (!(n as THREE.Mesh).isMesh && !(n as THREE.Line).isLine) return;
-      if ((n as THREE.Mesh).isMesh) meshes++; else lines++;
-      const pos = (n as THREE.Mesh).geometry.getAttribute('position');
-      verts += pos.count;
-      for (let i = 0; i < pos.count; i++) { p.fromBufferAttribute(pos, i).applyMatrix4(n.matrixWorld); sum += p.x + p.y + p.z; }
-      box.expandByObject(n, true);
-      for (const m of ([] as THREE.Material[]).concat((n as THREE.Mesh).material)) colours.add((m as THREE.MeshStandardMaterial).color.getHexString());
-    });
-    const r = (v: number) => Math.round(v * 1e4) / 1e4;
-    return { meshes, lines, sprites, verts, sum: Math.round(sum * 1e3) / 1e3, min: box.min.toArray().map(r), max: box.max.toArray().map(r), colours: [...colours].sort() };
-  }
+  // Recorded with bowobharata-page-riders-print.ts from the unchanged page code: a detached checkout of feat/bowobharata-game
+  // at b664a05, whose src/lib/bowobharata/scene/ is the riders' base 486e625. Each mesh, line and sprite of both riders in
+  // traversal order (kind, name, geometry and its parameters, local shape sums, world matrix, material), as built and after a
+  // second of frames. Desktop and phone recorded identically.
+  const PAGE = JSON.parse(readFileSync('tests/fixtures/bowobharata-page-riders.json', 'utf8'));
 
-  it('builds Krishna and Arjuna exactly as before, on desktops and phones', () => {
-    for (const mobile of [false, true]) {
-      const part = chariot(false, mobile);
-      for (const name of ['krishna', 'arjuna'] as const) expect(fingerprint(named(part.object, name)), `${name} ${mobile}`).toEqual(PAGE[name]);
-    }
+  it('builds and moves Krishna and Arjuna exactly as before, part by part, on desktops and phones', () => {
+    for (const mobile of [false, true]) expect(pagePrint(mobile), `mobile ${mobile}`).toEqual(PAGE);
   });
 });
 
@@ -211,6 +190,7 @@ describe('the game’s riders in motion', () => {
   it('never whips the cloth forward when the chariot backs up from full speed', () => {
     const part = chariot(true);
     const tips = ['krishna-scarf-tip', 'krishna-sash-tip', 'arjuna-sash-tip'].flatMap((n) => allNamed(part.object, n));
+    expect(tips).toHaveLength(6);
     drive(part, 0, 4, 0);
     const rest = tips.map((tip) => worldOf(tip).x);
     let t = drive(part, 4, 4, 17);
@@ -227,19 +207,16 @@ describe('the game’s riders in motion', () => {
   it('keeps Krishna’s hands on the reins through every motion', () => {
     const part = chariot(true);
     const reins = (named(part.object, 'reins') as THREE.LineSegments).geometry.getAttribute('position');
-    const holds = [0, 1].map((side) => {
-      const hand = named(part.object, side ? 'krishna-hand-right' : 'krishna-hand-left');
-      return { hand, start: worldOf(hand) };
-    });
-    for (const { start } of holds) {
-      // Each fist closes round the start of its own side's reins.
-      let nearest = Infinity;
-      for (let i = 0; i < reins.count; i += 2) nearest = Math.min(nearest, start.distanceTo(new THREE.Vector3().fromBufferAttribute(reins, i)));
-      expect(nearest).toBeLessThan(0.05);
-    }
+    const starts = Array.from({ length: reins.count / 2 }, (_, i) => new THREE.Vector3().fromBufferAttribute(reins, i * 2));
+    const hands = ['left', 'right'].map((side) => named(part.object, `krishna-hand-${side}`));
+    // Every rein starts inside a fist, and each fist holds some.
+    const holds = (hand: THREE.Object3D, p: THREE.Vector3) => new THREE.Box3().setFromObject(hand).expandByScalar(0.005).containsPoint(p);
+    for (const p of starts) expect(hands.some((h) => holds(h, p)), `rein from ${p.toArray()}`).toBe(true);
+    for (const h of hands) expect(starts.some((p) => holds(h, p)), h.name).toBe(true);
+    const rest = hands.map(worldOf);
     let t = 0;
     for (const [speed, yawRate] of [[0, 0], [17, 1.2], [9, -1.4], [-5, 0.6]]) {
-      t = drive(part, t, 3, speed, yawRate, () => { for (const { hand, start } of holds) expect(worldOf(hand).distanceTo(start)).toBeLessThan(1e-9); });
+      t = drive(part, t, 3, speed, yawRate, () => hands.forEach((h, i) => expect(worldOf(h).distanceTo(rest[i])).toBeLessThan(1e-9)));
     }
   });
 
@@ -273,8 +250,86 @@ describe('the game’s riders in motion', () => {
     expect(spread(zs) + spread(xs)).toBeGreaterThan(0.01);
     expect(spread(zs)).toBeLessThan(0.08);
     expect(spread(xs)).toBeLessThan(0.08);
-    // At most 2 Hz: no frame moves the crown by more than 2π × 2 Hz × the sway's reach per second.
-    for (let i = 1; i < zs.length; i++) expect(Math.hypot(zs[i] - zs[i - 1], xs[i] - xs[i - 1])).toBeLessThan(2 * Math.PI * 2 * 0.08 * FRAME);
+    // Slowly: the crown crosses its mean side to side at most 8 times in 20 s, no faster than 0.2 Hz.
+    const mean = zs.reduce((sum, z) => sum + z, 0) / zs.length;
+    let crossings = 0;
+    for (let i = 1; i < zs.length; i++) if (Math.sign(zs[i] - mean) !== Math.sign(zs[i - 1] - mean)) crossings++;
+    expect(crossings).toBeGreaterThan(0);
+    expect(crossings).toBeLessThanOrEqual(8);
+  });
+
+  it('starts the cloth at its authored rest: the first frame moves no joint', () => {
+    const part = chariot(true);
+    const joints: THREE.Object3D[] = [];
+    for (const name of ['krishna', 'arjuna']) named(part.object, name).traverse((n) => { if (n.children.some((c) => c.name === 'cloth')) joints.push(n); });
+    expect(joints).toHaveLength(18);
+    const authored = joints.map((j) => [j.rotation.x, j.rotation.z]);
+    // Each end hangs a little back at rest.
+    expect(authored.filter(([, z]) => z < -0.05)).toHaveLength(6);
+    part.rig!.setMotion({ speed: 0, yawRate: 0, boost: false });
+    part.update(FRAME, 0);
+    joints.forEach((j, i) => {
+      expect(Math.abs(j.rotation.x - authored[i][0]), `joint ${i}`).toBeLessThan(1e-6);
+      expect(Math.abs(j.rotation.z - authored[i][1]), `joint ${i}`).toBeLessThan(1e-6);
+    });
+  });
+
+  it('swings the cloth with the wind it is given, the wind the page scarf swings in', () => {
+    const tipsAt = (wind: number) => {
+      const riders = createRiders(context(), { krishna: KRISHNA_ARMS.reins, arjuna: ARJUNA_ARMS.lowered });
+      const still = { speed: 0, yawRate: 0, boost: false };
+      for (let f = 1; f <= 180; f++) riders.update(f * FRAME, FRAME, still, wind);
+      const xs: number[] = [];
+      for (const g of [riders.krishna, riders.arjuna]) {
+        g.updateMatrixWorld(true);
+        g.traverse((n) => { if (n.name.endsWith('-tip')) xs.push(worldOf(n).x); });
+      }
+      return xs;
+    };
+    const ahead = tipsAt(0.45);
+    const behind = tipsAt(-0.45);
+    expect(ahead).toHaveLength(6);
+    ahead.forEach((x, i) => expect(x - behind[i], `tip ${i}`).toBeGreaterThan(0.08));
+  });
+});
+
+describe('Krishna’s hair', () => {
+  it('reads from behind: locks down the back of his neck, seen between the prabha’s rings', () => {
+    const part = chariot(true);
+    const solid = meshesUnder(named(part.object, 'krishna'));
+    const ray = new THREE.Raycaster();
+    // He stands at (0.55, 1.3, 0). Rays from behind at the back of his neck pass between the prabha's inner and outer rings.
+    for (const y of [1.5, 1.52, 1.54]) {
+      for (const z of [-0.03, 0, 0.03]) {
+        ray.set(new THREE.Vector3(-3, 1.3 + y, z), new THREE.Vector3(1, 0, 0));
+        expect(ray.intersectObjects(solid, false)[0]?.object.name, `y ${y}, z ${z}`).toBe('krishna-locks');
+      }
+    }
+  });
+});
+
+describe('Arjuna’s armour', () => {
+  it('is closed over his shoulders: rays straight down meet him within 8 cm of the breastplate’s top', () => {
+    for (const mobile of [false, true]) {
+      const part = chariot(true, mobile);
+      const solid = meshesUnder(named(part.object, 'arjuna'));
+      const ray = new THREE.Raycaster();
+      let rays = 0;
+      // He stands at (−0.55, 1.3, 0.1); the breastplate's top is 1.47 m up in his figure. Over his torso, inside the plate's
+      // rim, and over each shoulder guard.
+      for (let i = 0; i <= 17; i++) {
+        for (let k = 0; k <= 60; k++) {
+          const x = -0.08 + i * 0.01;
+          const z = -0.3 + k * 0.01;
+          if (((x - 0.004) / 0.07) ** 2 + (z / 0.15) ** 2 >= 1 && Math.hypot(x, Math.abs(z) - 0.24) >= 0.05) continue;
+          rays++;
+          ray.set(new THREE.Vector3(-0.55 + x, 5, 0.1 + z), new THREE.Vector3(0, -1, 0));
+          const hit = ray.intersectObjects(solid, false)[0];
+          expect(hit?.point.y ?? -Infinity, `x ${x.toFixed(2)}, z ${z.toFixed(2)}, mobile ${mobile}`).toBeGreaterThanOrEqual(1.3 + 1.47 - 0.08);
+        }
+      }
+      expect(rays).toBeGreaterThan(200);
+    }
   });
 });
 
@@ -291,8 +346,15 @@ describe('the prabha behind the game’s Krishna', () => {
       for (const m of gear) for (const mat of ([] as THREE.Material[]).concat(m.material)) mat.side = THREE.DoubleSide;
       const spikes = named(part.object, 'prabha').getObjectsByProperty('isMesh', true).filter((m) => (m as THREE.Mesh).geometry.type === 'ConeGeometry');
       expect(spikes).toHaveLength(16);
-      // Each spike's tip, and the corners and centre of its base (ConeGeometry(0.035, 0.15, 4): apex at y +0.075).
-      const LOCAL = [[0, 0.075, 0], [0, -0.075, 0], [0.035, -0.075, 0], [-0.035, -0.075, 0], [0, -0.075, 0.035], [0, -0.075, -0.035], [0, 0, 0]].map((p) => new THREE.Vector3(...p));
+      // Each spike (ConeGeometry(0.035, 0.15, 4): apex at y +0.075, base corners 0.035 out on x and z at y −0.075): its tip,
+      // its middle, the centre and corners of its base, five points down each sloping edge and three along each base edge.
+      const apex = new THREE.Vector3(0, 0.075, 0);
+      const corners = [[0.035, 0], [0, 0.035], [-0.035, 0], [0, -0.035]].map(([x, z]) => new THREE.Vector3(x, -0.075, z));
+      const LOCAL = [apex, new THREE.Vector3(), new THREE.Vector3(0, -0.075, 0), ...corners];
+      corners.forEach((c, i) => {
+        for (let k = 1; k <= 5; k++) LOCAL.push(apex.clone().lerp(c, k / 6));
+        for (let k = 1; k <= 3; k++) LOCAL.push(c.clone().lerp(corners[(i + 1) % 4], k / 4));
+      });
       const sample = () => spikes.flatMap((s) => LOCAL.map((p) => p.clone().applyMatrix4(s.matrixWorld)));
       const ray = new THREE.Raycaster();
       let prev = sample();
@@ -313,18 +375,22 @@ describe('the prabha behind the game’s Krishna', () => {
         prev = now;
       }
     }
-  }, 60_000);
+  }, 120_000);
 });
 
 describe('the riders’ per-frame code', () => {
-  it('allocates nothing: no new, and no array helpers that build arrays or closures, from function animate( to the end', () => {
+  it('allocates nothing: no new, no closure, no array or object literal, no spread and no array helper, from function animate( to the end', () => {
     const src = readFileSync('src/lib/bowobharata/scene/riders.ts', 'utf8');
     const from = src.indexOf('function animate(');
     expect(from).toBeGreaterThan(0);
-    const frame = src.slice(from);
+    // The code only: comments may say anything.
+    const frame = src.slice(from).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(frame.length).toBeGreaterThan(500);
     expect(frame).not.toMatch(/\bnew\s/);
-    expect(frame).not.toMatch(/\.(map|filter|forEach|reduce|flatMap|slice|concat)\(/);
-    expect(frame).not.toMatch(/=>\s*\(?\{|\[\s*\.\.\./);
+    expect(frame).not.toMatch(/=>/);
+    expect(frame).not.toMatch(/[=(,:?]\s*[[{]/);
+    expect(frame).not.toMatch(/\.\.\./);
+    expect(frame).not.toMatch(/\.(map|filter|forEach|reduce|flatMap|slice|concat|some|every|find|from|of)\(/);
   });
 });
 
@@ -344,7 +410,10 @@ describe('the prabha seen from the side', () => {
   /** Reads the prabha's light: its rings' emissive intensity, then its two glows' opacities, the smaller glow first. */
   function lightOf(part: ChariotPart): () => number[] {
     const prabha = named(part.object, 'prabha');
-    const fire = (prabha.getObjectsByProperty('isMesh', true)[0] as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    // Its rings and spikes all glow in one material.
+    const fires = new Set(prabha.getObjectsByProperty('isMesh', true).map((m) => (m as THREE.Mesh).material));
+    expect(fires.size).toBe(1);
+    const fire = [...fires][0] as THREE.MeshStandardMaterial;
     const glows = named(part.object, 'krishna').children
       .filter((c) => (c as THREE.Sprite).isSprite && c.position.distanceTo(prabha.position) < 1e-9)
       .sort((a, b) => a.scale.x - b.scale.x) as THREE.Sprite[];

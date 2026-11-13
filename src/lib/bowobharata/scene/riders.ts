@@ -364,9 +364,12 @@ interface Rider {
 interface Cloth { joints: THREE.Group[]; base: number; phase: number; ang: Float64Array; vel: Float64Array; side: Float64Array; sideVel: Float64Array }
 function cloth(chain: { root: THREE.Group; joints: THREE.Group[] }, at: V3, base: number, phase: number): Cloth {
   chain.root.position.copy(at);
-  chain.root.rotation.z = base;
   const n = chain.joints.length;
-  return { joints: chain.joints, base, phase, ang: new Float64Array(n), vel: new Float64Array(n), side: new Float64Array(n), sideVel: new Float64Array(n) };
+  const c = { joints: chain.joints, base, phase, ang: new Float64Array(n), vel: new Float64Array(n), side: new Float64Array(n), sideVel: new Float64Array(n) };
+  // At rest the end hangs `base` back from its root, each segment straight on from the one above.
+  c.ang[0] = base;
+  pose(c);
+  return c;
 }
 
 // ---------------------------------------------------------------- Krishna
@@ -488,7 +491,13 @@ function buildKrishna(M: Mats, arms: RiderArms, t: Tier): Rider {
   gold.push(place(tint(new THREE.TorusGeometry(0.074, 0.007, seg(t, 6, 4), seg(t, 30, 14)), C.gold), 0.028, 1.475, 0, Math.PI / 2, 0.35, 0));
   gold.push(place(tint(ellipsoid(0.012, 0.016, 0.012, 8, 6), C.ruby), 0.104, 1.42, 0));
 
-  // Hair: locks parted over the shoulders and down the front, clear of the prabha behind him.
+  // Hair: locks parted over the shoulders and down the front, and three short ones down the back of his neck. Behind him they
+  // keep in front of x −0.075, clear of the prabha's inner ring (x −0.078 to −0.122), and end above y 1.47, over its outer ring.
+  for (const z of [-0.03, 0, 0.03]) {
+    const off = Math.abs(z) * 0.3;
+    locks.push(limb([vec(-0.056 + off, 1.66, z * 0.8), vec(-0.055 + off, 1.6, z), vec(-0.061 + off, 1.53, z * 1.05), vec(-0.064 + off, 1.48, z * 1.1)],
+      [[0.018, 0.009], [0.02, 0.009], [0.016, 0.008], [0.006, 0.004]], seg(t, 10, 6), seg(t, 6, 5), C.hair));
+  }
   for (const z of [-1, 1]) {
     for (const [dz, end] of [[0, 1.3], [0.025, 1.34], [-0.022, 1.36]]) {
       locks.push(limb([vec(-0.035, 1.67, z * (0.06 + dz * 0.3)), vec(-0.04, 1.58, z * (0.09 + dz * 0.5)), vec(-0.012, 1.5, z * (0.13 + dz)), vec(0.05, 1.43, z * (0.15 + dz)), vec(0.1, end, z * (0.15 + dz))],
@@ -629,9 +638,16 @@ function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
     place(tint(new THREE.CylinderGeometry(0.044, 0.044, 0.008, seg(t, 20, 12)), C.gold), heart.x + 0.002, heart.y, 0, 0, 0, Math.PI / 2),
     place(tint(ellipsoid(0.008, 0.014, 0.014, 8, 6), C.ruby), heart.x + 0.008, heart.y, 0),
   ];
+  // The yoke over his shoulders closes the plate's top, from its rim up and in under the neck guard.
+  const rim = new THREE.Vector3();
+  const yoke = surface(seg(t, 4, 2), seg(t, 40, 22), (v, u, o) => {
+    torsoAt(1.47, u * TAU, H, 1.08, 0.014, rim);
+    o.set(0.004 + Math.cos(u * TAU) * 0.08, 1.488, Math.sin(u * TAU) * 0.076).sub(rim).multiplyScalar(v).add(rim);
+    o.y += Math.sin(v * Math.PI) * 0.01;
+  }, (v) => (v < 0.2 ? C.gold : C.silver));
   const lames = [[0.985, 1.04, 0.018], [1.03, 1.08, 0.016], [1.07, 1.115, 0.015]].map(([y0, y1, g]) =>
     torso(y0, y1, H, 1.08, g, 3, seg(t, 40, 22), (v) => (v < 0.3 ? C.gold : C.silver)));
-  chest.add(part([plate, ...lames, ...disc], M.metal, 'arjuna-armour'));
+  chest.add(part([plate, yoke, ...lames, ...disc], M.metal, 'arjuna-armour'));
 
   // The head, which turns: face, hair, the tall kirita with its jewel bands and front plate, and earrings.
   const headGroup = new THREE.Group();
@@ -672,8 +688,11 @@ export interface GameRiders {
   /** Named 'krishna': the chariot adds his prabha and halo. */
   krishna: THREE.Group;
   arjuna: THREE.Group;
-  /** Each frame: scene time (s), the frame's dt (s) and the chariot's motion. */
-  update(time: number, dt: number, motion: ChariotMotion): void;
+  /**
+   * Each frame: scene time (s), the frame's dt (s), the chariot's motion and the wind, the same that swings the page's scarf
+   * (chariot.ts). The first frame has no frame before it, so everything starts at rest and moves from the next.
+   */
+  update(time: number, dt: number, motion: ChariotMotion, wind: number): void;
 }
 
 /**
@@ -685,10 +704,14 @@ export function createRiders(ctx: SceneContext, arms: { krishna: RiderArms; arju
   const t: Tier = { hi: ctx.quality.shadows };
   const k = buildKrishna(M, arms.krishna, t);
   const a = buildArjuna(M, arms.arjuna, t);
+  let started = false;
   return {
     krishna: k.group,
     arjuna: a.group,
-    update: (time, dt, motion) => animate(k, a, time, dt, motion.speed, motion.yawRate),
+    update(time, dt, motion, wind) {
+      animate(k, a, time, started ? dt : 0, motion.speed, motion.yawRate, wind);
+      started = true;
+    },
   };
 }
 
@@ -706,7 +729,7 @@ const CLOTH_K = 30;
 const CLOTH_C = 9.3;
 const CLOTH_STEP = 1 / 60;
 
-function animate(k: Rider, a: Rider, time: number, dt: number, speed: number, yawRate: number): void {
+function animate(k: Rider, a: Rider, time: number, dt: number, speed: number, yawRate: number, wind: number): void {
   const ease = 1 - Math.exp(-dt / HEAD_EASE);
   const turn = HEAD_TURN * Math.tanh(yawRate / 0.7);
   k.head.rotation.y += (turn - k.head.rotation.y) * ease;
@@ -716,25 +739,26 @@ function animate(k: Rider, a: Rider, time: number, dt: number, speed: number, ya
   const ab = 1 + BREATH * Math.sin(time * TAU * 0.2 + 1.7);
   a.chest.scale.set(ab, 1, ab);
   if (a.sway) a.sway.rotation.x = SHIFT * Math.sin(time * TAU * 0.07);
-  // The cloth blows back with speed (backing up, a little forward and never far), out of a turn, and flutters.
+  // The cloth swings in the wind, blows back with speed (backing up, a little forward and never far), swings out of a turn,
+  // and flutters faster the faster it goes.
   const q = (speed * speed) / 49;
   const flow = speed >= 0 ? -1.3 * Math.tanh(q) : 0.22 * Math.tanh(q);
-  const flutter = 0.05 + 0.1 * Math.tanh(Math.max(0, speed) / 9) + 0.02 * Math.tanh(Math.max(0, -speed) / 9);
+  const flutter = 0.1 * Math.tanh(Math.max(0, speed) / 9) + 0.02 * Math.tanh(Math.max(0, -speed) / 9);
   const out = -0.45 * Math.tanh((speed * yawRate) / 12);
   const steps = Math.max(1, Math.ceil(dt / CLOTH_STEP - 1e-9));
   const h = dt / steps;
-  for (let i = 0; i < k.cloth.length; i++) swing(k.cloth[i], flow, flutter, out, time, h, steps);
-  for (let i = 0; i < a.cloth.length; i++) swing(a.cloth[i], flow, flutter, out, time, h, steps);
+  for (let i = 0; i < k.cloth.length; i++) swing(k.cloth[i], wind, flow, flutter, out, time, h, steps);
+  for (let i = 0; i < a.cloth.length; i++) swing(a.cloth[i], wind, flow, flutter, out, time, h, steps);
 }
 
 /** Each joint's springs chase the change of angle from the segment above: the segments' own angles grow down the chain. */
-function swing(c: Cloth, flow: number, flutter: number, out: number, time: number, h: number, steps: number): void {
+function swing(c: Cloth, wind: number, flow: number, flutter: number, out: number, time: number, h: number, steps: number): void {
   const n = c.joints.length;
   let above = 0;
   let aboveSide = 0;
   for (let j = 0; j < n; j++) {
     const w = (j + 1) / n;
-    const angle = c.base + flow * (0.7 + 0.3 * w) + flutter * w * Math.sin(time * 6 + c.phase + 1.3 * j) + 0.04 * Math.sin(time * 1.7 + c.phase + j);
+    const angle = c.base + wind * (0.3 + 0.3 * w) + flow * (0.7 + 0.3 * w) + flutter * w * Math.sin(time * 6 + c.phase + 1.3 * j);
     const side = out * (0.6 + 0.4 * w);
     const rel = angle - above;
     const relSide = side - aboveSide;
@@ -746,6 +770,13 @@ function swing(c: Cloth, flow: number, flutter: number, out: number, time: numbe
       c.sideVel[j] += ((relSide - c.side[j]) * CLOTH_K - c.sideVel[j] * CLOTH_C) * h;
       c.side[j] += c.sideVel[j] * h;
     }
+  }
+  pose(c);
+}
+
+/** Sets each joint of a cloth end from its springs. */
+function pose(c: Cloth): void {
+  for (let j = 0; j < c.joints.length; j++) {
     c.joints[j].rotation.z = c.ang[j];
     c.joints[j].rotation.x = c.side[j];
   }
