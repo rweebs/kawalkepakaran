@@ -3,8 +3,17 @@ import { groundHeight, PAVILION, type Pose } from '../src/lib/bowobharata/stage-
 import { mulberry32 } from '../src/lib/sky/rng';
 import type { Vec3 } from '../src/lib/sky/states';
 import { angleDiff, dist, forward, rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
-import { initChariot, type ChariotState } from '../src/lib/bowobharata-game/drive';
-import { ANCHORS, PLAY, distToCollider, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
+import {
+  NO_INPUT,
+  initChariot,
+  lateralOf,
+  speedOf,
+  stepChariot,
+  type ChariotState,
+  type DriveEnv,
+} from '../src/lib/bowobharata-game/drive';
+import { ANCHORS, PLAY, TREES, distToCollider, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
+import { figureGuard, hullClearance, resolveContacts } from '../src/lib/bowobharata-game/collide';
 import { CHASE } from '../src/lib/bowobharata-game/tuning';
 import {
   CHARIOT_SILHOUETTE,
@@ -56,10 +65,48 @@ function follow(cam: ChaseCam, car: ChariotState, frames: number, o: ChaseOpts =
 
 /** The camera after 180 frames behind a chariot at v m/s, starting from the settled view at rest. */
 const steady = (v: number) => follow(initChase(chariot(0), OPTS), chariot(v), 180);
-const speed = (car: ChariotState) => Math.hypot(car.vx, car.vz);
+const groundSpeed = (car: ChariotState) => Math.hypot(car.vx, car.vz);
 /** The brief's occlusion check: the road 15 m ahead, or 1.2 s of travel ahead when that is further. */
 const gap = (cam: ChaseCam, car: ChariotState, o: ChaseOpts = OPTS) =>
-  silhouetteGap(chaseView(cam, car, o).pose, car, Math.max(15, 1.2 * speed(car)));
+  silhouetteGap(chaseView(cam, car, o).pose, car, Math.max(15, 1.2 * groundSpeed(car)));
+
+/** The camera's view direction, look − pos, as a unit vector. */
+function viewDir(cam: ChaseCam, car: ChariotState, o: ChaseOpts = OPTS): Vec3 {
+  const { pos, look } = chaseView(cam, car, o).pose;
+  const d = { x: look.x - pos.x, y: look.y - pos.y, z: look.z - pos.z };
+  const l = Math.hypot(d.x, d.y, d.z);
+  return { x: d.x / l, y: d.y / l, z: d.z / l };
+}
+const degreesBetween = (a: Vec3, b: Vec3) => Math.acos(Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z)) / DEG;
+
+/** The least distance from p to any of the colliders' edges (negative inside one). */
+const clearanceOf = (p: XZ, cols: readonly Collider[]) => Math.min(...cols.map((c) => distToCollider(p, c)));
+
+/**
+ * The chariot at rest heading `yaw`, reversed from `start` until its hull meets a collider: the last pose with
+ * hullClearance ≥ 0 against every collider on the field, or null when the start is blocked or nothing is met in 20 m.
+ */
+function reversedUpTo(start: XZ, yaw: number): ChariotState | null {
+  const f = forward(yaw);
+  const clear = (s: number) => hullClearance(start.x - f.x * s, start.z - f.z * s, yaw, COLS);
+  if (clear(0) < 0) return null;
+  let lo = 0;
+  let hi = NaN;
+  for (let s = 0.25; s <= 20; s += 0.25) {
+    if (clear(s) < 0) {
+      hi = s;
+      break;
+    }
+    lo = s;
+  }
+  if (Number.isNaN(hi)) return null;
+  for (let k = 0; k < 40; k++) {
+    const mid = (lo + hi) / 2;
+    if (clear(mid) >= 0) lo = mid;
+    else hi = mid;
+  }
+  return chariot(0, yaw, start.x - f.x * lo, start.z - f.z * lo);
+}
 
 /** Height in pixels, on an 800 px tall viewport, of a 6 m column standing 30 m ahead of a chariot at the origin. */
 function columnPx(cam: ChaseCam, car: ChariotState, o: ChaseOpts = OPTS): number {
@@ -99,7 +146,7 @@ describe('chase tuning', () => {
       lookAhead: 8, lookAheadPerMs: 0.2, lookAheadMax: 12, lookHeight: 0.8, slipFollow: 0.5,
       yawRate: 4.5, distRate: 3, heightRate: 8, fovRate: 6, boomOutRate: 3,
       fov: 55, fovAtTop: 61, fovBoost: 8, fovMax: 72, hfovMin: 45, fovCap: 90,
-      boostIn: 0.15, boostOut: 0.5, groundClear: 1.4, boomMin: 3, boomMargin: 0.5,
+      boostIn: 0.15, boostOut: 0.5, groundClear: 1.4, boomMin: 0.5, boomMargin: 0.5,
       shakeBump: 0.18, shakeDecay: 6, shakeMinImpact: 6,
     });
   });
@@ -181,6 +228,67 @@ describe('the chase view', () => {
   it('looks at most 12 m ahead', () => {
     const car = chariot(25);
     expect(chaseView(initChase(car, OPTS), car, OPTS).pose.look.x).toBeCloseTo(12, 12);
+  });
+});
+
+describe('the look through 2 m/s', () => {
+  it('turns under 2° a frame as vF passes 2 m/s with the chariot sliding 1 m/s sideways', () => {
+    const yaw = 0.6;
+    const f = forward(yaw);
+    const r = rightOf(yaw);
+    const sliding = (vF: number): ChariotState => ({ ...initChariot(0, 0, yaw), vx: vF * f.x + r.x, vz: vF * f.z + r.z });
+    // Down at the brake's 15 m/s², then up at Laju's 17 m/s²: the hardest the drive pulls either way.
+    const speeds: number[] = [];
+    for (let k = 0; k <= 16; k++) speeds.push(4.5 - k * (15 / 60));
+    for (let k = 0; k <= 14; k++) speeds.push(0.5 + k * (17 / 60));
+    let cam = initChase(sliding(speeds[0]), OPTS);
+    let prev = viewDir(cam, sliding(speeds[0]));
+    let worst = 0;
+    for (const vF of speeds) {
+      const car = sliding(vF);
+      cam = stepChase(cam, car, DT, OPTS);
+      const dir = viewDir(cam, car);
+      worst = Math.max(worst, degreesBetween(prev, dir));
+      prev = dir;
+    }
+    expect(worst).toBeLessThan(2);
+  });
+
+  it('blends the heading toward the velocity by smoothstep(2, 4, vF)', () => {
+    // 2.5 m/s forward, sliding 1 m/s to the right: w = smoothstep(2, 4, 2.5) = 0.15625.
+    const car: ChariotState = { ...initChariot(0, 0, 0), vx: 2.5, vz: 1 };
+    const v = Math.hypot(2.5, 1);
+    const w = 0.15625;
+    const x = 1 - w + (w * 2.5) / v;
+    const z = (w * 1) / v;
+    const l = Math.hypot(x, z);
+    const reach = 8 + 0.2 * v;
+    const { look } = chaseView(initChase(car, OPTS), car, OPTS).pose;
+    expect(look.x).toBeCloseTo((reach * x) / l, 12);
+    expect(look.z).toBeCloseTo((reach * z) / l, 12);
+  });
+
+  it('and while the guard holds the chariot sliding along the ranks', () => {
+    const env: DriveEnv = { cloud: false, guard: figureGuard(COLS.filter((c) => c.figure)) };
+    let worst = 0;
+    for (const deg of [-65, -50, -35, 35, 50, 65]) {
+      // Throttle held into the Pandawa ranks' west face at an angle, from 5.7 m out.
+      let car = initChariot(-25, 0, deg * DEG);
+      let cam = initChase(car, OPTS);
+      let prev = viewDir(cam, car);
+      let slidThrough = false;
+      for (let k = 0; k < 600; k++) {
+        const before = speedOf(car);
+        car = resolveContacts(stepChariot(car, { ...NO_INPUT, throttle: 1 }, DT, env), COLS).car;
+        if ((before - 2) * (speedOf(car) - 2) <= 0 && Math.abs(lateralOf(car)) >= 0.5) slidThrough = true;
+        cam = stepChase(cam, car, DT, OPTS);
+        const dir = viewDir(cam, car);
+        worst = Math.max(worst, degreesBetween(prev, dir));
+        prev = dir;
+      }
+      expect(slidThrough, `${deg}°`).toBe(true);
+    }
+    expect(worst).toBeLessThan(2);
   });
 });
 
@@ -420,15 +528,93 @@ describe('tall things shorten the boom', () => {
     }
   });
 
-  it('stops short of the gate’s walls, square on and at an angle', () => {
+  it('stops with the camera 0.5 m clear of the gate’s walls, square on and at an angle', () => {
     expect(boomLength({ x: 125, z: 0 }, 0, 9.5, TALL)).toBeCloseTo(8.5, 12);
-    expect(boomLength({ x: 120, z: 0 }, -Math.PI / 4, 9.5, TALL)).toBeCloseTo(4 * Math.SQRT2 - 0.5, 12);
+    // At 45° the along-the-boom margin would leave the camera 0.35 m from the face; it steps in to 0.5 m.
+    expect(boomLength({ x: 120, z: 0 }, -Math.PI / 4, 9.5, TALL)).toBeCloseTo(3.5 * Math.SQRT2, 12);
     expect(boomLength({ x: 125, z: 20 }, 0, 9.5, [byId('gate-wall-s')])).toBe(9.5);
   });
 
-  it('never shortens it below 3 m, even from inside', () => {
-    expect(boomLength({ x: -41.6, z: 52 }, 0, 9.5, [TOWER])).toBe(3);
-    expect(boomLength(ANCHORS.tower, 0, 9.5, [TOWER])).toBe(3);
+  it('never shortens it below 0.5 m, which keeps the camera off the chariot itself, even from inside', () => {
+    // Reversed up to the tower (hull 0.05 m clear): its face is 1.9 m behind, so the camera sits 0.5 m clear of it.
+    expect(boomLength({ x: -41.6, z: 52 }, 0, 9.5, [TOWER])).toBeCloseTo(1.4, 12);
+    expect(boomLength(ANCHORS.tower, 0, 9.5, [TOWER])).toBe(0.5);
+  });
+
+  it('steps in until the camera is 0.5 m clear when the boom grazes the tower, even shaking', () => {
+    const o: ChaseOpts = { ...OPTS, tall: TALL };
+    for (const dz of [2.49, 2.499]) {
+      const car = chariot(0, 0, -39, 52 + dz);
+      const cam = initChase(car, o);
+      // The camera stops where it is 3.0 m from the tower's centre: 0.5 m from its surface.
+      expect(cam.boom).toBeCloseTo(7 - Math.sqrt(9 - dz * dz), 9);
+      expect(clearanceOf(chaseView(cam, car, o).pose.pos, TALL)).toBeGreaterThanOrEqual(0.5 - 1e-6);
+      const shaken = bump(cam, 10);
+      for (let k = 0; k < 100; k++) expect(distToCollider(chaseView(shaken, car, o, k * 0.0123).pose.pos, TOWER)).toBeGreaterThan(0.3);
+    }
+  });
+
+  it('keeps stepping in while each step lands the camera near another tall thing', () => {
+    // Two 1 m trunks either side of a 7 m boom, 1.2 m off it: within 0.5 m of b over 5.6–7.4 m, of a over 4.1–5.9 m.
+    const trunk = (id: string, x: number, z: number): Collider => ({ kind: 'circle', id, x, z, r: 1, figure: false, tall: true });
+    const pair = [trunk('a', -5, 1.2), trunk('b', -6.5, -1.2)];
+    const length = boomLength({ x: 0, z: 0 }, 0, 7, pair);
+    expect(length).toBeCloseTo(4.1, 12);
+    expect(clearanceOf({ x: -length, z: 0 }, pair)).toBeGreaterThanOrEqual(0.5 - 1e-6);
+  });
+
+  it('a tall thing the boom only passes near does not pull in a camera that is clear of it', () => {
+    // The boom passes 0.3 m from the tower's surface 7 m back; at 9.5 m the camera is 1.25 m clear of it.
+    const car = chariot(0, 0, -39, 54.8);
+    const cam = initChase(car, { ...OPTS, tall: [TOWER] });
+    expect(cam.boom).toBe(9.5);
+    expect(distToCollider(chaseView(cam, car, OPTS).pose.pos, TOWER)).toBeCloseTo(Math.hypot(2.5, 2.8) - 2.5, 9);
+  });
+
+  it('and when it runs alongside a gate wall’s face', () => {
+    // Heading south 6 m past the end of gate-wall-s, 0.05 m east of its face: the full boom would sit 0.05 m from it.
+    const o: ChaseOpts = { ...OPTS, tall: TALL };
+    const car = chariot(0, -Math.PI / 2, 116.05, 14);
+    const cam = initChase(car, o);
+    expect(cam.boom).toBeCloseTo(6 - Math.sqrt(0.25 - 0.05 ** 2), 9);
+    const { pos } = chaseView(cam, car, o).pose;
+    expect(clearanceOf(pos, TALL)).toBeGreaterThanOrEqual(0.5 - 1e-6);
+    expect(dist(pos, { x: 116, z: 8 })).toBeCloseTo(0.5, 9);
+  });
+
+  it('reversed up to the tower, any gate part or a grove tree: the camera stays 0.5 m clear and sees the road', () => {
+    const o: ChaseOpts = { ...OPTS, tall: TALL };
+    const poses: { against: string; car: ChariotState }[] = [];
+    const around = (against: string, centre: XZ, out: number, sides: readonly number[]) => {
+      for (let k = 0; k < 12; k++) {
+        const yaw = (k * Math.PI) / 6;
+        const f = forward(yaw);
+        const r = rightOf(yaw);
+        for (const side of sides) {
+          const car = reversedUpTo({ x: centre.x + f.x * out + r.x * side, z: centre.z + f.z * out + r.z * side }, yaw);
+          if (car) poses.push({ against, car });
+        }
+      }
+    };
+    around('tower', ANCHORS.tower, 12, [-3.5, -2, 0, 2, 3.5]);
+    for (const id of ['gate-pylon-n', 'gate-pylon-s', 'gate-wall-n', 'gate-wall-s']) {
+      const b = byId(id);
+      if (b.kind !== 'box') throw new Error(`${id} is not a box`);
+      around(id, { x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }, 16, [-3, 0, 3]);
+    }
+    around('tree-0', TREES[0], 10, [-1.5, 0, 1.5]);
+    around('tree-4', TREES[4], 10, [-1.5, 0, 1.5]);
+    for (const against of ['tower', 'gate-pylon-n', 'gate-pylon-s', 'gate-wall-n', 'gate-wall-s', 'tree-0', 'tree-4']) {
+      expect(poses.filter((p) => p.against === against).length, against).toBeGreaterThanOrEqual(12);
+    }
+    for (const { against, car } of poses) {
+      const where = `${against} (${car.x.toFixed(2)}, ${car.z.toFixed(2)}) yaw ${car.yaw.toFixed(2)}`;
+      expect(hullClearance(car.x, car.z, car.yaw, COLS), where).toBeGreaterThanOrEqual(0);
+      expect(hullClearance(car.x, car.z, car.yaw, TALL), where).toBeLessThan(0.01);
+      const { pose } = chaseView(initChase(car, o), car, o);
+      expect(clearanceOf(pose.pos, TALL), where).toBeGreaterThanOrEqual(0.5 - 1e-6);
+      expect(silhouetteGap(pose, car, 15), where).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it('snaps in at once and eases back out at 3/s', () => {
@@ -458,7 +644,8 @@ describe('the ground', () => {
     expect(least).toBeGreaterThanOrEqual(-1e-9);
   });
 
-  it('rises over ground that climbs behind the chariot, shaking or not', () => {
+  // The field's own ground never makes the lift act (the camera rides 6.8 m up or more), so this is its only guard.
+  it('the lift itself: ground climbing 10 m behind the chariot lifts the camera, shaking or not', () => {
     const o: ChaseOpts = { ...OPTS, ground: (x) => (x < -5 ? 10 : 0) };
     const car = chariot(0);
     const cam = initChase(car, o);

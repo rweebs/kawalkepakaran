@@ -6,7 +6,7 @@ import type { Vec3 } from '../sky/states';
 import { angleDiff, clamp, forward, smoothstep, yawOf, type XZ } from './geom';
 import { speedOf, type ChariotState } from './drive';
 import { CHASE } from './tuning';
-import { distToCollider, type Collider } from './world';
+import type { Collider } from './world';
 
 export interface ChaseCam {
   /** The boom's yaw: the camera sits along −forward(yaw) from the chariot. */
@@ -54,8 +54,10 @@ export const CHARIOT_SILHOUETTE: readonly { name: string; x: number; y: number }
   ].map((p) => Object.freeze(p)),
 );
 
-/** Above this forward speed (m/s) the camera turns into a slide and looks along the velocity. */
+/** Above this forward speed (m/s) the camera's yaw turns halfway into a slide, and its look starts toward the velocity. */
 const SLIP_FROM = 2;
+/** The look has turned fully to the velocity's direction at this forward speed (m/s). */
+const LOOK_FULL = 4;
 /** The speed blend runs from 0 at 8 m/s to 1 at 17 m/s (top speed). */
 const BLEND_FROM = 8;
 const BLEND_SPAN = 9;
@@ -75,18 +77,28 @@ const SHOTS = {
   look: 1,
 } as const;
 
-const speed = (car: ChariotState) => Math.hypot(car.vx, car.vz);
+/** |v|, the speed over the ground; drive's speedOf is the signed speed along the heading. */
+const groundSpeed = (car: ChariotState) => Math.hypot(car.vx, car.vz);
 
-/** The direction of travel: along the velocity when rolling forward faster than 2 m/s, else along the heading. */
-function travel(car: ChariotState): XZ {
-  if (speedOf(car) <= SLIP_FROM) return forward(car.yaw);
-  const v = speed(car);
-  return { x: car.vx / v, z: car.vz / v };
+/**
+ * Where the camera looks ahead: the heading turned toward the direction of travel by w = smoothstep(2, 4, vF), so the
+ * look never snaps as vF passes 2 m/s with the chariot sliding sideways (as when the guard holds it at the ranks).
+ * w = 0, the heading, at 2 m/s or less and in reverse; w = 1, the velocity's direction, from 4 m/s.
+ */
+function lookDir(car: ChariotState): XZ {
+  const h = forward(car.yaw);
+  const w = smoothstep(SLIP_FROM, LOOK_FULL, speedOf(car));
+  if (w === 0) return h;
+  const v = groundSpeed(car);
+  const x = (1 - w) * h.x + (w * car.vx) / v;
+  const z = (1 - w) * h.z + (w * car.vz) / v;
+  const l = Math.hypot(x, z);
+  return { x: x / l, z: z / l };
 }
 
 /** The yaw, boom length, height and FOV the camera settles to behind this chariot with this much Laju. */
 function settled(car: ChariotState, boostK: number): Pick<ChaseCam, 'yaw' | 'dist' | 'height' | 'fov'> {
-  const s = clamp((speed(car) - BLEND_FROM) / BLEND_SPAN, 0, 1);
+  const s = clamp((groundSpeed(car) - BLEND_FROM) / BLEND_SPAN, 0, 1);
   // Rolling forward faster than 2 m/s: halfway from the heading toward the travel (they part in a slide). Else the heading.
   const slip = speedOf(car) > SLIP_FROM ? angleDiff(yawOf({ x: car.vx, z: car.vz }), car.yaw) : 0;
   return {
@@ -133,42 +145,86 @@ export function stepChase(cam: ChaseCam, car: ChariotState, dt: number, o: Chase
   };
 }
 
-/** How far along the unit ray from o it enters the collider: 0 when o is already inside, Infinity when it misses. */
-function rayEntry(o: XZ, d: XZ, c: Collider): number {
-  if (distToCollider(o, c) <= 0) return 0;
-  if (c.kind === 'circle') {
-    // |o + d·t − c|² = r² with |d| = 1, o outside: the nearer root, when the circle lies ahead.
-    const ox = o.x - c.x;
-    const oz = o.z - c.z;
-    const b = ox * d.x + oz * d.z;
-    const disc = b * b - (ox * ox + oz * oz - c.r * c.r);
-    return b < 0 && disc >= 0 ? -b - Math.sqrt(disc) : Infinity;
-  }
-  let near = 0;
-  let far = Infinity;
+/** A stretch of the line o + d·t, from t = enter to t = leave. */
+type Span = readonly [enter: number, leave: number];
+
+/** Where the line o + d·t (|d| = 1) runs inside the circle, or null when it misses. */
+function circleSpan(o: XZ, d: XZ, cx: number, cz: number, r: number): Span | null {
+  const ox = o.x - cx;
+  const oz = o.z - cz;
+  const b = ox * d.x + oz * d.z;
+  const disc = b * b - (ox * ox + oz * oz - r * r);
+  if (disc < 0) return null;
+  const s = Math.sqrt(disc);
+  return [-b - s, -b + s];
+}
+
+/** Where the line o + d·t runs inside the box [x0, x1] × [z0, z1] (a slab test), or null when it misses. */
+function boxSpan(o: XZ, d: XZ, x0: number, x1: number, z0: number, z1: number): Span | null {
+  let enter = -Infinity;
+  let leave = Infinity;
   for (const [p, dp, lo, hi] of [
-    [o.x, d.x, c.minX, c.maxX],
-    [o.z, d.z, c.minZ, c.maxZ],
+    [o.x, d.x, x0, x1],
+    [o.z, d.z, z0, z1],
   ]) {
     if (dp === 0) {
-      if (p < lo || p > hi) return Infinity;
+      if (p < lo || p > hi) return null;
       continue;
     }
     const t1 = (lo - p) / dp;
     const t2 = (hi - p) / dp;
-    near = Math.max(near, Math.min(t1, t2));
-    far = Math.min(far, Math.max(t1, t2));
+    enter = Math.max(enter, Math.min(t1, t2));
+    leave = Math.min(leave, Math.max(t1, t2));
   }
-  return near <= far ? near : Infinity;
+  return enter <= leave ? [enter, leave] : null;
 }
 
-/** The boom behind `car` along −forward(yaw): `dist`, or boomMargin short of the first tall collider on it, never under boomMin. */
+/**
+ * Where the line o + d·t (|d| = 1) passes within m of the collider, that is where distToCollider < m (with m = 0,
+ * where it runs inside it), or null. A box grown by m has rounded corners but stays convex, so its span runs from the
+ * first entry to the last exit over two grown slabs and four corner discs.
+ */
+function nearSpan(o: XZ, d: XZ, c: Collider, m: number): Span | null {
+  if (c.kind === 'circle') return circleSpan(o, d, c.x, c.z, c.r + m);
+  const parts = [boxSpan(o, d, c.minX - m, c.maxX + m, c.minZ, c.maxZ), boxSpan(o, d, c.minX, c.maxX, c.minZ - m, c.maxZ + m)];
+  if (m > 0) for (const x of [c.minX, c.maxX]) for (const z of [c.minZ, c.maxZ]) parts.push(circleSpan(o, d, x, z, m));
+  let enter = Infinity;
+  let leave = -Infinity;
+  for (const p of parts) {
+    if (!p) continue;
+    enter = Math.min(enter, p[0]);
+    leave = Math.max(leave, p[1]);
+  }
+  return enter <= leave ? [enter, leave] : null;
+}
+
+/**
+ * The boom behind `car` along −forward(yaw): `dist`, or boomMargin short of the first tall collider on it; then
+ * stepped in until the camera is boomMargin clear of every tall collider, as when the boom grazes one or runs along a
+ * box face. Never under boomMin, which only keeps the camera off the chariot's own origin.
+ */
 export function boomLength(car: XZ, yaw: number, dist: number, tall: readonly Collider[]): number {
   const f = forward(yaw);
   const back = { x: -f.x, z: -f.z };
   let firstHit = Infinity;
-  for (const c of tall) firstHit = Math.min(firstHit, rayEntry(car, back, c));
-  return Math.min(dist, Math.max(CHASE.boomMin, firstHit - CHASE.boomMargin));
+  for (const c of tall) {
+    const s = nearSpan(car, back, c, 0);
+    if (s && s[1] >= 0) firstHit = Math.min(firstHit, Math.max(0, s[0]));
+  }
+  // boomMin is applied last: applying it here as well would not change the result.
+  let length = Math.min(dist, firstHit - CHASE.boomMargin);
+  // The camera moves in to the near end of any span it sits in. It only ever moves in, so each span moves it once.
+  const near = tall.map((c) => nearSpan(car, back, c, CHASE.boomMargin));
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const s of near) {
+      if (s && s[0] < length && length < s[1]) {
+        length = s[0];
+        moved = true;
+      }
+    }
+  }
+  return Math.max(CHASE.boomMin, length);
 }
 
 /** The vertical FOV (degrees) for a screen of this aspect: widened so the horizontal view keeps hfovMin, capped at fovCap. */
@@ -194,13 +250,13 @@ function shakeAt(t: number, amp: number): Vec3 {
 
 /**
  * The chase view: the camera `boom` m behind along −forward(yaw) at `height` over the chariot's ground, looking ahead
- * along the direction of travel. The shake (driven by `t`, in seconds) moves pos and look together, and the ground lift
- * comes after it, so even a shaking camera clears the ground by groundClear.
+ * along lookDir. The shake (driven by `t`, in seconds) moves pos and look together, and the ground lift comes after
+ * it, so even a shaking camera clears the ground by groundClear.
  */
 export function chaseView(cam: ChaseCam, car: ChariotState, o: ChaseOpts, t = 0): { pose: Pose; fov: number } {
   const f = forward(cam.yaw);
-  const ahead = travel(car);
-  const reach = Math.min(CHASE.lookAheadMax, CHASE.lookAhead + CHASE.lookAheadPerMs * speed(car));
+  const ahead = lookDir(car);
+  const reach = Math.min(CHASE.lookAheadMax, CHASE.lookAhead + CHASE.lookAheadPerMs * groundSpeed(car));
   const base = o.ground(car.x, car.z);
   const n = shakeAt(t, cam.shake);
   return {
