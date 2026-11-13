@@ -11,7 +11,7 @@ import { GAME_COPY } from '../../lib/bowobharata-game/copy';
 import type { ChapterView, EntryView, EventCard, PrologueRecord } from '../../lib/bowobharata-game/data';
 import { SKIP_AFTER_FAILS, type Settings } from '../../lib/bowobharata-game/flow';
 import type { HudSnapshot } from '../../lib/bowobharata-game/hud';
-import { NO_TOUCH, type TouchState } from '../../lib/bowobharata-game/input';
+import { createTouchPointers, type TouchState } from '../../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../../lib/bowobharata-game/mission-run';
 import type { MissionType } from '../../lib/bowobharata-game/missions';
 import type { Totals } from '../../lib/bowobharata-game/record';
@@ -394,87 +394,85 @@ type Hold = 'brake' | 'boost' | 'sight' | 'ride';
 /**
  * The touch controls (phones): the steer zone (left 46% x bottom 55%) with a floating capsule under the finger, and the
  * Rem, Laju and Mata buttons (Maju too in manual mode). Laju and Mata carry the same rings as GameHud's. Each control
- * captures its own pointer and lets go on lift, cancel, leave or lost capture, so nothing stays on. `onChange` gets the
- * whole state on every change; it is left idle when the controls unmount.
+ * captures its own pointer and lets go on lift, cancel, leave, lost capture, window blur or a hidden tab, so nothing stays
+ * on. `onChange` gets the whole state on every change; it is left idle when the controls unmount.
  */
 export function TouchControls({ locale, manual, onChange, surge, sight }: {
   locale: Locale; manual: boolean; onChange: (t: TouchState) => void; surge: HudSnapshot['surge']; sight: HudSnapshot['sight'];
 }) {
   const c = GAME_COPY[locale].touch;
-  const state = useRef<TouchState>({ ...NO_TOUCH });
   const change = useRef(onChange);
   change.current = onChange;
-  // The pointer each control holds, by control; a different pointer of the same control is ignored.
-  const holds = useRef<Partial<Record<Hold | 'steer', number>>>({});
+  const pointers = useRef<ReturnType<typeof createTouchPointers> | null>(null);
+  if (pointers.current === null) pointers.current = createTouchPointers((t) => change.current(t));
   const origin = useRef({ x: 0, y: 0 });
   const [capsule, setCapsule] = useState<{ x: number; y: number; dx: number } | null>(null);
   const [lit, setLit] = useState<Partial<Record<Hold, true>>>({});
 
-  const emit = (patch: Partial<TouchState>) => {
-    state.current = { ...state.current, ...patch };
-    change.current(state.current);
-  };
-  useEffect(() => () => {
-    holds.current = {};
-    change.current({ ...NO_TOUCH });
+  useEffect(() => {
+    const p = pointers.current!;
+    const releaseAll = () => {
+      p.clear();
+      setCapsule(null);
+      setLit({});
+    };
+    const onVisibility = () => { if (document.hidden) releaseAll(); };
+    window.addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', releaseAll);
+      document.removeEventListener('visibilitychange', onVisibility);
+      p.clear();
+    };
   }, []);
 
   const capture = (e: ReactPointerEvent<HTMLElement>) => {
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* a pointer that is already gone */ }
   };
 
-  const hold = (k: Hold) => ({
-    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
-      if (holds.current[k] !== undefined) return;
-      e.preventDefault();
-      capture(e);
-      holds.current[k] = e.pointerId;
-      setLit((l) => ({ ...l, [k]: true }));
-      emit({ [k]: true });
-    },
-    onPointerUp: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
-    onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
-    onPointerLeave: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
-    onLostPointerCapture: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
-    onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
-  });
-  const letGo = (k: Hold, id: number) => {
-    if (holds.current[k] !== id) return;
-    delete holds.current[k];
-    setLit((l) => {
-      const { [k]: _gone, ...rest } = l;
-      return rest;
-    });
-    emit({ [k]: false });
+  const hold = (k: Hold) => {
+    const letGo = (e: ReactPointerEvent<HTMLElement>) => {
+      if (!pointers.current!.up(k, e.pointerId)) return;
+      setLit((l) => {
+        const { [k]: _gone, ...rest } = l;
+        return rest;
+      });
+    };
+    return {
+      onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+        e.preventDefault();
+        if (!pointers.current!.down(k, e.pointerId)) return;
+        capture(e);
+        setLit((l) => ({ ...l, [k]: true }));
+      },
+      onPointerUp: letGo,
+      onPointerCancel: letGo,
+      onPointerLeave: letGo,
+      onLostPointerCapture: letGo,
+      onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
+    };
   };
 
-  const steerGo = (id: number) => {
-    if (holds.current.steer !== id) return;
-    delete holds.current.steer;
-    setCapsule(null);
-    emit({ steerDx: null });
+  const steerGo = (e: ReactPointerEvent<HTMLElement>) => {
+    if (pointers.current!.up('steer', e.pointerId)) setCapsule(null);
   };
   const steer = {
     onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
-      if (holds.current.steer !== undefined) return;
       e.preventDefault();
+      if (!pointers.current!.down('steer', e.pointerId)) return;
       capture(e);
-      holds.current.steer = e.pointerId;
       const r = e.currentTarget.getBoundingClientRect();
       origin.current = { x: e.clientX, y: e.clientY };
       setCapsule({ x: e.clientX - r.left, y: e.clientY - r.top, dx: 0 });
-      emit({ steerDx: 0 });
     },
     onPointerMove: (e: ReactPointerEvent<HTMLElement>) => {
-      if (holds.current.steer !== e.pointerId) return;
       const dx = e.clientX - origin.current.x;
-      setCapsule((cap) => (cap ? { ...cap, dx } : cap));
-      emit({ steerDx: dx });
+      if (pointers.current!.move(e.pointerId, dx)) setCapsule((cap) => (cap ? { ...cap, dx } : cap));
     },
-    onPointerUp: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
-    onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
-    onPointerLeave: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
-    onLostPointerCapture: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
+    onPointerUp: steerGo,
+    onPointerCancel: steerGo,
+    onPointerLeave: steerGo,
+    onLostPointerCapture: steerGo,
     onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
   };
   const knob = capsule ? Math.max(-1, Math.min(1, capsule.dx / 56)) * (CAPSULE.w / 2 - CAPSULE.h / 2) : 0;
@@ -492,10 +490,10 @@ export function TouchControls({ locale, manual, onChange, surge, sight }: {
         <span className="bg-touch__label">{c.brake}</span>
       </button>
       <button type="button" className="bg-touch__btn bg-touch__btn--surge" aria-label={c.surge} data-held={lit.boost ? '' : undefined} {...hold('boost')}>
-        <Ring kind="surge" label={c.surge} fill={surge.frac} lit={surge.ready} />
+        <span aria-hidden="true"><Ring kind="surge" label={c.surge} fill={surge.frac} lit={surge.ready} /></span>
       </button>
       <button type="button" className="bg-touch__btn bg-touch__btn--mata" aria-label={c.sight} data-held={lit.sight ? '' : undefined} {...hold('sight')}>
-        <Ring kind="sight" label={c.sight} fill={sight.charge} lit={sight.on} />
+        <span aria-hidden="true"><Ring kind="sight" label={c.sight} fill={sight.charge} lit={sight.on} /></span>
       </button>
       {manual && (
         <button type="button" className="bg-touch__btn bg-touch__btn--ride" aria-label={c.ride} data-held={lit.ride ? '' : undefined} {...hold('ride')}>

@@ -519,6 +519,10 @@ describe('island wiring (source)', () => {
     expect(src).toContain('<TouchControls');
     expect(src).toMatch(/<TouchControls[\s\S]*?\bsurge=\{hud\.surge\}[\s\S]*?\bsight=\{hud\.sight\}/);
     expect(src).toContain('mergeInputs(');
+    // Pause and skip edges come from one per-frame poll; blur lets go of touch and pad state too.
+    expect(src).toContain('requestAnimationFrame(poll)');
+    expect(src).not.toContain('setInterval');
+    expect(src).toMatch(/touch\.current = \{ \.\.\.NO_TOUCH \};\s*padHeld\.current = /);
     // Easy control is a session setting: turned on for touch, never written to storage.
     expect(src).toMatch(/easy: true/);
     expect(src).not.toMatch(/writeSaved\([^)]*easy/);

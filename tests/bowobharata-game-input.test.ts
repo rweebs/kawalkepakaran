@@ -13,6 +13,7 @@ import {
   touchInput,
   gamepadInput,
   mergeInputs,
+  createTouchPointers,
   NO_TOUCH,
 } from '../src/lib/bowobharata-game/input';
 import { DRIVE } from '../src/lib/bowobharata-game/tuning';
@@ -208,8 +209,76 @@ describe('input: gamepad', () => {
 describe('input: mergeInputs', () => {
   it('takes the largest throttle, brake and steer, and any held switch', () => {
     const a = { drive: { throttle: 0.2, brake: 0, steer: -0.3, drift: false, boost: true }, sight: false };
-    const b = { drive: { throttle: 0.9, brake: 0.5, steer: 0.7, drift: true, boost: false }, sight: true, skip: true };
-    expect(mergeInputs(a, b)).toEqual({ drive: { throttle: 0.9, brake: 0.5, steer: 0.7, drift: true, boost: true }, sight: true, skip: true, pause: false });
+    const b = { drive: { throttle: 0.9, brake: 0, steer: 0.7, drift: true, boost: false }, sight: true, skip: true };
+    expect(mergeInputs(a, b)).toEqual({ drive: { throttle: 0.9, brake: 0, steer: 0.7, drift: true, boost: true }, sight: true, skip: true, pause: false });
     expect(mergeInputs()).toEqual({ drive: { ...NO_INPUT }, sight: false, skip: false, pause: false });
+  });
+
+  it('a brake from any source cuts the merged throttle', () => {
+    const cruise = keyboardInput(held(), 0, DT, { on: true, speed: 0 });
+    expect(cruise.drive.throttle).toBe(1);
+    const rem = touchInput({ ...NO_TOUCH, brake: true }, 0, true);
+    const m = mergeInputs(cruise, rem);
+    expect([m.drive.throttle, m.drive.brake]).toEqual([0, 1]);
+    const pad = gamepadInput({ axes: [0], buttons: [...Array(7)].map((_, i) => ({ value: i === 6 ? 1 : 0, pressed: i === 6 })) });
+    expect(mergeInputs(cruise, pad).drive.throttle).toBe(0);
+  });
+
+  it('pad throttle 0.6 plus the touch brake gives throttle 0', () => {
+    const pad = { drive: { throttle: 0.6, brake: 0, steer: 0, drift: false, boost: false }, sight: false };
+    const m = mergeInputs(pad, touchInput({ ...NO_TOUCH, brake: true }, 0, false));
+    expect([m.drive.throttle, m.drive.brake]).toEqual([0, 1]);
+  });
+
+  it('clamps out-of-range parts', () => {
+    const wild = { drive: { throttle: 5, brake: 0, steer: -9, drift: false, boost: false }, sight: false };
+    expect(mergeInputs(wild).drive).toMatchObject({ throttle: 1, brake: 0, steer: -1 });
+    const wild2 = { drive: { throttle: 0.5, brake: 7, steer: NaN, drift: false, boost: false }, sight: false };
+    expect(mergeInputs(wild2).drive).toMatchObject({ throttle: 0, brake: 1, steer: 0 });
+  });
+});
+
+describe('input: boundaries', () => {
+  const pad = (axes: number[]) => gamepadInput({ axes, buttons: [] }).drive.steer;
+  it('gamepad dead zone at exactly +-0.15 and just past it', () => {
+    expect(pad([0.15])).toBe(0);
+    expect(pad([-0.15])).toBe(0);
+    expect(pad([0.16])).toBeGreaterThan(0);
+    expect(pad([-0.16])).toBeLessThan(0);
+  });
+  it('slide needs steer above 0.6 and speed above 10', () => {
+    const dx = (v: number) => 6 + v * 50;
+    expect(touchInput({ ...NO_TOUCH, brake: true, steerDx: dx(0.6) }, 12, false).drive).toMatchObject({ drift: false, brake: 1 });
+    expect(touchInput({ ...NO_TOUCH, brake: true, steerDx: dx(0.62) }, 12, false).drive).toMatchObject({ drift: true, brake: 0 });
+    expect(touchInput({ ...NO_TOUCH, brake: true, steerDx: dx(0.8) }, 10, false).drive).toMatchObject({ drift: false, brake: 1 });
+    expect(touchInput({ ...NO_TOUCH, brake: true, steerDx: dx(0.8) }, 10.01, false).drive).toMatchObject({ drift: true, brake: 0 });
+  });
+  it('a pad with NaN or missing axes gives finite, zero input', () => {
+    expect(pad([NaN])).toBe(0);
+    expect(pad([])).toBe(0);
+    expect(pad([Infinity])).toBe(0);
+  });
+});
+
+describe('input: touch pointer bookkeeping', () => {
+  it('holds one pointer per control, lets go of that pointer only, and clears to NO_TOUCH', () => {
+    const seen: unknown[] = [];
+    const p = createTouchPointers((t) => seen.push({ ...t }));
+    expect(p.down('brake', 1)).toBe(true);
+    expect(p.down('boost', 2)).toBe(true);
+    expect(p.down('brake', 3)).toBe(false);
+    expect(p.up('brake', 3)).toBe(false);
+    expect(p.up('brake', 1)).toBe(true);
+    expect(p.up('brake', 1)).toBe(false);
+    expect(p.down('steer', 4)).toBe(true);
+    expect(p.move(9, 30)).toBe(false);
+    expect(p.move(4, 30)).toBe(true);
+    expect(p.up('steer', 4)).toBe(true); // pointercancel or leave takes the same path
+    expect(p.down('sight', 5)).toBe(true);
+    expect(seen.at(-1)).toMatchObject({ boost: true, sight: true, steerDx: null, brake: false });
+    p.clear();
+    expect(seen.at(-1)).toEqual({ ...NO_TOUCH });
+    expect(p.up('boost', 2)).toBe(false);
+    expect(p.down('boost', 6)).toBe(true);
   });
 });

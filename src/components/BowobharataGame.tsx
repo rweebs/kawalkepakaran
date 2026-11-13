@@ -245,17 +245,14 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     const parts: InputPart[] = [{ drive: kb.drive, sight: kb.sight }];
     if (touchDevice.current) parts.push(touchInput(touch.current, speed, s.easy));
     const pad = firstGamepad();
-    let padSkip = false;
     if (pad) {
       const g = gamepadInput(pad);
       parts.push({ drive: g.drive, sight: g.sight });
-      padSkip = g.skip && !padHeld.current.skip && canSkip();
-      padHeld.current.skip = g.skip;
-    } else padHeld.current.skip = false;
+    }
     const m = mergeInputs(...parts);
     const skip = skipPulse.current;
     skipPulse.current = false;
-    return { drive: m.drive, sight: m.sight, skip: skip || padSkip, assist: s.assist };
+    return { drive: m.drive, sight: m.sight, skip, assist: s.assist };
   };
 
   // The runtime holds these for its whole life; through this ref it always calls the ones of the latest render.
@@ -342,7 +339,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
       keys.current.delete(e.code);
       if (!typing(e.target) && keyAction(e.code) !== null && driving()) e.preventDefault();
     };
-    const release = () => keys.current.clear();
+    const release = () => {
+      keys.current.clear();
+      touch.current = { ...NO_TOUCH };
+      padHeld.current = { skip: false, pause: false };
+    };
     const onVisibility = () => {
       release();
       dispatch({ type: document.hidden ? 'hidden' : 'visible' });
@@ -359,16 +360,23 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     };
   }, []);
 
-  // The gamepad's pause button (9) pauses and resumes while a 3D play runs; polled, so it also works while paused.
+  // The gamepad's pause button (9) pauses and resumes while a 3D play runs, and its skip button (1) skips a lakon intro; polled every frame, so it also works while paused.
   useEffect(() => {
     if (!playing3d || typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
-    const id = window.setInterval(() => {
+    let raf = 0;
+    const poll = () => {
       const pad = firstGamepad();
-      const down = pad ? gamepadInput(pad).pause : false;
+      const g = pad ? gamepadInput(pad) : null;
+      const down = g?.pause ?? false;
       if (down && !padHeld.current.pause) dispatch({ type: 'togglePause' });
       padHeld.current.pause = down;
-    }, 100);
-    return () => window.clearInterval(id);
+      const skipDown = g?.skip ?? false;
+      if (skipDown && !padHeld.current.skip && canSkip()) skipPulse.current = true;
+      padHeld.current.skip = skipDown;
+      raf = window.requestAnimationFrame(poll);
+    };
+    raf = window.requestAnimationFrame(poll);
+    return () => window.cancelAnimationFrame(raf);
   }, [playing3d]);
 
   // The 3D scene and its runtime live from the first intro until the fallback takes over or the island unmounts.
@@ -453,6 +461,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
         resetPlay();
         first.current = true;
         steer.current = 0;
+        padHeld.current.skip = false;
         const seed = 1009 * (flow.chapter + 1) + plays.current++;
         const fromLost = last.rt === rt && last.screen === 'lost';
         if (fromLost) rt.retry();

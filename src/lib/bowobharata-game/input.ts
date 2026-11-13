@@ -159,5 +159,53 @@ export function mergeInputs(...parts: readonly InputPart[]): { drive: ChariotInp
     skip = skip || p.skip === true;
     pause = pause || p.pause === true;
   }
+  // A brake cuts the engine, whichever source asked for either; every value stays in range.
+  drive.throttle = clamp(finite(drive.throttle), 0, 1);
+  drive.brake = clamp(finite(drive.brake), 0, 1);
+  drive.steer = clamp(finite(drive.steer), -1, 1);
+  if (drive.brake > 0) drive.throttle = 0;
   return { drive, sight, skip, pause };
+}
+
+export type TouchControl = 'steer' | 'brake' | 'boost' | 'sight' | 'ride';
+
+/**
+ * The pointer each touch control holds, and the TouchState they make. A control takes one pointer at a time and lets go
+ * only of that pointer; `onChange` gets the whole state on every change. `clear` lets go of everything.
+ */
+export function createTouchPointers(onChange: (t: TouchState) => void) {
+  const holds: Partial<Record<TouchControl, number>> = {};
+  let state: TouchState = { ...NO_TOUCH };
+  const emit = (patch: Partial<TouchState>) => {
+    state = { ...state, ...patch };
+    onChange(state);
+  };
+  return {
+    /** A pointer goes down on a control: false when another pointer already holds it. */
+    down(c: TouchControl, id: number): boolean {
+      if (holds[c] !== undefined) return false;
+      holds[c] = id;
+      emit(c === 'steer' ? { steerDx: 0 } : { [c]: true });
+      return true;
+    },
+    /** The steer pointer moves `dx` px from where it landed. */
+    move(id: number, dx: number): boolean {
+      if (holds.steer !== id) return false;
+      emit({ steerDx: dx });
+      return true;
+    },
+    /** A pointer lifts, is cancelled or leaves: true when it was the one the control held. */
+    up(c: TouchControl, id: number): boolean {
+      if (holds[c] !== id) return false;
+      delete holds[c];
+      emit(c === 'steer' ? { steerDx: null } : { [c]: false });
+      return true;
+    },
+    /** Lets go of every control. */
+    clear() {
+      for (const k of Object.keys(holds) as TouchControl[]) delete holds[k];
+      state = { ...NO_TOUCH };
+      onChange(state);
+    },
+  };
 }
