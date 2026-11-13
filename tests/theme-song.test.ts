@@ -1,34 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { AUTOPLAY_PATHS, BOWOBHARATA_SONG, TENTANG_SONG, THEME_SONG, embedUrl, musicUrl, shouldAutoplay, songFor } from '../src/lib/theme-song';
+import { AUTOPLAY_PATHS, TENTANG_SONG, THEME_SONG, embedUrl, musicUrl, shouldAutoplay, songFor } from '../src/lib/theme-song';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 
 describe('theme song urls', () => {
-  it('uses the video from the YouTube Music link', () => {
-    expect(THEME_SONG.videoId).toBe('lmAzCin5__U');
-    expect(musicUrl(THEME_SONG.videoId)).toBe('https://music.youtube.com/watch?v=lmAzCin5__U');
+  it('is the Mahabharat flute from the YouTube link', () => {
+    expect(THEME_SONG).toEqual({ videoId: 'OgKCAkjlHDI', title: 'Mahabharat Titel Flute', artist: 'Vinay Keshari' });
+    expect(musicUrl(THEME_SONG.videoId)).toBe('https://music.youtube.com/watch?v=OgKCAkjlHDI');
   });
   it('builds a privacy-enhanced, looping, autoplaying embed', () => {
     const url = new URL(embedUrl(THEME_SONG.videoId));
     expect(url.origin).toBe('https://www.youtube-nocookie.com');
-    expect(url.pathname).toBe('/embed/lmAzCin5__U');
+    expect(url.pathname).toBe('/embed/OgKCAkjlHDI');
     expect(url.searchParams.get('autoplay')).toBe('1');
     expect(url.searchParams.get('loop')).toBe('1');
-    expect(url.searchParams.get('playlist')).toBe('lmAzCin5__U');
+    expect(url.searchParams.get('playlist')).toBe('OgKCAkjlHDI');
   });
 });
 
 describe('song per page and autoplay', () => {
-  it('plays its own song on /tentang and /bowobharata and the theme song everywhere else', () => {
+  it('plays its own song on /tentang and the theme song everywhere else, the Bowobharata pages included', () => {
     expect(TENTANG_SONG.videoId).toBe('WbkooeqB7wQ');
     expect(musicUrl(TENTANG_SONG.videoId)).toBe('https://music.youtube.com/watch?v=WbkooeqB7wQ');
     expect(songFor('/tentang')).toBe(TENTANG_SONG);
-    expect(BOWOBHARATA_SONG.videoId).toBe('OgKCAkjlHDI');
-    expect(musicUrl(BOWOBHARATA_SONG.videoId)).toBe('https://music.youtube.com/watch?v=OgKCAkjlHDI');
-    expect(songFor('/kasus/abil-sudarman/bowobharata')).toBe(BOWOBHARATA_SONG);
-    for (const p of ['/', '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/linimasa', '/tentang/x']) expect(songFor(p), p).toBe(THEME_SONG);
+    const everywhere = [
+      '/', '/kasus/abil-sudarman/bowobharata', '/pantau/bowobharata', '/en/monitor/bowobharata',
+      '/kasus/abil-sudarman/artikel', '/kasus/abil-sudarman/linimasa', '/tentang/x',
+    ];
+    for (const p of everywhere) expect(songFor(p), p).toBe(THEME_SONG);
   });
   it('autoplays only on the home page, /tentang and /bowobharata', () => {
     expect([...AUTOPLAY_PATHS]).toEqual(['/', '/tentang', '/kasus/abil-sudarman/bowobharata']);
