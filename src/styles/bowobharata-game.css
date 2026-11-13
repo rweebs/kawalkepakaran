@@ -67,7 +67,8 @@
 .bg-toast { margin: 0; padding: 0.4rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); font-size: 0.9rem; overflow-wrap: anywhere; }
 .bg-cards { position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0.75rem; display: grid; pointer-events: none; }
 .bg-cards .bg-catch { max-width: 28rem; background: rgba(11, 16, 32, 0.88); pointer-events: auto; }
-.bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 2; }
+/* Above the letterbox bars (2), the lakon card and the wipe (3): a pause during a lakon intro shows the whole panel. */
+.bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 4; }
 
 /* Play surface and intro cinema. */
 .bg-stage[data-play='on'] { touch-action: none; }

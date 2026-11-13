@@ -91,6 +91,18 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(durations(tr[0]).every((d) => d >= 0.5)).toBe(true);
   });
 
+  it('stacks the pause panel above the letterbox bars, the lakon card and the wipe, so a pause during an intro shows it whole', () => {
+    const z = (sel: string) => {
+      const v = declared(sel, 'z-index');
+      expect(v, sel).toHaveLength(1);
+      return Number(v[0]);
+    };
+    const paused = z('.bg-paused');
+    for (const sel of [".bg-stage[data-cine='on']::before", ".bg-stage[data-cine='on']::after", '.bg-mission', '.bg-wipe', '.bg-hud']) {
+      expect(paused, sel).toBeGreaterThan(z(sel));
+    }
+  });
+
   it('uses only the site fonts and no @font-face', () => {
     expect(css).not.toContain('@font-face');
     const fams = [...css.matchAll(/font-family:\s*([^;}]+)/g)].map((m) => m[1].trim());
