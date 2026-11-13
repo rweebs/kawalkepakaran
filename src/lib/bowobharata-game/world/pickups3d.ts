@@ -14,9 +14,10 @@ import { fxLayer, glowSprite } from '../../bowobharata/scene/effects';
 import { angleDiff, clamp, smoothstep, type XZ } from '../geom';
 import type { ChariotState } from '../drive';
 import type { GameState } from '../engine';
-import { openTargets, type Decoy } from '../mission-run';
+import { openTargets, type Decoy, type Phase, type RunState } from '../mission-run';
 import type { MissionDef, PickupDef } from '../missions';
 import { ANCHORS, RECORD_CIRCLE } from '../world';
+import { disposeGroup } from './dispose';
 import { brokenRingGeo, decoyFletchGeo, decoyShaftGeo, lotusGeo, merge, realShaftGeo, realTipGeo } from './shapes';
 import type { Layer, SceneGame } from './types';
 
@@ -29,8 +30,8 @@ export function shimmerAt(t: number): number {
 }
 
 /**
- * Seconds a record takes to go once recorded (a prologue arrow fading where it stands, a lontar flying to the prabha), and
- * a copy to fade in or out: longer than a half cycle at 2 Hz.
+ * Seconds a record takes to go once recorded (a prologue arrow fading where it stands, a lontar flying to the prabha), a
+ * copy to fade in or out, and the marker ring to fade once its intro ends: longer than a half cycle at 2 Hz.
  */
 const FADE = 0.4;
 /**
@@ -65,19 +66,24 @@ const FLIGHT = { rise: 0.35, arc: 1, end: 0.3, reach: 12 } as const;
  * from the ground, brightest well above the roof.
  */
 const BEAM = { w: 1.4, h: 30, sunk: 10, tower: { w: 2, h: 36 } } as const;
-const MARKER = { r: 5, petals: 8 } as const;
+const MARKER = { r: 5, petals: 8, opacity: 0.85 } as const;
 const LAMPS = { count: 24, r: 6 } as const;
 /**
  * Halos are additive glow sprites, so phones without bloom still read them: size (m), opacity, and height over a record
  * arrow's entry point or a lamp (m).
  */
 const HALO = { size: 1.8, opacity: 0.55, up: 0.45, lamp: { size: 1.3, opacity: 0.7, up: 0.25 } } as const;
-/** Stamps: their size against the shapes', and how far above what they stamp (m). */
-const STAMP = { scale: 2.6, over: 0.9 } as const;
+/**
+ * Stamps: their size against the shapes', how far above what they stamp (m), and the seconds they take to come out or go
+ * with sight: never a faster swing than 2 Hz allows, however quickly sight is tapped.
+ */
+const STAMP = { scale: 2.6, over: 0.9, fade: 0.25 } as const;
 /** Rings lie this far over the ground (m), clear of the terrain mesh between its vertices. */
 const LIFT = 0.12;
 /** The most records a lakon draws (the largest lays out 9) and copies (a lakon lays out 4 at most; volleys add some). */
 const CAP = { records: 16, copies: 64 } as const;
+/** The longest step of scene time the stamps' fade takes in one sync (s), so a long gap between syncs cannot jump it. */
+const MAX_STEP = 0.1;
 /** Spreads the arrows' leans from one to the next. */
 const GOLDEN = 2.399963229728653;
 
@@ -131,16 +137,6 @@ function pickupsOf(def: MissionDef): PickupDef[] {
   return def.steps.flatMap((s) => (s.kind === 'collect' ? s.items : s.kind === 'laps' ? [s.then] : []));
 }
 
-function hasPickup(targets: Targets, id: string): boolean {
-  for (let i = 0; i < targets.length; i++) if (targets[i].kind === 'pickup' && targets[i].id === id) return true;
-  return false;
-}
-
-function markerIn(targets: Targets): XZ | null {
-  for (let i = 0; i < targets.length; i++) if (targets[i].kind === 'marker') return targets[i].at;
-  return null;
-}
-
 /**
  * Lets each instance fade on its own: the geometry's instanced `aFade` (0 to 1) multiplies the material's alpha. Every
  * geometry drawn with such a material carries the attribute.
@@ -157,18 +153,6 @@ function fading<T extends THREE.Material>(mat: T): T {
   };
   mat.customProgramCacheKey = () => 'pickup-fade';
   return mat;
-}
-
-/** Lays a shape made flat round the origin over the ground at (x, z): each vertex keeps its height over the ground under it, plus LIFT. */
-function drape(pos: THREE.BufferAttribute, flat: ArrayLike<number>, x: number, z: number): void {
-  const base = groundHeight(x, z);
-  for (let i = 0; i < pos.count; i++) {
-    const vx = flat[i * 3];
-    const vy = flat[i * 3 + 1];
-    const vz = flat[i * 3 + 2];
-    pos.setXYZ(i, vx, vy + groundHeight(x + vx, z + vz) - base + LIFT, vz);
-  }
-  pos.needsUpdate = true;
 }
 
 /**
@@ -271,9 +255,11 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   copyMat.opacity = SHIMMER.base;
   const copies = instanced('decoys', copyGeo, copyMat, CAP.copies, play);
 
-  // Mata's stamps.
-  const lotus = fxLayer(instanced('stamp-lotus', lotusGeo(), new THREE.MeshBasicMaterial({ color: COLOR.lotus, toneMapped: false }), CAP.records, play));
-  const rings = fxLayer(instanced('stamp-ring', brokenRingGeo(), new THREE.MeshBasicMaterial({ color: COLOR.ring, toneMapped: false }), CAP.copies, play));
+  // Mata's stamps, fading in and out together with sight.
+  const lotusMat = new THREE.MeshBasicMaterial({ color: COLOR.lotus, toneMapped: false, transparent: true, opacity: 0 });
+  const ringMat = new THREE.MeshBasicMaterial({ color: COLOR.ring, toneMapped: false, transparent: true, opacity: 0 });
+  const lotus = fxLayer(instanced('stamp-lotus', lotusGeo(), lotusMat, CAP.records, play));
+  const rings = fxLayer(instanced('stamp-ring', brokenRingGeo(), ringMat, CAP.copies, play));
 
   // The beams over the records, each turned to the camera about the vertical; tinted gold (fading with their records).
   const beamGeo = new THREE.PlaneGeometry(BEAM.w, BEAM.h);
@@ -286,7 +272,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   const ringGeo = markerGeo();
   const ringPos = ringGeo.getAttribute('position') as THREE.BufferAttribute;
   const ringFlat = Float32Array.from(ringPos.array as ArrayLike<number>);
-  const markerRing = fxLayer(new THREE.Mesh(ringGeo, glowMat(COLOR.amber, 0.85)));
+  const markMat = glowMat(COLOR.amber, MARKER.opacity);
+  const markerRing = fxLayer(new THREE.Mesh(ringGeo, markMat));
   markerRing.name = 'marker-ring';
   markerRing.visible = false;
   markerRing.frustumCulled = false;
@@ -296,8 +283,6 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   markerBeam.visible = false;
   markerBeam.renderOrder = 1;
   play.add(markerRing, markerBeam);
-  let markerX = NaN;
-  let markerZ = NaN;
 
   // Sanjaya's tower: its blue-white beam, and the record circle where a lakon's records are delivered.
   const tower = ANCHORS.tower;
@@ -345,17 +330,22 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   let fresh = true;
   const copyIn = new Map<number, number>();
   const copyOut = new Map<number, number>();
+  /** The last sync's scene time, and whether there has been one (the first takes no step). */
   let clock = 0;
-
-  /** The pose of an arrow standing in the ground at `at`, its tail leaning toward `lean`; leaves its entry point in `spot` and its tail's direction in `dir`. */
-  function stand(out: THREE.Matrix4, at: XZ, lean: number): THREE.Matrix4 {
-    const s = Math.sin(ARROW.tilt);
-    dir.set(s * Math.cos(lean), Math.cos(ARROW.tilt), -s * Math.sin(lean));
-    spot.set(at.x, groundHeight(at.x, at.z), at.z);
-    // The shapes point their tip along +y: the other way from the tail, into the ground.
-    turn.setFromUnitVectors(UP, down.copy(dir).negate());
-    return out.compose(spot, turn, ARROW_SIZE);
-  }
+  let synced = false;
+  /** How far out Mata's stamps are, 0 to 1. */
+  let stampK = 0;
+  /** The marker ring: shown at a live mark at the last sync; when it lost its mark (scene time; NaN while live or gone). */
+  let markLive = false;
+  let markGoneAt = NaN;
+  let markerX = NaN;
+  let markerZ = NaN;
+  /** The open targets, and what they were worked out for. */
+  let targets: Targets = [];
+  let targetsDef: MissionDef | null = null;
+  let targetsPhase: Phase | null = null;
+  let targetsStep = -1;
+  let targetsRecorded = -1;
 
   function slotOf(p: PickupDef, k: number): RecordSlot {
     const g = groundHeight(p.at.x, p.at.z);
@@ -391,13 +381,169 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     return slot;
   }
 
-  /** A new lakon: its records laid out where they stand, the last one's fades forgotten. */
+  /** A new lakon: its records laid out where they stand, the last one's fades and marker forgotten. */
   function layOut(def: MissionDef): void {
     lakon = def;
     fresh = true;
     copyIn.clear();
     copyOut.clear();
+    markLive = false;
+    markGoneAt = NaN;
     records = pickupsOf(def).slice(0, CAP.records).map(slotOf);
+  }
+
+  // Every frame, synced or not (the finale orbits the tower without syncing), the beams keep facing the camera.
+  const stopFrames = game.onFrame(() => faceCamera());
+
+  function sync(s: GameState, time: number): void {
+    const t = Number.isFinite(time) ? time : clock;
+    const dt = synced ? clamp(t - clock, 0, MAX_STEP) : 0;
+    clock = t;
+    synced = true;
+    if (s.run.def !== lakon) layOut(s.run.def);
+    const { phase } = s.run;
+    const open = openNow(s.run);
+    const facing = game.camera.quaternion;
+    // Mata's stamps come out and go over STAMP.fade, whatever sight does in between.
+    stampK = clamp(stampK + (s.sight.on ? dt : -dt) / STAMP.fade, 0, 1);
+    lotusMat.opacity = stampK;
+    ringMat.opacity = stampK;
+    const stamped = stampK > 0;
+
+    let nArrow = 0;
+    let nLeaf = 0;
+    let nPost = 0;
+    let nBeam = 0;
+    let nHalo = 0;
+    let nLotus = 0;
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      const isOpen = hasPickup(open, r.id);
+      if (isOpen) {
+        r.out = true;
+        r.recordedAt = NaN;
+      } else if (r.out && Number.isNaN(r.recordedAt)) {
+        // No longer open: recorded, so it goes the way records go; or the lakon moved on without it, and it simply goes.
+        if (s.run.recorded.includes(r.id)) {
+          r.recordedAt = t;
+          if (r.lontar) takeOff(r, s.car);
+        } else {
+          r.out = false;
+        }
+      }
+      if (!r.out) continue;
+      const u = isOpen ? 0 : Math.max(0, (t - r.recordedAt) / FADE);
+      if (u >= 1) {
+        r.out = false;
+        continue;
+      }
+      const left = 1 - u;
+      if (r.lontar) {
+        // The post fades where it stands; the box lifts off it and flies.
+        posts.setMatrixAt(nPost, r.post);
+        postFade.setX(nPost++, left);
+        if (isOpen) {
+          leaves.setMatrixAt(nLeaf, r.pose);
+          spot.copy(r.halo);
+        } else {
+          const k = flightAt(r, u, s.car);
+          // A flying lontar turns to lie along the chariot as it comes in; one rising where it stands keeps its yaw.
+          const yaw = r.flies ? r.yaw + angleDiff(s.car.yaw, r.yaw) * smoothstep(FLIGHT.rise, 1, u) : r.yaw;
+          turn.setFromAxisAngle(UP, yaw);
+          leaves.setMatrixAt(nLeaf, m4.compose(spot, turn, size.setScalar(k)));
+        }
+        leafFade.setX(nLeaf++, left);
+      } else {
+        // An arrow never moves: it fades where it stands.
+        arrows.setMatrixAt(nArrow, r.pose);
+        tips.setMatrixAt(nArrow, r.pose);
+        arrowFade.setX(nArrow++, left);
+        spot.copy(r.halo);
+      }
+      const halo = halos[nHalo++];
+      halo.position.copy(spot);
+      (halo.material as THREE.SpriteMaterial).opacity = HALO.opacity * left;
+      halo.visible = true;
+      beamAt[nBeam * 3] = r.beam.x;
+      beamAt[nBeam * 3 + 1] = r.beam.y;
+      beamAt[nBeam * 3 + 2] = r.beam.z;
+      beams.setColorAt(nBeam++, tint.copy(GOLD).multiplyScalar(left));
+      if (isOpen && stamped) lotus.setMatrixAt(nLotus++, m4.compose(r.stamp, facing, STAMP_SIZE));
+    }
+    for (let k = nHalo; k < halos.length; k++) halos[k].visible = false;
+
+    // The copies come out with the lakon, not before it starts.
+    copyMat.opacity = shimmerAt(t);
+    let nCopy = 0;
+    let nRing = 0;
+    for (let i = 0; i < s.decoys.length; i++) {
+      const d = s.decoys[i];
+      const level = copyLevel(d, t);
+      if (phase === 'roam' || level <= 0 || nCopy === CAP.copies) continue;
+      copies.setMatrixAt(nCopy, stand(m4, d.at, ARROW.spread * Math.sin(d.id * GOLDEN)));
+      copyFade.setX(nCopy++, level);
+      if (stamped && d.state === 'open') {
+        spot.addScaledVector(dir, TAIL.copy * ARROW.scale);
+        spot.y += STAMP.over;
+        rings.setMatrixAt(nRing++, m4.compose(spot, facing, STAMP_SIZE));
+      }
+    }
+
+    // The marker: the ring and its beam in roam; in an intro the ring alone, under the chariot where the lakon starts.
+    const mark = phase === 'roam' ? markerIn(open) : phase === 'intro' ? (s.run.def.marker ?? s.run.def.start) : null;
+    markerBeam.visible = mark !== null && phase === 'roam';
+    if (mark) showMark(mark);
+    else fadeMark(t);
+
+    show(arrows, nArrow, arrowFade);
+    show(tips, nArrow);
+    show(leaves, nLeaf, leafFade);
+    show(posts, nPost, postFade);
+    show(copies, nCopy, copyFade);
+    show(lotus, nLotus);
+    show(rings, nRing);
+    show(beams, nBeam);
+    if (beams.instanceColor) beams.instanceColor.needsUpdate = true;
+    faceCamera();
+    fresh = false;
+  }
+
+  // What sync and the frame listener run each frame is declared from here to dispose, so the no-allocation check reads it.
+
+  /**
+   * The open targets, worked out afresh only when they can change: another lakon, phase, step or record (records only add
+   * up within a run). A failed run reads as active: its records stay out through the fail shot and the retry.
+   */
+  function openNow(run: RunState): Targets {
+    const phase: Phase = run.phase === 'failed' ? 'active' : run.phase;
+    if (run.def !== targetsDef || phase !== targetsPhase || run.step !== targetsStep || run.recorded.length !== targetsRecorded) {
+      targetsDef = run.def;
+      targetsPhase = phase;
+      targetsStep = run.step;
+      targetsRecorded = run.recorded.length;
+      targets = openTargets(phase === run.phase ? run : { ...run, phase });
+    }
+    return targets;
+  }
+
+  function hasPickup(list: Targets, id: string): boolean {
+    for (let i = 0; i < list.length; i++) if (list[i].kind === 'pickup' && list[i].id === id) return true;
+    return false;
+  }
+
+  function markerIn(list: Targets): XZ | null {
+    for (let i = 0; i < list.length; i++) if (list[i].kind === 'marker') return list[i].at;
+    return null;
+  }
+
+  /** The pose of an arrow standing in the ground at `at`, its tail leaning toward `lean`; leaves its entry point in `spot` and its tail's direction in `dir`. */
+  function stand(out: THREE.Matrix4, at: XZ, lean: number): THREE.Matrix4 {
+    const s = Math.sin(ARROW.tilt);
+    dir.set(s * Math.cos(lean), Math.cos(ARROW.tilt), -s * Math.sin(lean));
+    spot.set(at.x, groundHeight(at.x, at.z), at.z);
+    // The shapes point their tip along +y: the other way from the tail, into the ground.
+    turn.setFromUnitVectors(UP, down.copy(dir).negate());
+    return out.compose(spot, turn, ARROW_SIZE);
   }
 
   /** Where a lontar starts its flight, in the chariot's frame, and whether it flies (the chariot came by) or rises where it stands. */
@@ -452,6 +598,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
         since = fresh ? -Infinity : t;
         copyIn.set(d.id, since);
       }
+      // Out again (the same id in another run of the same lakon): its next going starts afresh.
+      copyOut.delete(d.id);
       return clamp((t - since) / FADE, 0, 1);
     }
     if (since === undefined) return 0;
@@ -463,7 +611,12 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     return clamp((went - since) / FADE, 0, 1) * clamp(1 - (t - went) / FADE, 0, 1);
   }
 
-  function placeMarker(at: XZ): void {
+  /** The marker ring whole at its mark, laid over the ground there; its beam goes with it. */
+  function showMark(at: XZ): void {
+    markLive = true;
+    markGoneAt = NaN;
+    markMat.opacity = MARKER.opacity;
+    markerRing.visible = true;
     if (at.x === markerX && at.z === markerZ) return;
     markerX = at.x;
     markerZ = at.z;
@@ -471,6 +624,33 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     drape(ringPos, ringFlat, at.x, at.z);
     markerRing.position.set(at.x, g, at.z);
     markerBeam.position.set(at.x, g - BEAM.sunk + BEAM.h / 2, at.z);
+  }
+
+  /**
+   * The marker ring with no mark: once the intro ends it fades where it lay over FADE, since the last intro shot hands over
+   * to the chase view with no cut to hide it; then it is hidden.
+   */
+  function fadeMark(t: number): void {
+    if (markLive) {
+      markLive = false;
+      markGoneAt = t;
+    }
+    const k = Number.isNaN(markGoneAt) ? 0 : 1 - Math.max(0, t - markGoneAt) / FADE;
+    if (k <= 0) markGoneAt = NaN;
+    markMat.opacity = MARKER.opacity * Math.max(0, k);
+    markerRing.visible = k > 0;
+  }
+
+  /** Lays a shape made flat round the origin over the ground at (x, z): each vertex keeps its height over the ground under it, plus LIFT. */
+  function drape(pos: THREE.BufferAttribute, flat: ArrayLike<number>, x: number, z: number): void {
+    const base = groundHeight(x, z);
+    for (let i = 0; i < pos.count; i++) {
+      const vx = flat[i * 3];
+      const vy = flat[i * 3 + 1];
+      const vz = flat[i * 3 + 2];
+      pos.setXYZ(i, vx, vy + groundHeight(x + vx, z + vz) - base + LIFT, vz);
+    }
+    pos.needsUpdate = true;
   }
 
   /** Turns every beam about the vertical to face the camera. */
@@ -497,117 +677,6 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     if (fade) fade.needsUpdate = true;
   }
 
-  // Every frame, synced or not (the finale orbits the tower without syncing), the beams keep facing the camera.
-  const stopFrames = game.onFrame(() => faceCamera());
-
-  function sync(s: GameState, time: number): void {
-    const t = Number.isFinite(time) ? time : clock;
-    clock = t;
-    if (s.run.def !== lakon) layOut(s.run.def);
-    const { phase } = s.run;
-    // A failed lakon keeps its records out through its shot and while the retry waits: they are still to be recorded.
-    const targets = openTargets(phase === 'failed' ? { ...s.run, phase: 'active' as const } : s.run);
-    const sight = s.sight.on;
-    const facing = game.camera.quaternion;
-
-    let nArrow = 0;
-    let nLeaf = 0;
-    let nPost = 0;
-    let nBeam = 0;
-    let nHalo = 0;
-    let nLotus = 0;
-    for (let i = 0; i < records.length; i++) {
-      const r = records[i];
-      const open = hasPickup(targets, r.id);
-      if (open) {
-        r.out = true;
-        r.recordedAt = NaN;
-      } else if (r.out && Number.isNaN(r.recordedAt)) {
-        // No longer open: recorded, so it goes the way records go; or the lakon moved on without it, and it simply goes.
-        if (s.run.recorded.includes(r.id)) {
-          r.recordedAt = t;
-          if (r.lontar) takeOff(r, s.car);
-        } else {
-          r.out = false;
-        }
-      }
-      if (!r.out) continue;
-      const u = open ? 0 : Math.max(0, (t - r.recordedAt) / FADE);
-      if (u >= 1) {
-        r.out = false;
-        continue;
-      }
-      const left = 1 - u;
-      if (r.lontar) {
-        // The post fades where it stands; the box lifts off it and flies.
-        posts.setMatrixAt(nPost, r.post);
-        postFade.setX(nPost++, left);
-        if (open) {
-          leaves.setMatrixAt(nLeaf, r.pose);
-          spot.copy(r.halo);
-        } else {
-          const k = flightAt(r, u, s.car);
-          // A flying lontar turns to lie along the chariot as it comes in; one rising where it stands keeps its yaw.
-          const yaw = r.flies ? r.yaw + angleDiff(s.car.yaw, r.yaw) * smoothstep(FLIGHT.rise, 1, u) : r.yaw;
-          turn.setFromAxisAngle(UP, yaw);
-          leaves.setMatrixAt(nLeaf, m4.compose(spot, turn, size.setScalar(k)));
-        }
-        leafFade.setX(nLeaf++, left);
-      } else {
-        // An arrow never moves: it fades where it stands.
-        arrows.setMatrixAt(nArrow, r.pose);
-        tips.setMatrixAt(nArrow, r.pose);
-        arrowFade.setX(nArrow++, left);
-        spot.copy(r.halo);
-      }
-      const halo = halos[nHalo++];
-      halo.position.copy(spot);
-      (halo.material as THREE.SpriteMaterial).opacity = HALO.opacity * left;
-      halo.visible = true;
-      beamAt[nBeam * 3] = r.beam.x;
-      beamAt[nBeam * 3 + 1] = r.beam.y;
-      beamAt[nBeam * 3 + 2] = r.beam.z;
-      beams.setColorAt(nBeam++, tint.copy(GOLD).multiplyScalar(left));
-      if (open && sight) lotus.setMatrixAt(nLotus++, m4.compose(r.stamp, facing, STAMP_SIZE));
-    }
-    for (let k = nHalo; k < halos.length; k++) halos[k].visible = false;
-
-    // The copies come out with the lakon, not before it starts.
-    copyMat.opacity = shimmerAt(t);
-    let nCopy = 0;
-    let nRing = 0;
-    for (let i = 0; i < s.decoys.length; i++) {
-      const d = s.decoys[i];
-      const level = copyLevel(d, t);
-      if (phase === 'roam' || level <= 0 || nCopy === CAP.copies) continue;
-      copies.setMatrixAt(nCopy, stand(m4, d.at, ARROW.spread * Math.sin(d.id * GOLDEN)));
-      copyFade.setX(nCopy++, level);
-      if (sight && d.state === 'open') {
-        spot.addScaledVector(dir, TAIL.copy * ARROW.scale);
-        spot.y += STAMP.over;
-        rings.setMatrixAt(nRing++, m4.compose(spot, facing, STAMP_SIZE));
-      }
-    }
-
-    // The marker: the ring and its beam in roam; in an intro the ring alone, under the chariot where the lakon starts.
-    const mark = phase === 'roam' ? markerIn(targets) : phase === 'intro' ? (s.run.def.marker ?? s.run.def.start) : null;
-    markerRing.visible = mark !== null;
-    markerBeam.visible = mark !== null && phase === 'roam';
-    if (mark) placeMarker(mark);
-
-    show(arrows, nArrow, arrowFade);
-    show(tips, nArrow);
-    show(leaves, nLeaf, leafFade);
-    show(posts, nPost, postFade);
-    show(copies, nCopy, copyFade);
-    show(lotus, nLotus);
-    show(rings, nRing);
-    show(beams, nBeam);
-    if (beams.instanceColor) beams.instanceColor.needsUpdate = true;
-    faceCamera();
-    fresh = false;
-  }
-
   function setFinale(on: boolean): void {
     play.visible = !on;
     finale.visible = on;
@@ -616,18 +685,7 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   function dispose(): void {
     stopFrames();
     game.root.remove(group);
-    const geometries = new Set<THREE.BufferGeometry>();
-    const materials = new Set<THREE.Material>();
-    group.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      // A sprite's quad is three's own, shared by every sprite: only its material is the halo's.
-      if (mesh.isMesh) geometries.add(mesh.geometry);
-      if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
-      const m = (o as THREE.Mesh | THREE.Sprite).material;
-      if (m) for (const x of Array.isArray(m) ? m : [m]) materials.add(x);
-    });
-    for (const g of geometries) g.dispose();
-    for (const m of materials) m.dispose();
+    disposeGroup(group);
   }
 
   return { sync, setFinale, dispose };

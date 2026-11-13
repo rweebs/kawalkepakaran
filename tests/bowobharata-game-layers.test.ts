@@ -13,13 +13,14 @@ import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type Ch
 import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
 import { createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
 import { missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
-import type { Phase } from '../src/lib/bowobharata-game/mission-run';
+import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
 import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
 import type { SceneGame } from '../src/lib/bowobharata-game/world/types';
 import { CLEAR, createLandmarks } from '../src/lib/bowobharata-game/world/landmarks3d';
 import { DUST, TUFTS, cellTuft, createGround, inField, ringCells } from '../src/lib/bowobharata-game/world/ground3d';
 import { bindChariot } from '../src/lib/bowobharata-game/world/chariot-bind';
 import { SHIMMER, createPickups, shimmerAt } from '../src/lib/bowobharata-game/world/pickups3d';
+import { disposeGroup } from '../src/lib/bowobharata-game/world/dispose';
 import * as shapes from '../src/lib/bowobharata-game/world/shapes';
 import * as arrows from '../src/lib/bowobharata-game/arrows3d';
 
@@ -102,6 +103,33 @@ const flatDist = (v: { x: number; z: number }, p: XZ) => Math.hypot(v.x - p.x, v
 const F32 = 1e-4;
 /** Height of v over the ground under p. */
 const over = (v: THREE.Vector3, p: XZ) => v.y - groundHeight(p.x, p.z);
+
+/** What a layer made under root: every drawable's geometry, every instanced mesh, every material, and each map it painted itself (not the scene's). */
+function ownedBy(root: THREE.Object3D, game: SceneGame): Set<Disposable> {
+  const shared: THREE.Texture[] = Object.values(game.textures);
+  const owned = new Set<Disposable>();
+  root.traverse((o) => {
+    const geometry = (o as { geometry?: THREE.BufferGeometry }).geometry;
+    if (geometry && !(o as THREE.Sprite).isSprite) owned.add(geometry);
+    if ((o as THREE.InstancedMesh).isInstancedMesh) owned.add(o as THREE.InstancedMesh);
+    const material = (o as { material?: THREE.Material | THREE.Material[] }).material;
+    for (const mat of (material ? (Array.isArray(material) ? material : [material]) : []) as THREE.MeshStandardMaterial[]) {
+      owned.add(mat);
+      if (mat.map && !shared.includes(mat.map)) owned.add(mat.map);
+    }
+  });
+  return owned;
+}
+/** Runs `dispose`, then checks that it freed everything in `owned` and none of the scene's shared textures. */
+function expectFreed(game: SceneGame, owned: Set<Disposable>, dispose: () => void): void {
+  const freed = new Set<unknown>();
+  for (const r of owned) r.addEventListener('dispose', () => freed.add(r));
+  const shared: unknown[] = [];
+  for (const t of Object.values(game.textures)) t.addEventListener('dispose', () => shared.push(t));
+  dispose();
+  for (const r of owned) expect(freed.has(r), (r as { type?: string }).type).toBe(true);
+  expect(shared).toEqual([]);
+}
 
 describe('landmarks', () => {
   it('counts 5 tents, 16 trees, 6 posts and 15 rocks', () => {
@@ -238,27 +266,11 @@ describe('landmarks', () => {
   it('dispose removes the group, stops listening and frees its geometries, materials and textures, not the scene’s', () => {
     const { game, frames } = fakeGame();
     const lm = createLandmarks(game);
-    const owned = new Set<Disposable>();
-    lm.group.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh || (o as THREE.Points).isPoints) owned.add(m.geometry);
-      if ((m as unknown as THREE.InstancedMesh).isInstancedMesh) owned.add(m as unknown as THREE.InstancedMesh);
-      const mats = m.material ? (Array.isArray(m.material) ? m.material : [m.material]) : [];
-      for (const mat of mats as THREE.MeshStandardMaterial[]) {
-        owned.add(mat);
-        if (mat.map && !Object.values(game.textures).includes(mat.map)) owned.add(mat.map);
-      }
-    });
-    const freed = new Set<unknown>();
-    for (const r of owned) r.addEventListener('dispose', () => freed.add(r));
-    const shared: unknown[] = [];
-    for (const t of Object.values(game.textures)) t.addEventListener('dispose', () => shared.push(t));
-    lm.dispose();
+    const owned = ownedBy(lm.group, game);
+    expect(owned.size).toBeGreaterThan(20);
+    expectFreed(game, owned, () => lm.dispose());
     expect(game.root.children).not.toContain(lm.group);
     expect(frames.size).toBe(0);
-    expect(owned.size).toBeGreaterThan(20);
-    for (const r of owned) expect(freed.has(r), (r as { type?: string }).type).toBe(true);
-    expect(shared).toEqual([]);
   });
 });
 
@@ -682,6 +694,33 @@ describe('pickups', () => {
     expect(Math.abs(over(placeOf(decoys, 0), spot))).toBeLessThanOrEqual(F32);
   });
 
+  it('fades records, posts and copies in the shader: the patch reads each instance’s aFade and scales the alpha by it', () => {
+    const { game } = fakeGame();
+    createPickups(game);
+    const count = (src: string, s: string) => src.split(s).length - 1;
+    for (const name of ['record-arrows', 'record-arrow-tips', 'lontar', 'lontar-posts', 'decoys']) {
+      const mesh = named<THREE.InstancedMesh>(game.root, name);
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      expect(mat.isMeshStandardMaterial, name).toBe(true);
+      expect(mat.transparent, name).toBe(true);
+      expect(mat.customProgramCacheKey(), name).toBe('pickup-fade');
+      expect((mesh.geometry.getAttribute('aFade') as THREE.InstancedBufferAttribute).isInstancedBufferAttribute, name).toBe(true);
+      const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+      mat.onBeforeCompile(shader as unknown as Parameters<THREE.Material['onBeforeCompile']>[0], undefined as unknown as THREE.WebGLRenderer);
+      const { vertexShader: vs, fragmentShader: fs } = shader;
+      // Each line goes in once, after the chunk it extends: a renamed chunk would leave the patch out without an error.
+      expect(count(vs, 'attribute float aFade;'), name).toBe(1);
+      expect(count(vs, 'varying float vFade;'), name).toBe(1);
+      expect(count(vs, 'vFade = aFade;'), name).toBe(1);
+      expect(count(fs, 'varying float vFade;'), name).toBe(1);
+      expect(count(fs, 'diffuseColor.a *= vFade;'), name).toBe(1);
+      expect(vs.indexOf('vFade = aFade;'), name).toBeGreaterThan(vs.indexOf('#include <begin_vertex>'));
+      expect(vs.indexOf('attribute float aFade;'), name).toBeLessThan(vs.indexOf('vFade = aFade;'));
+      expect(fs.indexOf('diffuseColor.a *= vFade;'), name).toBeGreaterThan(fs.indexOf('#include <color_fragment>'));
+      expect(fs.indexOf('varying float vFade;'), name).toBeLessThan(fs.indexOf('diffuseColor.a *= vFade;'));
+    }
+  });
+
   it('prologue start: 8 record-arrows, 8 record-beams and 1 tower-beam', () => {
     const { game } = fakeGame();
     createPickups(game).sync(BASE, 0);
@@ -824,10 +863,14 @@ describe('pickups', () => {
     layer.sync(three, 0.5);
     expect(drawn(game.root, 'stamp-lotus')).toBe(0);
     expect(drawn(game.root, 'stamp-ring')).toBe(0);
-    layer.sync(sighted(three), 0.6);
+    // Sight on: the stamps come out, whole after a quarter second.
+    for (let k = 1; k <= 20; k++) layer.sync(sighted(three), 0.5 + k / 64);
     expect(drawn(game.root, 'stamp-lotus')).toBe(5);
     expect(drawn(game.root, 'stamp-ring')).toBe(1);
     const lotus = named<THREE.InstancedMesh>(game.root, 'stamp-lotus');
+    const ring = named<THREE.InstancedMesh>(game.root, 'stamp-ring');
+    expect((lotus.material as THREE.MeshBasicMaterial).opacity).toBe(1);
+    expect((ring.material as THREE.MeshBasicMaterial).opacity).toBe(1);
     for (let k = 0; k < 5; k++) {
       const p = new THREE.Vector3();
       const q = new THREE.Quaternion();
@@ -838,11 +881,35 @@ describe('pickups', () => {
       // Read back from float32 instance storage: within 0.06°.
       expect(q.angleTo(game.camera.quaternion)).toBeLessThan(1e-3);
     }
-    const ring = named<THREE.InstancedMesh>(game.root, 'stamp-ring');
     expect(flatDist(placeOf(ring, 0), PROLOGUE.scripted.decoys[0])).toBeLessThanOrEqual(1.5);
-    layer.sync(three, 0.7);
+    // Sight off: they are gone within a quarter second.
+    for (let k = 21; k <= 40; k++) layer.sync(three, 0.5 + k / 64);
     expect(drawn(game.root, 'stamp-lotus')).toBe(0);
     expect(drawn(game.root, 'stamp-ring')).toBe(0);
+  });
+
+  it('fades the stamps in and out over a quarter second: sight toggled every 0.1 s for 2 s never moves their opacity faster than 2 Hz allows', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const s = prologue([]);
+    /** A stamp mesh's opacity as drawn: 0 while it is hidden. */
+    const level = (name: string) => (drawn(game.root, name) > 0 ? (named<THREE.Mesh>(game.root, name).material as THREE.MeshBasicMaterial).opacity : 0);
+    const dt = 1 / 64;
+    layer.sync(s, 0);
+    let last = { lotus: 0, ring: 0 };
+    let peak = 0;
+    for (let k = 1; k * dt <= 2; k++) {
+      const t = k * dt;
+      layer.sync(Math.floor(t / 0.1) % 2 === 0 ? sighted(s) : s, t);
+      const now = { lotus: level('stamp-lotus'), ring: level('stamp-ring') };
+      expect(Math.abs(now.lotus - last.lotus), `lotus at frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-9);
+      expect(Math.abs(now.ring - last.ring), `ring at frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-9);
+      peak = Math.max(peak, now.lotus, now.ring);
+      last = now;
+    }
+    // They still come out with each tap, never past whole.
+    expect(peak).toBeGreaterThan(0.3);
+    expect(peak).toBeLessThanOrEqual(1);
   });
 
   it('roam: the marker ring and marker-beam stand at the lakon’s marker; its records and copies wait for the lakon', () => {
@@ -860,23 +927,55 @@ describe('pickups', () => {
     expect(shown(named(game.root, 'record-circle'))).toBe(true);
   });
 
-  it('during the prologue’s intro the marker ring lies at SPAWN under the chariot, with no beam; it goes once the lakon is active', () => {
+  it('during the prologue’s intro the marker ring lies at SPAWN under the chariot, with no beam; a parva’s at its marker', () => {
     const { game } = fakeGame();
     const layer = createPickups(game);
     expect(BASE.run.phase).toBe('intro');
     layer.sync(BASE, 0);
-    const ring = named(game.root, 'marker-ring');
+    const ring = named<THREE.Mesh>(game.root, 'marker-ring');
     expect(shown(ring)).toBe(true);
+    expect((ring.material as THREE.MeshBasicMaterial).opacity).toBe(0.85);
     expect(shown(named(game.root, 'marker-beam'))).toBe(false);
     expect(flatDist(placeOf(ring), SPAWN)).toBeLessThanOrEqual(1e-9);
     expect(flatDist(BASE.car, SPAWN)).toBe(0);
-    layer.sync(prologue([]), 0.1);
-    expect(shown(ring)).toBe(false);
     // A parva's intro keeps it at its marker, where the chariot stopped to start the lakon.
     layer.sync(at(P1_ROAM, { phase: 'intro' }), 0.2);
     expect(shown(ring)).toBe(true);
+    expect((ring.material as THREE.MeshBasicMaterial).opacity).toBe(0.85);
     expect(shown(named(game.root, 'marker-beam'))).toBe(false);
     expect(flatDist(placeOf(ring), P1.marker!)).toBeLessThanOrEqual(1e-9);
+  });
+
+  it('fades the marker ring out where it lay once the intro ends, over 0.4 s and no faster than 2 Hz allows: the last intro shot hands over with no cut', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const ring = named<THREE.Mesh>(game.root, 'marker-ring');
+    const mat = ring.material as THREE.MeshBasicMaterial;
+    layer.sync(BASE, 5);
+    const lay = ring.position.clone();
+    const dt = 1 / 64;
+    let last = mat.opacity;
+    let gone = NaN;
+    for (let k = 1; k <= 40; k++) {
+      layer.sync(prologue([]), 5 + k * dt);
+      if (!shown(ring)) {
+        if (Number.isNaN(gone)) gone = k * dt;
+        continue;
+      }
+      expect(Number.isNaN(gone), `the ring came back at frame ${k}`).toBe(true);
+      expect(ring.position.equals(lay)).toBe(true);
+      expect(mat.opacity).toBeLessThanOrEqual(last);
+      expect(last - mat.opacity).toBeLessThanOrEqual(dt / 0.25 + 1e-9);
+      last = mat.opacity;
+    }
+    expect(gone).toBeGreaterThanOrEqual(0.25);
+    expect(gone).toBeLessThanOrEqual(0.5);
+    expect(last).toBeLessThan(0.1);
+    expect(shown(named(game.root, 'marker-beam'))).toBe(false);
+    // A parva's next intro brings it back whole.
+    layer.sync(at(P1_ROAM, { phase: 'intro' }), 6);
+    expect(shown(ring)).toBe(true);
+    expect(mat.opacity).toBe(0.85);
   });
 
   it('setFinale(true) lights 24 lamps in a ring of r 6 round the tower and hides the records, copies, record beams and markers, with no sync; setFinale(false) undoes it', () => {
@@ -1031,8 +1130,13 @@ describe('pickups', () => {
       return q;
     };
     const lying = new Map(P1_ITEMS.map((it) => [it.id, turnOf(instancesAt(boxes, it.at)[0])]));
+    const fade = boxes.geometry.getAttribute('aFade');
+    const last = new Map(P1_ITEMS.map((it) => [it.id, 1]));
+    const dt = 1 / 64;
     for (let k = 0; k <= 32; k++) {
-      layer.sync(parva1(c, ['A', 'B'], 'outro'), 5 + k / 64);
+      layer.sync(parva1(c, ['A', 'B'], 'outro'), 5 + k * dt);
+      // Both still out for the first quarter second, fading, not dropped.
+      if (k * dt < 0.25) expect(drawn(game.root, 'lontar'), `frame ${k}`).toBe(2);
       for (let i = 0; i < boxes.count; i++) {
         const p = placeOf(boxes, i);
         const item = P1_ITEMS.find((it) => flatDist(p, it.at) <= F32);
@@ -1041,9 +1145,15 @@ describe('pickups', () => {
         expect(over(p, item!.at)).toBeLessThanOrEqual(1.16 + 2 + 1e-4);
         // It keeps lying as it lay: no turn toward a chariot far off.
         expect(turnOf(i).angleTo(lying.get(item!.id)!)).toBeLessThan(1e-3);
+        // It fades, no faster than a quarter-second swing.
+        const f = fade.getX(i);
+        expect(f, `${item!.id} at frame ${k}`).toBeLessThanOrEqual(last.get(item!.id)!);
+        expect(last.get(item!.id)! - f, `${item!.id} at frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        last.set(item!.id, f);
       }
-      if (k / 64 >= 0.4) expect(drawn(game.root, 'lontar'), `frame ${k}`).toBe(0);
+      if (k * dt >= 0.4) expect(drawn(game.root, 'lontar'), `frame ${k}`).toBe(0);
     }
+    for (const it of P1_ITEMS) expect(last.get(it.id), it.id).toBeLessThan(0.1);
   });
 
   it('draws the beams as additive planes with the shaft texture, fog off, upright and turned to the camera: 1.4 × 30, gold, amber and blue-white', () => {
@@ -1174,6 +1284,24 @@ describe('pickups', () => {
     expect(drawn(game.root, 'decoys')).toBe(P1.scripted.decoys.length);
   });
 
+  it('brings a parva’s records and copies out the moment its intro begins at the marker (the same lakon, roam to intro)', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    layer.sync(P1_ROAM, 0);
+    expect(drawn(game.root, 'lontar')).toBe(0);
+    expect(drawn(game.root, 'record-beams')).toBe(0);
+    layer.sync(at(P1_ROAM, { phase: 'intro' }), 0.1);
+    expect(drawn(game.root, 'lontar')).toBe(2);
+    expect(drawn(game.root, 'lontar-posts')).toBe(2);
+    expect(drawn(game.root, 'record-beams')).toBe(2);
+    expect(drawn(game.root, 'decoys')).toBe(P1.scripted.decoys.length);
+    expect(shown(named(game.root, 'marker-beam'))).toBe(false);
+    // And once active, they stay out.
+    layer.sync(at(P1_ROAM, { phase: 'active' }), 0.2);
+    expect(drawn(game.root, 'lontar')).toBe(2);
+    expect(drawn(game.root, 'record-beams')).toBe(2);
+  });
+
   it('draws every record of every lakon during its intro, each under its beam', () => {
     const slugs = [0, 2, 2, 4, 9, 1, 2, 2, 2];
     for (let ch = 0; ch <= 8; ch++) {
@@ -1241,6 +1369,26 @@ describe('pickups', () => {
     expect(drawn(game.root, 'decoys')).toBe(0);
   });
 
+  it('fades a copy filed a second time, as when a lakon is played again with the same def', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const decoys = named<THREE.InstancedMesh>(game.root, 'decoys');
+    const fade = decoys.geometry.getAttribute('aFade');
+    const s = prologue([]);
+    const copy = (state: Decoy['state']): GameState => ({ ...s, decoys: [{ ...s.decoys[0], state }] });
+    layer.sync(copy('open'), 1);
+    layer.sync(copy('filed'), 1.1);
+    layer.sync(copy('filed'), 2);
+    expect(decoys.count).toBe(0);
+    // Out again (startChapter numbers its copies from 1 each run), then filed again: it fades as the first time.
+    layer.sync(copy('open'), 3);
+    expect(decoys.count).toBe(1);
+    layer.sync(copy('filed'), 4);
+    layer.sync(copy('filed'), 4.1);
+    expect(decoys.count).toBe(1);
+    expect(fade.getX(0)).toBeCloseTo(0.75, 6);
+  });
+
   it('draws the prologue’s start in 15 calls and the finale in 28: an instanced mesh per kind, a sprite per halo', () => {
     const { game } = fakeGame();
     const layer = createPickups(game);
@@ -1265,33 +1413,71 @@ describe('pickups', () => {
     const layer = createPickups(game);
     layer.sync(BASE, 0);
     const group = named(game.root, 'pickups');
-    const owned = new Set<Disposable>();
-    group.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) owned.add(m.geometry);
-      if ((m as unknown as THREE.InstancedMesh).isInstancedMesh) owned.add(m as unknown as THREE.InstancedMesh);
-      const mats = m.material ? (Array.isArray(m.material) ? m.material : [m.material]) : [];
-      for (const mat of mats) owned.add(mat);
-    });
-    const freed = new Set<unknown>();
-    for (const r of owned) r.addEventListener('dispose', () => freed.add(r));
-    const shared: unknown[] = [];
-    for (const t of Object.values(game.textures)) t.addEventListener('dispose', () => shared.push(t));
-    layer.dispose();
+    const owned = ownedBy(group, game);
+    expect(owned.size).toBeGreaterThan(30);
+    expectFreed(game, owned, () => layer.dispose());
     expect(game.root.children).not.toContain(group);
     expect(frames.size).toBe(0);
-    expect(owned.size).toBeGreaterThan(30);
-    for (const r of owned) expect(freed.has(r), (r as { type?: string }).type).toBe(true);
-    expect(shared).toEqual([]);
   });
 
-  it('allocates nothing per frame: no new THREE. between function sync( and function dispose(', () => {
+  it('allocates nothing per frame: no new THREE. between function sync( and function dispose(, where every per-frame helper lives', () => {
     const src = read('src/lib/bowobharata-game/world/pickups3d.ts');
     const from = src.indexOf('function sync(');
     const to = src.indexOf('function dispose(');
     expect(from).toBeGreaterThan(0);
     expect(to).toBeGreaterThan(from);
     expect(src.slice(from, to)).not.toContain('new THREE.');
+    // So the check reads every function a frame runs: above sync only what runs once, or once a lakon; after dispose, none.
+    const declared = (text: string) => [...text.matchAll(/\bfunction (\w+)\(/g)].map((m) => m[1]);
+    const start = src.indexOf('export function createPickups(');
+    expect(start).toBeGreaterThan(0);
+    for (const fn of declared(src.slice(0, start))) expect(['shimmerAt', 'pickupsOf', 'fading', 'markerGeo'], fn).toContain(fn);
+    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['instanced', 'fadeOn', 'slotOf', 'layOut'], fn).toContain(fn);
+    expect(declared(src.slice(to))).toEqual(['dispose']);
+    // shimmerAt, the one module-level function a frame runs, is plain arithmetic.
+    const shimmer = src.slice(src.indexOf('export function shimmerAt('));
+    expect(shimmer.slice(0, shimmer.indexOf('\n}\n'))).not.toContain('new ');
+  });
+});
+
+describe('disposeGroup', () => {
+  it('frees each geometry, material and instanced mesh under a group once, hidden ones, points and lines too; never a texture or the sprites’ shared quad', () => {
+    const tex = new THREE.Texture();
+    const sharedGeo = new THREE.BoxGeometry();
+    const sharedMat = new THREE.MeshBasicMaterial({ map: tex });
+    const inst = new THREE.InstancedMesh(new THREE.ConeGeometry(), new THREE.MeshStandardMaterial(), 4);
+    const points = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: tex }));
+    const line = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial());
+    const multi = new THREE.Mesh(new THREE.PlaneGeometry(), [new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial()]);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+    const hidden = new THREE.Group();
+    hidden.visible = false;
+    hidden.add(new THREE.Mesh(sharedGeo, sharedMat), points, sprite);
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(sharedGeo, sharedMat), inst, line, multi, hidden);
+    const owned: Disposable[] = [
+      sharedGeo, sharedMat, inst, inst.geometry, inst.material as THREE.Material, points.geometry, points.material as THREE.Material,
+      line.geometry, line.material as THREE.Material, multi.geometry, ...(multi.material as THREE.Material[]), sprite.material,
+    ];
+    const times = new Map<unknown, number>();
+    for (const r of owned) r.addEventListener('dispose', () => times.set(r, (times.get(r) ?? 0) + 1));
+    let quad = 0;
+    let texture = 0;
+    sprite.geometry.addEventListener('dispose', () => quad++);
+    tex.addEventListener('dispose', () => texture++);
+    disposeGroup(root);
+    for (const r of owned) expect(times.get(r), (r as { type?: string }).type).toBe(1);
+    expect(quad).toBe(0);
+    expect(texture).toBe(0);
+  });
+
+  it('is the one cleanup the layers share: landmarks3d and pickups3d call it and keep no copy of their own', () => {
+    for (const f of ['landmarks3d.ts', 'pickups3d.ts']) {
+      const src = read(join('src/lib/bowobharata-game/world', f));
+      expect(src, f).toMatch(/from '\.\/dispose'/);
+      expect(src, f).toContain('disposeGroup(group)');
+      expect(src, f).not.toMatch(/new Set<THREE\.BufferGeometry>|new Set<THREE\.Material>/);
+    }
   });
 });
 
@@ -1308,7 +1494,7 @@ describe('world/ framing (source)', () => {
   const TEXT = /fillText|strokeText|TextGeometry|FontLoader|CSS2DRenderer|CSS3DRenderer/;
 
   it('covers every file of the layers', () => {
-    for (const f of ['types.ts', 'shapes.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
+    for (const f of ['types.ts', 'shapes.ts', 'dispose.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
   });
 
   it('the matcher catches each specifier with its closing quote, and lets the allowed ones through', () => {

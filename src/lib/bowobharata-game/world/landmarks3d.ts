@@ -8,6 +8,7 @@ import { canvasTexture, glowSprite, wavingCloth } from '../../bowobharata/scene/
 import { mulberry32 } from '../../sky/rng';
 import { yawOf, type XZ } from '../geom';
 import { ANCHORS, POSTS, ROCKS, TENTS, TREES, staticColliders, type Collider } from '../world';
+import { disposeGroup } from './dispose';
 import { at, bake, merge } from './shapes';
 import type { SceneGame } from './types';
 
@@ -335,18 +336,8 @@ export function createLandmarks(game: SceneGame): { group: THREE.Group; dispose(
     dispose() {
       stopClock();
       game.root.remove(group);
-      const geometries = new Set<THREE.BufferGeometry>();
-      const materials = new Set<THREE.Material>();
-      group.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        // A sprite's quad is three's own, shared by every sprite: only its material is the lamp's.
-        if (mesh.isMesh) geometries.add(mesh.geometry);
-        if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
-        const m = (o as THREE.Mesh | THREE.Sprite).material;
-        if (m) for (const x of Array.isArray(m) ? m : [m]) materials.add(x);
-      });
-      for (const geo of geometries) geo.dispose();
-      for (const m of materials) m.dispose();
+      disposeGroup(group);
+      // The emblems are this layer's own textures; the lamp's glow is the scene's.
       dharmaTex.dispose();
       ringTex.dispose();
     },
