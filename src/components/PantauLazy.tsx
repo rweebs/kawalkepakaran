@@ -3,12 +3,12 @@
 // (src/pages/pantau-data/[name].json.ts) and swaps in the interactive component with the same props. If the fetch
 // fails, the static version simply stays, so nothing breaks without JavaScript or network.
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import RelasiGraph from './RelasiGraph';
+import RelasiGraph3D from './RelasiGraph3D';
 import SitemapDashboard from './SitemapDashboard';
 import PerkaraDashboard from './PerkaraDashboard';
 import FomoDashboard from './FomoDashboard';
 
-const COMPONENTS: Record<string, ComponentType<any>> = { relasi: RelasiGraph, situs: SitemapDashboard, perkara: PerkaraDashboard, fomo: FomoDashboard };
+const COMPONENTS: Record<string, ComponentType<any>> = { relasi: RelasiGraph3D, situs: SitemapDashboard, perkara: PerkaraDashboard, fomo: FomoDashboard };
 
 export interface PantauLazyProps { kind: 'relasi' | 'situs' | 'perkara' | 'fomo'; src: string; props?: Record<string, unknown>; children?: ReactNode }
 

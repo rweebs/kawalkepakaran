@@ -137,6 +137,7 @@ describe('page wiring', () => {
     expect(existsSync('src/pages/pantau-data/[name].json.ts')).toBe(true);
     expect(page).not.toMatch(/<(RelasiGraph|SitemapDashboard|PerkaraDashboard|FomoDashboard) client:/);
     expect(page.match(/<PantauLazy client:visible/g)).toHaveLength(4);
+    expect(page).toContain('<RelasiGraph3D');
   });
   it('leads with the hero, orders chapters by when the harm happened, and stamps provenance on all three sections', () => {
     expect(page.indexOf('<PantauHero')).toBeLessThan(page.indexOf('id="relasi"'));

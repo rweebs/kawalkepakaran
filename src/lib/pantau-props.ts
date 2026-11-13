@@ -11,7 +11,8 @@ import { offsetOf } from './sitemap-insights';
 import { computeMatches, buildGraph } from './relasi';
 import { localizedEvents, eventPath } from './linimasa-locale';
 import type { Locale } from '../i18n';
-import { stageItems } from './pantau-3d';
+import { stageItems, type StageInput } from './pantau-3d';
+import { buildJourney } from './relasi-journey';
 import { WATCH_ORIGIN } from './sitemap-watch';
 import { gameData } from './bowobharata-game/data-build';
 
@@ -22,7 +23,7 @@ export const rows = toRows(watch);
 /** Case-file chronology rows about Fomo, for the Fomo section's date-consistency check (FomoDashboard `dossier`). */
 export const fomoDossier = perkara.kronologis.filter((r) => /fomo/i.test(r.peristiwa)).map((r) => ({ tanggal: r.tanggal, iso: r.iso, peristiwa: r.peristiwa }));
 
-export const ISLANDS = ['relasi', 'situs-id', 'situs-en', 'perkara', 'fomo', 'stage3d', 'bowobharata-game'] as const;
+export const ISLANDS = ['relasi', 'journey', 'situs-id', 'situs-en', 'perkara', 'fomo', 'stage3d', 'bowobharata-game'] as const;
 export type Island = (typeof ISLANDS)[number];
 
 let relasiCache: ReturnType<typeof relasiData> | undefined;
@@ -41,17 +42,21 @@ export const situsProps = (locale: Locale) => ({
 });
 
 /** Every dated item of the three sources for the fullscreen 3D stage (src/components/PantauFullscreen.tsx). */
-export const stageProps = () => ({
-  items: stageItems({
-    site: rows, fomo: fomo.posts, kronologis: perkara.kronologis, laporan: perkara.laporan,
-    terlaporNames: Object.fromEntries(perkara.terlapor.map((t) => [t.id, t.nama])), siteOrigin: WATCH_ORIGIN,
-  }),
+const stageInput = (): StageInput => ({
+  site: rows, fomo: fomo.posts, kronologis: perkara.kronologis, laporan: perkara.laporan,
+  terlaporNames: Object.fromEntries(perkara.terlapor.map((t) => [t.id, t.nama])), siteOrigin: WATCH_ORIGIN,
 });
+export const stageProps = () => ({ items: stageItems(stageInput()) });
+
+/** The museum walk of the 3D relationship map: dated events tied to graph nodes, in half-year rooms (src/lib/relasi-journey.ts). */
+let journeyCache: ReturnType<typeof buildJourney> | undefined;
+export const journeyProps = () => (journeyCache ??= buildJourney(stageInput(), relasiProps().nodes));
 
 /** Data props (everything except locale and links) of one island. */
 export function islandData(name: Island): Record<string, unknown> {
   switch (name) {
     case 'relasi': return relasiProps();
+    case 'journey': return { ...journeyProps() };
     case 'situs-id': return situsProps('id');
     case 'situs-en': return situsProps('en');
     case 'perkara': return { data: perkara };

@@ -58,3 +58,76 @@ html.stage3d-open { overflow: hidden; }
   .stage3d__bar h2 { font-size: 0.95rem; }
 }
 @media print { .stage3d__entry { display: none; } }
+
+/* 3D relationship graph on /pantau (#relasi-3d, src/components/RelasiGraph3D.tsx). Reuses the .rg-* chips and side panel. */
+.rg3d { display: grid; gap: 1rem; margin-top: 1rem; }
+.rg3d > *, .rg3d__body > * { min-width: 0; }
+.rg3d__intro { margin: 0; max-width: 70ch; }
+.rg3d__controls { display: grid; gap: 0.5rem; }
+.rg3d__sources { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.85rem; }
+.rg3d__swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-right: 0.4rem; flex: none; vertical-align: middle; }
+.rg3d__swatch--line { width: 1.4rem; height: 3px; border-radius: 2px; }
+.rg3d__hint { margin: 0; font-size: 0.8rem; }
+.rg3d__body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem); gap: 1rem; align-items: start; }
+.rg3d__frame { position: relative; min-width: 0; height: min(70vh, 640px); min-height: 360px; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg); background: #0b1020; overflow: hidden; }
+.rg3d__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.rg3d__canvas--pointer { cursor: pointer; }
+.rg3d__msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 1rem; text-align: center; pointer-events: none; }
+.rg3d__tip { position: absolute; z-index: 2; padding: 0.25rem 0.5rem; border-radius: 0.4rem; background: rgba(11, 16, 32, 0.92); border: 1px solid var(--bg-glass-border); font-size: 0.8rem; pointer-events: none; max-width: 16rem; }
+.rg3d__panel .rg-panel__list li { display: flex; gap: 0.4rem; align-items: baseline; }
+.rg3d__note { font-size: 0.78rem; margin-top: 0.75rem; }
+@media (max-width: 820px) {
+  .rg3d__body { grid-template-columns: minmax(0, 1fr); }
+  .rg3d__frame { height: 60vh; }
+}
+@media print { .rg3d__frame, .rg3d__bar { display: none; } }
+.rg3d__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.rg3d__tour { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; flex: 1 1 auto; }
+.rg3d__speed { display: inline-flex; gap: 0.25rem; margin-left: 0.25rem; }
+.rg3d__step { font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+.rg3d__title { margin: 0; font-size: 1.1rem; }
+.rg3d__bar .viz-chip { min-height: 2.5rem; }
+.rg3d__play[aria-pressed="true"] { border-color: var(--text-accent); }
+/* Fullscreen: same overlay approach as the timeline stage; the canvas keeps its element, only the box around it changes. */
+html.rg3d-open { overflow: hidden; }
+.rg3d--full { position: fixed; inset: 0; z-index: 1000; margin: 0; padding: 0.75rem 1rem; background: #0b1020; grid-template-rows: auto auto minmax(0, 1fr); align-content: stretch; overflow: hidden; }
+.rg3d--full .rg3d__intro, .rg3d--full .rg3d__sources, .rg3d--full .rg3d__hint, .rg3d--full .rg3d__controls > .rg-controls__label { display: none; }
+.rg3d--full .rg-legend { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 0.25rem; }
+.rg3d--full .rg-legend .viz-chip { white-space: nowrap; }
+.rg3d--full .rg3d__body { position: relative; grid-template-columns: minmax(0, 1fr); min-height: 0; height: 100%; }
+.rg3d--full .rg3d__frame { height: 100%; min-height: 0; border-radius: var(--radius-lg); }
+.rg3d--full .rg3d__panel { position: absolute; z-index: 2; top: 0.75rem; right: 0.75rem; width: min(22rem, calc(100% - 1.5rem)); max-height: calc(100% - 1.5rem); overflow: auto; background: rgba(11, 16, 32, 0.9); backdrop-filter: blur(6px); }
+@media (max-width: 820px) {
+  .rg3d--full .rg3d__panel { top: auto; bottom: 0.5rem; right: 0.5rem; left: 0.5rem; width: auto; max-height: 38%; }
+}
+
+/* Museum layer of the 3D map: rooms, timeline slider, placard and featured exhibits (src/components/RelasiGraph3D.tsx). */
+.rg3d__main { min-width: 0; display: grid; gap: 0.5rem; align-content: start; }
+.rg3d__time { display: grid; gap: 0.5rem; }
+.rg3d__rooms { list-style: none; margin: 0; padding: 0 0 0.2rem; display: flex; gap: 0.4rem; overflow-x: auto; }
+.rg3d__room { display: grid; justify-items: center; gap: 0.1rem; min-width: 4.4rem; min-height: 2.75rem; padding: 0.3rem 0.5rem; border: 1px solid var(--bg-glass-border); border-radius: 0.5rem; background: transparent; color: var(--text-primary); font: inherit; cursor: pointer; }
+.rg3d__room:disabled { opacity: 0.45; cursor: default; }
+.rg3d__room[aria-current="step"] { border-color: var(--text-accent); background: rgba(255, 255, 255, 0.07); }
+.rg3d__room-n { font-weight: 700; letter-spacing: 0.04em; }
+.rg3d__room-d { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; }
+.rg3d__scrub { display: grid; gap: 0.25rem; }
+.rg3d__scrub input { width: 100%; min-height: 2rem; }
+.rg3d__scrub-l { font-size: 0.85rem; color: var(--text-secondary); } .rg3d__scrub-l strong { color: var(--text-primary); }
+.rg3d__placard h4 { margin: 0.2rem 0 0.4rem; }
+.rg3d__chips { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.15rem; font-size: 0.82rem; }
+.rg3d__exhibit { margin: 0.75rem 0; padding: 0.7rem 0.8rem; border: 1px solid; border-left-width: 4px; border-radius: 0.5rem; background: rgba(255, 255, 255, 0.03); }
+.rg3d__exhibit h5 { margin: 0.2rem 0; font-size: 0.95rem; overflow-wrap: anywhere; }
+.rg3d__exhibit-x { white-space: pre-line; overflow-wrap: anywhere; font-size: 0.88rem; }
+.rg3d__concerns { display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; align-items: baseline; font-size: 0.85rem; margin-bottom: 0; }
+.rg3d__featured { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; font-size: 0.85rem; }
+.rg3d__featured .rg-linkbtn { text-align: left; } .rg3d__featured .rg-linkbtn[aria-current="true"] { font-weight: 700; }
+.rg3d__all { margin-top: 0.75rem; font-size: 0.85rem; }
+.rg3d__all ul { list-style: none; margin: 0.5rem 0 0; padding: 0; max-height: 16rem; overflow: auto; display: grid; gap: 0.4rem; font-size: 0.8rem; }
+.rg3d__tag { font-weight: 600; }
+.rg3d__node { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--bg-glass-border); }
+.rg3d--full .rg3d__main { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; }
+
+.rg3d__gran { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.rg3d__gran .viz-chip { min-height: 2.25rem; }
+.rg3d__gran-hint { margin-left: 0.5rem; }
+.rg3d__room--month, .rg3d__room--day { min-width: 3.2rem; }
