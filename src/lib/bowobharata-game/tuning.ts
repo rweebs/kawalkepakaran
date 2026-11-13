@@ -23,3 +23,13 @@ export const DRIVE = {
 
 /** The guard at the ranks: within `range` m it brakes the chariot at `decel` m/s² so the hull stops `stop` m short. */
 export const GUARD = { range: 26, stop: 0.5, decel: 14 } as const;
+
+export const MISSION_TIMING = {
+  firstVolley: 20, grace: 45,
+  markerR: 5, markerSpeed: 8,
+  stopSpeed: 4, stopFor: 1.2, gateStopFor: 1.5,
+  introSeconds: 3.5, introSkipAfter: 0.8, outroSeconds: 2.5, failSeconds: 1.2,
+  pickupR: 3, decoyR: 2.2,
+  gateWidth: 6, gateGap: 3, dayLineHalf: 11.5, postWidth: 8,
+  lapMatch: 0.15, maxLaps: 5, retryMinSeconds: 60,
+} as const;
