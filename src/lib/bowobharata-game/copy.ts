@@ -2,7 +2,8 @@
 // (src/lib/bowobharata.ts): allegory and the author's opinion, no new facts, no verdict on anyone. The arrows and the
 // Kurawa army are the campaign; Sanjaya only reports what the dossier alleges, always under the allegation line.
 // One calm narrator: the player drives, records and delivers, and never strikes, chases or catches anyone. The word
-// lists that hold this voice, and keep the reference games' names out, live in tests/bowobharata-game-copy.test.ts.
+// lists that hold this voice live in tests/bowobharata-game-copy.test.ts; the reference games' names that must stay
+// out, in tests/bowobharata-game-brand.ts.
 import type { Locale } from '../../i18n';
 import type { HintKey } from './mission-run';
 import type { MissionType } from './missions';

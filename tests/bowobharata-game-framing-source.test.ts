@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSync } from 'vite';
+import { BRAND } from './bowobharata-game-brand';
 
 // Framing guards on the game's source files (spec: open-world anti-goals and calls 17 and 21). Every word the game shows
 // comes from copy.ts, whose own word lists live in bowobharata-game-copy.test.ts; these checks keep text out of the JSX
@@ -26,7 +27,6 @@ const SOURCES = [ISLAND, ...walk(SCREENS), ...walk(LIB)];
 const JSX = SOURCES.filter((f) => f.endsWith('.tsx'));
 const read = (f: string) => readFileSync(f, 'utf8');
 
-const BRAND = /\b(?:gta|grand\s+theft(?:\s+auto)?|rockstar|take-two|los\s+santos|san\s+andreas|vinewood|vice\s+city|liberty\s+city|pricedown|chalet|signpainter|grand?\s+turismo|polyphony|mission\s+(?:passed|failed)|wanted\s+level)\b/i;
 /** Text between a closing `>` and the next `</`, holding a letter: a word written straight into the JSX. */
 const JSX_TEXT = />[^<>{}]*[A-Za-z][^<>{}]*<\//;
 /** A literal aria-label, title or alt holding a letter. */
@@ -40,41 +40,74 @@ const uncommented = (src: string) =>
 type AstNode = { type?: string; [key: string]: unknown };
 const LABELS = new Set(['aria-label', 'title', 'alt']);
 const hasLetter = (s: string) => /[A-Za-z]/.test(s);
-/** The text of a string literal or of a template literal's fixed parts; null for any other expression. */
-function fixedText(e: unknown): string | null {
+/** The fixed text an expression can render: a string literal, a template literal's fixed parts, or either branch of a
+ * conditional (x ? 'Yes' : 'No') or logical (x && 'Shown') expression, through any parentheses. A copy lookup or a
+ * call renders no fixed text. */
+function fixedTexts(e: unknown): string[] {
   const n = e as AstNode | null;
-  if (n?.type === 'Literal' && typeof n.value === 'string') return n.value;
-  if (n?.type === 'TemplateLiteral') return (n.quasis as { value: { cooked: string | null } }[]).map((q) => q.value.cooked ?? '').join('');
-  return null;
+  switch (n?.type) {
+    case 'Literal':
+      return typeof n.value === 'string' ? [n.value] : [];
+    case 'TemplateLiteral':
+      return [(n.quasis as { value: { cooked: string | null } }[]).map((q) => q.value.cooked ?? '').join('')];
+    case 'ParenthesizedExpression':
+      return fixedTexts(n.expression);
+    case 'ConditionalExpression':
+      return [...fixedTexts(n.consequent), ...fixedTexts(n.alternate)];
+    case 'LogicalExpression':
+      return [...fixedTexts(n.left), ...fixedTexts(n.right)];
+    default:
+      return [];
+  }
 }
 
-/** Words written straight into a file's JSX, found by parsing it: text nodes (also beside an expression), string
- * children such as {'Pause'}, and aria-label, title or alt values given as a literal, in quotes or in braces. */
-function literalJsxWords(file: string): string[] {
-  const { program, errors } = parseSync(file, read(file), { lang: 'tsx' });
-  if (errors.length > 0) throw new Error(`${file} does not parse`);
-  const found: string[] = [];
+/** Words written straight into JSX, found by parsing it, and the number of JSX elements the walk saw. Words are text
+ * nodes (also beside an expression), fixed text in a child expression, and aria-label, title or alt values given as
+ * fixed text, in quotes or in braces. */
+function literalJsxWords(name: string, src: string): { words: string[]; elements: number } {
+  const { program, errors } = parseSync(name, src, { lang: 'tsx' });
+  if (errors.length > 0) throw new Error(`${name} does not parse: ${errors.map((e) => e.message).join('; ')}`);
+  const words: string[] = [];
+  let elements = 0;
+  const report = (kind: string, texts: string[]) => {
+    for (const s of texts) if (hasLetter(s)) words.push(`${name}: ${kind} ${JSON.stringify(s.trim())}`);
+  };
   const visit = (v: unknown): void => {
     if (Array.isArray(v)) return v.forEach(visit);
     if (!v || typeof v !== 'object') return;
     const n = v as AstNode;
-    if (n.type === 'JSXText' && hasLetter(String(n.value))) found.push(`text ${JSON.stringify(n.value)}`);
+    if (n.type === 'JSXText') report('text', [String(n.value)]);
+    if (n.type === 'JSXElement') elements++;
     if (n.type === 'JSXElement' || n.type === 'JSXFragment') {
-      for (const c of n.children as AstNode[]) {
-        const s = c.type === 'JSXExpressionContainer' ? fixedText(c.expression) : null;
-        if (s !== null && hasLetter(s)) found.push(`child ${JSON.stringify(s)}`);
-      }
+      for (const c of n.children as AstNode[]) if (c.type === 'JSXExpressionContainer') report('child', fixedTexts(c.expression));
     }
     if (n.type === 'JSXAttribute' && LABELS.has(String((n.name as AstNode).name))) {
       const val = n.value as AstNode | null;
-      const s = val?.type === 'JSXExpressionContainer' ? fixedText(val.expression) : fixedText(val);
-      if (s !== null && hasLetter(s)) found.push(`${String((n.name as AstNode).name)} ${JSON.stringify(s)}`);
+      report(String((n.name as AstNode).name), val?.type === 'JSXExpressionContainer' ? fixedTexts(val.expression) : fixedTexts(val));
     }
     for (const [k, x] of Object.entries(n)) if (k !== 'parent') visit(x);
   };
   visit(program);
-  return found.map((w) => `${file}: ${w}`);
+  return { words, elements };
 }
+
+/** A positive control: one planted form per line, then a clean line built only from lookups and separators. If the
+ * parser's output drifts (a renamed node, a new wrapper), the walker stops finding these and the canary test fails. */
+const CANARY = [
+  'const Canary = ({ c, s, x }: { c: { x: string }; s: string; x: boolean }) => (',
+  '  <div>',
+  '    <p>Lost</p>',
+  '    <p>Lost {c.x}</p>',
+  '    <span>{s} km/h</span>',
+  "    <b>{'Pause'}</b>",
+  "    <i aria-label={'Pause'} title='Play' />",
+  "    <em>{x ? 'Yes' : 'No'}</em>",
+  "    <u>{x && 'Shown'}</u>",
+  "    <s>{(x || ('Wrapped'))}</s>",
+  '    <a aria-label={c.x} title={`${c.x}. ${s}`}>{c.x} · {s}</a>',
+  '  </div>',
+  ');',
+].join('\n');
 
 /** Each identifier as written and split into words (camelCase, PascalCase, snake_case and kebab-case). */
 function identifierForms(src: string): string[] {
@@ -98,8 +131,23 @@ describe('bowobharata-game framing (source)', () => {
     for (const f of JSX) expect(read(f).match(LITERAL_ATTR)?.[0] ?? null, f).toBeNull();
   });
 
-  it('parsed, the JSX holds no written word: no text beside an expression, string child or literal label either', () => {
-    expect(JSX.flatMap(literalJsxWords)).toEqual([]);
+  it('the parser check finds every planted form in the canary, and nothing in its clean line', () => {
+    const { words, elements } = literalJsxWords('canary.tsx', CANARY);
+    expect(elements).toBe(10);
+    expect(words.sort()).toEqual(
+      [
+        'aria-label "Pause"', 'child "No"', 'child "Pause"', 'child "Shown"', 'child "Wrapped"', 'child "Yes"',
+        'text "Lost"', 'text "Lost"', 'text "km/h"', 'title "Play"',
+      ].map((w) => `canary.tsx: ${w}`).sort(),
+    );
+  });
+
+  it('parsed, the JSX holds no written word: no text beside an expression, no fixed text in a child or a label', () => {
+    for (const f of JSX) {
+      const { words, elements } = literalJsxWords(f, read(f));
+      expect(elements, `${f}: JSX elements seen`).toBeGreaterThan(0);
+      expect(words).toEqual([]);
+    }
   });
 
   it('no name of the reference games in the game sources, the game CSS, both game pages or their file names', () => {
