@@ -1,6 +1,6 @@
 // The game's frame-rate watch, in plain numbers: the pixel ratios a slow device steps down through, when it is offered the
 // version without animation, and the scroll progress that gives the scene a dawn mix. No three.js and no clock of its own:
-// the runtime times the frames.
+// the runtime passes each frame's dt and the real clock.
 
 /** The pixel ratios a slow device steps down through, highest first. */
 export const PIXEL_STEPS = [1.5, 1.25, 1, 0.85] as const;
@@ -11,11 +11,17 @@ export const STEP_MS = 36;
 export const STILL_SECONDS = 5;
 export const STILL_MS = 50;
 /**
- * The longest gap between frames (ms) that counts in full. A longer one is a pause (a hidden tab, a still screen) or a
- * one-off stall such as the first frames' shader compiles: it counts as GAP_MS, so it cannot make a fast device look
- * slow, while any frame slow enough to matter (over 36 or 50 ms) still counts as slow.
+ * The scene's cap on a frame's dt (s): its frame takes min(ms / 1000, 0.05). Under the cap the dt is the frame's real
+ * time, and it leaves a pause out, since the scene restarts its clock when it resumes. At the cap the frame took longer.
+ */
+export const SCENE_DT_CAP = 0.05;
+/**
+ * The most a frame at the cap counts for (ms), timed by the real clock's gap since the last frame. Slow frames (over 36 or
+ * 50 ms) still count as slow; a longer stall, or a hidden tab the scene did not pause for, counts as no more than this.
  */
 export const GAP_MS = 250;
+/** Real time (ms) left untimed by hold(): a chapter's first second, while the shaders of what it shows compile. */
+export const HOLD_MS = 1000;
 /** dharmaMix (stage-math) is smoothstep(MIX_FROM, 1, progress): 0 up to here, rising to 1 at the end. */
 const MIX_FROM = 0.75;
 
@@ -45,10 +51,23 @@ export function progressForMix(mix: number): number {
 }
 
 export interface FrameWatch {
-  /** Times one frame by the real clock (ms). The first frame only starts the clock; a clock that stalls or runs back is skipped. */
-  frame(nowMs: number): void;
+  /**
+   * Times one frame from the scene's `dt` (s) and the real clock (ms). Under SCENE_DT_CAP the frame takes dt; at the cap,
+   * the clock's gap since the last frame, at most GAP_MS. A frame with no time on the clock it is timed by (dt 0 or less,
+   * a gap not yet known, stalled or run back) is skipped.
+   */
+  frame(dt: number, nowMs: number): void;
+  /** Leaves the next HOLD_MS of frames untimed: a frame that begins inside it is not counted. */
+  hold(): void;
   /** The pixel ratio the watch has set, or the one it started from. */
   readonly pixelRatio: number;
+}
+
+/** A frame's real time (ms): its dt under the scene's cap, else the clock's gap up to GAP_MS; NaN when that clock shows none. */
+function frameMs(dt: number, gap: number): number {
+  if (dt > 0 && dt < SCENE_DT_CAP) return dt * 1000;
+  if (dt >= SCENE_DT_CAP && gap > 0) return Math.min(gap, GAP_MS);
+  return NaN;
 }
 
 /**
@@ -64,6 +83,7 @@ export function watchFrames(pixelRatio: number, on: { setPixelRatio(r: number): 
   let spanMs = 0;
   let spanFrames = 0;
   let last = NaN;
+  let holdMs = 0;
   let ratio = pixelRatio;
   let offered = false;
 
@@ -80,11 +100,17 @@ export function watchFrames(pixelRatio: number, on: { setPixelRatio(r: number): 
     get pixelRatio() {
       return ratio;
     },
-    frame(nowMs) {
-      const gap = nowMs - last;
+    hold() {
+      holdMs = HOLD_MS;
+    },
+    frame(dt, nowMs) {
+      const ms = frameMs(dt, nowMs - last);
       last = nowMs;
-      if (!(gap > 0)) return;
-      const ms = Math.min(gap, GAP_MS);
+      if (!(ms > 0)) return;
+      if (holdMs > 0) {
+        holdMs -= ms;
+        return;
+      }
       if (count === STEP_FRAMES) sum -= ring[head];
       else count++;
       ring[head] = ms;

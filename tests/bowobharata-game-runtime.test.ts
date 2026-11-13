@@ -8,7 +8,8 @@ import { gameQuality, qualityFor, type Quality } from '../src/lib/bowobharata/sc
 import { dharmaMix, groundHeight, type Pose } from '../src/lib/bowobharata/stage-math';
 import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
 import { NO_INPUT } from '../src/lib/bowobharata-game/drive';
-import type { FrameInput } from '../src/lib/bowobharata-game/engine';
+import { angleDiff } from '../src/lib/bowobharata-game/geom';
+import { worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
 import type { GameEvent } from '../src/lib/bowobharata-game/mission-run';
@@ -17,6 +18,7 @@ import { CHASE } from '../src/lib/bowobharata-game/tuning';
 import {
   GAP_MS,
   PIXEL_STEPS,
+  SCENE_DT_CAP,
   nextPixelRatio,
   progressForMix,
   shouldOfferStill,
@@ -121,7 +123,15 @@ function harness(o: HarnessOpts = {}) {
   const frames = (n: number, dt?: number, realMs?: number) => {
     for (let k = 0; k < n; k++) frame(dt, realMs);
   };
-  return { ...fake, rt, onHud, hudFrames, onEvents, events, onError, onSlow, frame, frames };
+  /**
+   * The scene paused for `gapMs` (a still screen): the clock runs on and no frame comes. On resume the scene restarts its
+   * own clock, so the first frame's dt is a short one.
+   */
+  const pause = (gapMs: number) => {
+    ms += gapMs;
+    frame(1 / 60);
+  };
+  return { ...fake, rt, onHud, hudFrames, onEvents, events, onError, onSlow, frame, frames, pause };
 }
 
 const xzDist = (p: { x: number; z: number }, q: { x: number; z: number }) => Math.hypot(p.x - q.x, p.z - q.z);
@@ -163,18 +173,40 @@ describe('perf', () => {
 });
 
 describe('watchFrames', () => {
-  /** A watch at `ratio`; its first frame only starts the clock. */
+  /**
+   * A watch at `ratio`, fed as the scene feeds it: a frame of `ms` real ms has a dt of min(ms / 1000, 0.05) s and moves the
+   * clock on by `ms`. Its first frame has no time yet. `steps` holds the frame count at each step.
+   */
   function watch(ratio: number) {
-    const setPixelRatio = vi.fn<(r: number) => void>();
+    const steps: number[] = [];
+    let frames = 0;
+    const setPixelRatio = vi.fn<(r: number) => void>(() => {
+      steps.push(frames);
+    });
     const slow = vi.fn();
     const w = watchFrames(ratio, { setPixelRatio, slow });
     let t = 1000;
-    w.frame(t);
+    w.frame(0, t);
     const run = (n: number, ms: number) => {
-      for (let k = 0; k < n; k++) w.frame((t += ms));
+      for (let k = 0; k < n; k++) {
+        frames++;
+        w.frame(Math.min(ms / 1000, SCENE_DT_CAP), (t += ms));
+      }
     };
-    return { w, run, setPixelRatio, slow };
+    /** A paused scene: `ms` on the clock and no frame. The scene restarts its own clock, so the next frame's dt is short. */
+    const pause = (ms: number) => {
+      t += ms;
+      run(1, 16);
+    };
+    /** A frame that is not counted as one: this dt, with the clock moved by `dMs` (0: stalled; below 0: run back). */
+    const raw = (dt: number, dMs: number) => w.frame(dt, (t += dMs));
+    return { w, run, pause, raw, steps, setPixelRatio, slow };
   }
+
+  it('takes the scene’s cap on dt: 0.05 s, as its frame clamps it', () => {
+    expect(SCENE_DT_CAP).toBe(0.05);
+    expect(readFileSync('src/lib/bowobharata/KurukshetraScene.ts', 'utf8')).toContain('const dt = Math.min(ms / 1000 || 0, 0.05);');
+  });
 
   it('steps 1.5 → 1.25 → 1 → 0.85 every 90 frames over 36 ms, then offers the still version once, after 5 s at 0.85', () => {
     const { w, run, setPixelRatio, slow } = watch(1.5);
@@ -216,23 +248,86 @@ describe('watchFrames', () => {
     expect(slow).not.toHaveBeenCalled();
   });
 
-  it('counts a long gap (a pause, a stall) as 250 ms, so it cannot make a fast device look slow', () => {
-    expect(GAP_MS).toBe(250);
-    const { run, setPixelRatio } = watch(1.5);
-    run(89, 16);
-    run(1, 30_000);
-    run(200, 16);
+  it('keeps a pause out of the frame times: a 34 ms device with a 30 s pause never steps', () => {
+    const { run, pause, setPixelRatio } = watch(1.5);
+    run(300, 34);
+    pause(30_000);
+    run(300, 34);
     expect(setPixelRatio).not.toHaveBeenCalled();
   });
 
-  it('leaves a device that is never slow alone, and skips a clock that stalls or runs back', () => {
-    const { w, run, setPixelRatio, slow } = watch(0.85);
+  it('a 60 ms device still steps down, pause or not', () => {
+    const { run, pause, steps, setPixelRatio } = watch(1.5);
+    run(89, 60);
+    pause(10_000);
+    run(100, 60);
+    expect(setPixelRatio.mock.calls).toEqual([[1.25], [1]]);
+    expect(steps).toEqual([90, 180]);
+  });
+
+  it('a 48 ms device at 0.85 that pauses twice within 5 s is not offered the still version', () => {
+    const { run, pause, slow } = watch(0.85);
+    run(30, 48);
+    pause(8000);
+    run(30, 48);
+    pause(8000);
+    run(500, 48);
+    expect(slow).not.toHaveBeenCalled();
+  });
+
+  it('times a frame that hit the cap by the clock, at most 250 ms: slow frames count in full, a stall as 250 ms', () => {
+    expect(GAP_MS).toBe(250);
+    const slowDevice = watch(1.5);
+    slowDevice.run(90, 120);
+    expect(slowDevice.setPixelRatio.mock.calls).toEqual([[1.25]]);
+    const stall = watch(1.5);
+    stall.run(89, 16);
+    stall.run(1, 30_000);
+    stall.run(200, 16);
+    expect(stall.setPixelRatio).not.toHaveBeenCalled();
+  });
+
+  it('skips a frame with no time on its clock, so the steps land as if it were absent', () => {
+    const clean = watch(1.5);
+    clean.run(89, 40);
+    clean.run(95, 40);
+    expect(clean.steps).toEqual([90, 180]);
+    const noisy = watch(1.5);
+    noisy.run(89, 40);
+    // Under the cap the dt is the clock: none, or run back.
+    for (let k = 0; k < 30; k++) noisy.raw(0, 0);
+    noisy.raw(-0.005, -5000);
+    noisy.raw(NaN, 40);
+    // At the cap the clock's gap is: stalled, or run back.
+    for (let k = 0; k < 30; k++) noisy.raw(SCENE_DT_CAP, 0);
+    noisy.raw(SCENE_DT_CAP, -5000);
+    noisy.run(95, 40);
+    expect(noisy.steps).toEqual(clean.steps);
+    expect(noisy.setPixelRatio.mock.calls).toEqual([[1.25], [1]]);
+  });
+
+  it('never offers the still version to a fast device at the lowest pixel ratio', () => {
+    const { run, setPixelRatio, slow } = watch(0.85);
     run(2000, 16);
-    w.frame(0);
-    w.frame(NaN);
-    run(10, 16);
     expect(setPixelRatio).not.toHaveBeenCalled();
     expect(slow).not.toHaveBeenCalled();
+  });
+
+  it('hold(): the next second of frames is not timed, so a stall in it cannot step a 34 ms device', () => {
+    const held = watch(1.5);
+    held.w.hold();
+    held.run(1, 2000);
+    held.run(300, 34);
+    expect(held.setPixelRatio).not.toHaveBeenCalled();
+    const open = watch(1.5);
+    open.run(1, 2000);
+    open.run(300, 34);
+    expect(open.setPixelRatio.mock.calls).toEqual([[1.25]]);
+    // A second of 40 ms frames (25) goes untimed; the step then comes on the 90th timed frame.
+    const late = watch(1.5);
+    late.w.hold();
+    late.run(205, 40);
+    expect(late.steps).toEqual([115, 205]);
   });
 });
 
@@ -498,10 +593,72 @@ describe('runtime', () => {
 
   it('offers the version without animation once, on a device at 0.85 that stays at 60 ms a frame for 6 s', () => {
     const h = harness({ quality: { ...DESKTOP, pixelRatio: 0.85 } });
-    h.rt.start(0, [], 1);
     h.frames(100, 0.05, 60);
     expect(h.onSlow).toHaveBeenCalledTimes(1);
     expect(h.game.setPixelRatio).not.toHaveBeenCalled();
+  });
+
+  it('after start() the offer waits out the first second, which is not timed', () => {
+    const h = harness({ quality: { ...DESKTOP, pixelRatio: 0.85 } });
+    h.rt.start(0, [], 1);
+    h.frames(100, 0.05, 60);
+    expect(h.onSlow).not.toHaveBeenCalled();
+    h.frames(10, 0.05, 60);
+    expect(h.onSlow).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 34 ms device that pauses on a still screen keeps its pixel ratio', () => {
+    const h = harness();
+    h.rt.start(0, [], 1);
+    h.frames(300, 0.034, 34);
+    h.pause(30_000);
+    h.frames(300, 0.034, 34);
+    expect(h.game.setPixelRatio).not.toHaveBeenCalled();
+  });
+
+  it('a 48 ms phone at 0.85 that pauses twice within 5 s is not offered the version without animation', () => {
+    const h = harness({ quality: { ...DESKTOP, pixelRatio: 0.85 } });
+    h.frames(30, 0.048, 48);
+    h.pause(8000);
+    h.frames(30, 0.048, 48);
+    h.pause(8000);
+    h.frames(500, 0.048, 48);
+    expect(h.onSlow).not.toHaveBeenCalled();
+  });
+
+  it('does not time the first second after start(): a shader-compile stall there cannot step a 34 ms device', () => {
+    const h = harness();
+    h.frames(10, 0.034, 34);
+    h.rt.start(0, [], 1);
+    h.frame(0.05, 2000);
+    h.frames(300, 0.034, 34);
+    expect(h.game.setPixelRatio).not.toHaveBeenCalled();
+  });
+
+  it('moves the chariot on the engine’s world time: in Mata’s sight its turn rate is per world second', () => {
+    const h = harness({
+      input: () => ({ drive: { ...NO_INPUT, throttle: 1, steer: 0.6 }, sight: true, skip: true, assist: false }),
+    });
+    h.rt.start(1, SLUGS_1, 1);
+    const states: GameState[] = [];
+    for (let k = 0; k < 90; k++) {
+      h.frame();
+      states.push(h.rt.state()!);
+    }
+    const rates = h.game.chariot.setMotion.mock.calls.map(([m]) => m.yawRate);
+    let seen = 0;
+    for (let k = 1; k < states.length; k++) {
+      const s = states[k];
+      const turned = angleDiff(s.car.yaw, states[k - 1].car.yaw);
+      const want = Math.max(-3, Math.min(3, turned / worldDtOf(1 / 60, s.sight)));
+      expect(rates[k]).toBeCloseTo(want, 9);
+      if (s.sight.on && Math.abs(want) > 0.1) seen++;
+    }
+    // Mata was on and the chariot turning for most of it, at half the world's speed.
+    expect(seen).toBeGreaterThan(30);
+    expect(worldDtOf(1 / 60, { charge: 1, on: true, latch: false })).toBeCloseTo(1 / 120, 12);
+    expect(worldDtOf(0.2, { charge: 1, on: false, latch: false })).toBe(0.05);
+    expect(worldDtOf(-1, { charge: 1, on: false, latch: false })).toBe(0);
   });
 
   it('steps the scene’s pixel ratio down on a slow desktop, before any chapter too', () => {
@@ -582,7 +739,7 @@ describe('runtime (source)', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     // The perf watch comes last, after the chapter's steps or the orbit.
     const frame = body('function frame(');
-    expect(frame.indexOf('watch.frame(now())')).toBeGreaterThan(frame.indexOf('play('));
+    expect(frame.indexOf('watch.frame(dt, now())')).toBeGreaterThan(frame.indexOf('play('));
   });
 
   it('rebuilds the projection only when the FOV moves by more than 0.05', () => {

@@ -18,14 +18,13 @@ import {
   teleportToMarker,
   timeScaleOf,
   viewOf,
+  worldDtOf,
   type FrameInput,
   type GameState,
 } from '../engine';
 import { hudOf, type HudSnapshot } from '../hud';
 import type { GameEvent } from '../mission-run';
 import { missionFor } from '../missions';
-import { worldScale } from '../sight';
-import { DRIVE } from '../tuning';
 import { ANCHORS, SPAWN, TOWER_EXIT } from '../world';
 import { bindChariot } from './chariot-bind';
 import { createGround } from './ground3d';
@@ -129,7 +128,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     // 3–4. The layers on the scene's clock; then the chariot, which the car moved on world time (slowed in Mata's sight).
     ground.sync(next, time);
     pickups.sync(next, time);
-    chariot.sync(next.car, real, Math.min(real, DRIVE.maxDt) * worldScale(next.sight));
+    chariot.sync(next.car, real, worldDtOf(real, next.sight));
     // 5. The camera: the chase view or the lakon's shot.
     const view = viewOf(next, world, aspect);
     game.setPose(view.pose);
@@ -161,8 +160,8 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       const real = Number.isFinite(dt) && dt > 0 ? dt : 0;
       if (mode !== 'play') circle(real);
       else if (current) play(current, time, real);
-      // 10. The frame rate, timed on the real clock: the scene's dt stops at 50 ms.
-      if (!disposed) watch.frame(now());
+      // 10. The frame rate: the scene's dt, which leaves its pauses out; the real clock only when that dt hit its 50 ms cap.
+      if (!disposed) watch.frame(dt, now());
     } catch (err) {
       fail(err);
     }
@@ -196,6 +195,8 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       current = current ? { ...fresh, hintsShown: [...current.hintsShown] } : fresh;
       mode = 'play';
       sinceHud = Infinity;
+      // The chapter's first second is not timed: the shaders of what it shows compile then.
+      watch.hold();
       pickups.setFinale(false);
     },
     orbit() {

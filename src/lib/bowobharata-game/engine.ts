@@ -180,6 +180,14 @@ function frameSeconds(realDt: number): number {
   return Number.isFinite(realDt) && realDt > 0 ? Math.min(realDt, DRIVE.maxDt) : 0;
 }
 
+/**
+ * The world's seconds in a frame of `realDt` real seconds, with this sight (the frame's, once stepped): the frame capped as
+ * frameSeconds caps it, at half speed while Mata is on. advance() moves the car by it, and the runtime sways the chariot by it.
+ */
+export function worldDtOf(realDt: number, sight: Sight): number {
+  return frameSeconds(realDt) * worldScale(sight);
+}
+
 /** The brake until the chariot is at rest, then nothing: a brake held at rest would start the reverse. */
 function holdStill(car: ChariotState): ChariotInput {
   const v = speedOf(car);
@@ -409,7 +417,7 @@ export function advance(
   const driving = drivable(s.run);
   // 1–2. Sight runs on real time; the world's dt follows it.
   const sight = stepSight(s.sight, driving && input.sight, real);
-  const dt = real * worldScale(sight);
+  const dt = worldDtOf(realDt, sight);
   // 3–4. The assist, then the drive with the guard at the ranks.
   const drive = driving ? assisted(s, input) : holdStill(s.car);
   const driven = stepChariot(s.car, drive, dt, { cloud: false, guard: w.guard });
