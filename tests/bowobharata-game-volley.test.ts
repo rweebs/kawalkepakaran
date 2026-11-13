@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '../src/lib/sky/rng';
 import { arrowArc, groundHeight } from '../src/lib/bowobharata/stage-math';
-import { dist, forward, polylineDist, rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { dist, forward, nextRand, polylineDist, rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import { initChariot, type ChariotState } from '../src/lib/bowobharata-game/drive';
 import {
   ANCHORS,
@@ -234,13 +234,39 @@ describe('planVolley', () => {
     expect(planVolley(car, 3, a.rng, W, OPTS).volley!.to).not.toEqual(a.volley!.to);
   });
 
-  it('gives null after six failed tries, and still advances the rng', () => {
+  it('gives null after six failed tries, returning the rng after exactly 6 tries × 3 draws', () => {
     // At the north edge, racing north: every aim lies beyond the play disc.
     const out = carAt(0, -150, Math.PI / 2, 17);
     const r = planVolley(out, 0, 5, W, OPTS);
     expect(r.volley).toBeNull();
-    expect(r.rng).not.toBe(5);
+    // Replay planVolley's draws from seed 5: each try takes the distance ahead, the side, then the distance aside.
+    const f = forward(out.yaw);
+    const right = rightOf(out.yaw);
+    let a = 5;
+    let draws = 0;
+    const draw = (): number => {
+      const next = nextRand(a);
+      a = next.a;
+      draws++;
+      return next.v;
+    };
+    for (let k = 0; k < 6; k++) {
+      const ahead = VOLLEY.aheadMin + (VOLLEY.aheadMax - VOLLEY.aheadMin) * draw();
+      const side = draw() < 0.5 ? 1 : -1;
+      const lateral = side * (VOLLEY.sideMin + (VOLLEY.sideMax - VOLLEY.sideMin) * draw());
+      const to = xz(out.x + out.vx * 2.6 + f.x * ahead + right.x * lateral, out.z + out.vz * 2.6 + f.z * ahead + right.z * lateral);
+      expect(inPlay(to, 10)).toBe(false);
+    }
+    expect(draws).toBe(18);
+    expect(r.rng).toBe(a);
     expect(planVolley(out, 0, 5, W, OPTS)).toEqual(r);
+  });
+
+  it('returns the rng after the draws it made: three when the first aim lands', () => {
+    // Every aim from (−120, −40) at 10 m/s east lies in the clear window, so the first try always lands.
+    let a = 42;
+    for (let k = 0; k < 3; k++) a = nextRand(a).a;
+    expect(planVolley(carAt(-120, -40, 0, 10), 0, 42, W, OPTS).rng).toBe(a);
   });
 
   it('plans a warned volley that lands 2.6 s later, flown from 45 m back toward the nearest source and 22 m up', () => {
@@ -468,6 +494,78 @@ describe('stepVolleys', () => {
       [2, 'warn'],
     ]);
     expect(r.volleys[1]).toBe(later);
+  });
+
+  it('re-stepping its own output emits nothing twice', () => {
+    const car = carAt(8.4, 0, 0);
+    // At t 2.6 one comes down beside the car, one far off, and a third launches.
+    const near = scriptedVolley(xz(10, 0), 0, 1, W);
+    const far = scriptedVolley(xz(-60, 40), 0, 2, W);
+    const late = scriptedVolley(xz(-80, -40), 1.6, 3, W);
+    const first = stepVolleys(stepVolleys([near, far, late], car, 1).volleys, car, 2.6);
+    expect(first.absorbed.map((v) => v.id)).toEqual([1]);
+    expect(first.landed.map((v) => v.id)).toEqual([2]);
+    expect(first.launched.map((v) => v.id)).toEqual([3]);
+    // Everything it returned, the absorbed volley included, stepped again at the same time and a little later.
+    for (const t of [2.6, 3]) {
+      const again = stepVolleys([...first.absorbed, ...first.volleys], car, t);
+      expect([again.launched, again.landed, again.absorbed]).toEqual([[], [], []]);
+      expect(again.volleys.map((v) => [v.id, v.state])).toEqual([
+        [2, 'landed'],
+        [3, 'air'],
+      ]);
+      again.volleys.forEach((v, i) => expect(v).toBe(first.volleys[i]));
+    }
+  });
+});
+
+describe('purity', () => {
+  /** Freezes o and everything reachable from it. */
+  function deepFreeze<T>(o: T): T {
+    if (o !== null && typeof o === 'object' && !Object.isFrozen(o)) {
+      Object.freeze(o);
+      for (const v of Object.values(o)) deepFreeze(v);
+    }
+    return o;
+  }
+  const inState = (v: Volley, state: Volley['state']): Volley => ({ ...v, state });
+
+  it('planVolley changes none of its deep-frozen inputs', () => {
+    // Fresh copies, so freezing them leaves the module's ZONES and the other tests' world alone.
+    const world: VolleyWorld = deepFreeze({ colliders: staticColliders(), zones: structuredClone(ZONES), mobile: false });
+    const route = deepFreeze([xz(-120, -40), xz(-40, -40)]);
+    const opts = deepFreeze({ decoy: true, cloud: true, id: 7, route });
+    // The first plans a volley and the second gives null: both paths run on frozen inputs.
+    const cars = deepFreeze([carAt(-120, -40, 0, 10), carAt(0, -150, Math.PI / 2, 17)]);
+    const before = structuredClone({ world, route, opts, cars });
+    let plans: ReturnType<typeof planVolley>[] = [];
+    expect(() => (plans = cars.map((car, i) => planVolley(car, 4, 100 + i, world, opts)))).not.toThrow();
+    expect(plans.map((p) => p.volley === null)).toEqual([false, true]);
+    expect({ world, route, opts, cars }).toEqual(before);
+  });
+
+  it('stepVolleys changes none of its deep-frozen inputs, over every path', () => {
+    const car = deepFreeze(carAt(8.4, 0, 0));
+    const vs: Volley[] = deepFreeze([
+      scriptedVolley(xz(-80, -40), 1.6, 1, W), // launches at t 2.6
+      inState(scriptedVolley(xz(-60, 40), 0, 2, W), 'air'), // lands at 2.6
+      inState(scriptedVolley(xz(10, 0), 0, 3, W), 'air'), // absorbed at 2.6, beside the car
+      inState(scriptedVolley(xz(-90, 60), -5, 4, W), 'landed'), // landed at −2.4, still standing
+      inState(scriptedVolley(xz(-70, -60), -20, 5, W), 'landed'), // landed at −17.4, sunk by now
+      inState(scriptedVolley(xz(-50, -80), 0, 6, W), 'absorbed'),
+    ]);
+    const before = structuredClone({ vs, car });
+    let r: ReturnType<typeof stepVolleys> | undefined;
+    expect(() => (r = stepVolleys(vs, car, 2.6))).not.toThrow();
+    expect(r!.launched.map((v) => v.id)).toEqual([1]);
+    expect(r!.landed.map((v) => v.id)).toEqual([2]);
+    expect(r!.absorbed.map((v) => v.id)).toEqual([3]);
+    expect(r!.volleys.map((v) => [v.id, v.state])).toEqual([
+      [1, 'air'],
+      [2, 'landed'],
+      [4, 'landed'],
+    ]);
+    expect({ vs, car }).toEqual(before);
   });
 });
 

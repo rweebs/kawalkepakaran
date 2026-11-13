@@ -10,7 +10,7 @@ import { dist, forward, nextRand, polylineDist, rightOf, segPointDist, type XZ }
 import { hullCircles, type Circle } from './collide';
 import type { ChariotState } from './drive';
 import { VOLLEY } from './tuning';
-import { ANCHORS, PLAY, POSTS, RECORD_CIRCLE, distToCollider, inPlay, type Area, type Collider, type Zone } from './world';
+import { ANCHORS, POSTS, RECORD_CIRCLE, distToCollider, inPlay, type Area, type Collider, type Zone } from './world';
 
 export interface Volley {
   id: number;
@@ -56,8 +56,8 @@ const FRONT_X = 2.96;
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 /** Seconds from planning to landing. */
 const LEAD = VOLLEY.warn + VOLLEY.flight;
-/** A landing stays inside the soft wall, 10 m in from the disc's edge. */
-const PLAY_MARGIN = PLAY.r - PLAY.wall;
+/** How far inside the play disc's edge a landing centre lies: the brief's inPlay(to, 10). */
+const LANDING_MARGIN = 10;
 
 /** Where volleys come from: the six watch posts, the gate, and (2.96, 15 − 10k) for k = 0…6 along the Kurawa front. */
 export function volleySources(): XZ[] {
@@ -148,7 +148,7 @@ function segToCollider(a: XZ, b: XZ, c: Collider): number {
  *   and 1.5 + 2.5 m from the tall colliders.
  */
 export function landingOk(to: XZ, u: XZ, w: VolleyWorld, route: readonly XZ[] | null): boolean {
-  if (!inPlay(to, PLAY_MARGIN)) return false;
+  if (!inPlay(to, LANDING_MARGIN)) return false;
   for (const c of w.colliders) if (distToCollider(to, c) < clearOf(c)) return false;
   for (const z of w.zones) if (z.role === 'shelter' && outside(to, z.area) < VOLLEY.spread) return false;
   if (dist(to, ANCHORS.tower) < RECORD_CIRCLE + VOLLEY.spread) return false;
