@@ -72,6 +72,11 @@ function Notes({ locale }: { locale: Locale }) {
   );
 }
 
+/** The right-of-reply link that follows FRAMING and the notes on the gate and the pause panel. */
+function ReplyLink({ locale }: { locale: Locale }) {
+  return <p><a href={routePath('reply', locale)}>{GAME_COPY[locale].reply}</a></p>;
+}
+
 /** The controls as two titled lists: the keyboard, then the touch screen. */
 function Controls({ locale }: { locale: Locale }) {
   const c = GAME_COPY[locale];
@@ -99,6 +104,7 @@ export function Gate({ locale, fallback, onStart, posters }: { locale: Locale; f
       <h3>{c.gateTitle}</h3>
       {framing.map((p) => <p key={p}>{p}</p>)}
       <Notes locale={locale} />
+      <ReplyLink locale={locale} />
       <div className="bg-posters">
         <figure data-poster="krishna">
           <img src={posters?.krishna.src ?? imgSrc(POSTERS.krishna.src)} srcSet={posters?.krishna.srcset} sizes={posters?.krishna.sizes} alt={alt.krishna.alt} loading="lazy" decoding="async" width={1206} height={1291} />
@@ -147,7 +153,8 @@ export function MissionCard({ locale, chapterIndex, type }: { locale: Locale; ch
   );
 }
 
-/** One linimasa event: date and channel, title, the allegation line with the reply link, and the source link. */
+/** One linimasa event: date and channel, title, the allegation line with the reply link, and the source link. It is a
+ * still-screen card: only Recorded and FallbackPlay render it, never anything shown during play. */
 export function CatchCard({ locale, card }: { locale: Locale; card: CardView }) {
   const c = GAME_COPY[locale];
   return (
@@ -321,8 +328,8 @@ export function DataError({ locale, onRetry }: { locale: Locale; onRetry: () => 
   );
 }
 
-/** The pause panel: resume (and, when given, retry and the way to the marker), the two settings toggles, the link to the
- * version without animation, then the framing with its notes and the reply link, and the controls. */
+/** The pause panel, in the brief's order: resume (and, when given, retry and the way to the marker); FRAMING, the notes
+ * and the reply link; the controls; the two settings toggles; then the link to the version without animation. */
 export function Paused({ locale, onResume, settings, onSettings, onRetry, onToMarker, onUseStill }: {
   locale: Locale; onResume: () => void; settings: Settings; onSettings: (s: Settings) => void;
   onRetry?: () => void; onToMarker?: () => void; onUseStill: () => void;
@@ -338,16 +345,16 @@ export function Paused({ locale, onResume, settings, onSettings, onRetry, onToMa
         {onRetry && <button type="button" className="btn" onClick={onRetry}>{c.settings.retry}</button>}
         {onToMarker && <button type="button" className="btn" onClick={onToMarker}>{c.settings.toMarker}</button>}
       </div>
+      {framing.map((p) => <p key={p}>{p}</p>)}
+      <Notes locale={locale} />
+      <ReplyLink locale={locale} />
+      <Controls locale={locale} />
       <h3>{c.settings.title}</h3>
       <div className="bg-actions">
         <button type="button" className="btn" aria-pressed={settings.assist} onClick={toggle('assist')}>{c.settings.assist}</button>
         <button type="button" className="btn" aria-pressed={settings.easy} onClick={toggle('easy')}>{c.settings.easy}</button>
       </div>
       <p><a href={STILL_HREF} onClick={inPlace(onUseStill)}>{c.settings.still}</a></p>
-      {framing.map((p) => <p key={p}>{p}</p>)}
-      <p><a href={routePath('reply', locale)}>{c.reply}</a></p>
-      <Notes locale={locale} />
-      <Controls locale={locale} />
     </section>
   );
 }
@@ -375,7 +382,7 @@ export function Finale({ locale, totals, onAgain }: { locale: Locale; totals: To
       <h2 id="bg-finale-title" className="bg-title">{c.title}</h2>
       {lines.slice(0, -1).map((l) => <p key={l}>{l}</p>)}
       <p><a href={routePath('monitor', locale)}>{label}</a></p>
-      <article className="bg-close" data-entry="finale-close">
+      <article className="bg-entry bg-close" data-entry="finale-close">
         <p>{c.finaleClose}</p>
         <Allegation locale={locale} />
       </article>

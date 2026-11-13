@@ -1,9 +1,11 @@
-// BOWOBHARATA, the game island. The player drives the chariot of Krishna and Arjuna, the roles the page gives Rahmat
-// Wibowo, across Kurukshetra, records each chapter's dated records and brings them to Sanjaya's tower; no one is ever
-// struck. After each chapter the Tercatat screen shows what went on record; then Sanjaya reports, under the allegation
-// line, who the dossier alleges acted in that period. The flow is a pure reducer (lib/bowobharata-game/flow.ts) and the
-// screens are presentational (bowobharata-game/screens.tsx); this file wires them to the 3D scene and the input.
-// Until the driving runtime takes its place, play in 3D is still the earlier tap game (arrow layer, pick and rules).
+// BOWOBHARATA, the game island. The player drives Krishna's chariot, with Arjuna aboard, across Kurukshetra: the game
+// casts Rahmat Wibowo as Krishna and the Pandawa (the page's posters cast Rahmat Wibowo as Krishna). Each chapter's dated
+// records are written down and brought to Sanjaya's tower; no one is ever struck. After each chapter the Tercatat screen
+// shows what went on record; then Sanjaya reports, under the allegation line, who the dossier alleges acted in that
+// period. Names, event titles and dossier facts appear only on those still screens, never during play. The flow is a
+// pure reducer (lib/bowobharata-game/flow.ts) and the screens are presentational (bowobharata-game/screens.tsx); this
+// file wires them to the 3D scene and the input. Until the driving runtime takes its place, play in 3D is still the
+// earlier tap game (arrow layer, pick and rules), and the HUD count reports each record.
 import { useCallback, useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Locale } from '../i18n';
 import { PARVAS } from '../lib/bowobharata';
@@ -11,14 +13,12 @@ import { PARVA_POSES } from '../lib/bowobharata/stage-math';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
 import type { ArrowLayer } from '../lib/bowobharata-game/arrows3d';
 import { GAME_COPY } from '../lib/bowobharata-game/copy';
-import { GAME_DATA_SRC, type EventCard, type GameData } from '../lib/bowobharata-game/data';
+import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
 import { initFlow, readSaved, reduce, writeSaved, type Settings } from '../lib/bowobharata-game/flow';
 import type { FailReason } from '../lib/bowobharata-game/mission-run';
 import { pickNearest } from '../lib/bowobharata-game/pick';
 import { buildWave, catchArrow, startRun, step, type Run } from '../lib/bowobharata-game/rules';
-import {
-  CatchCard, DataError, FailCard, FallbackPlay, Finale, Gate, type GatePosters, Hud, Intro, Paused, Recorded, SanjayaReport, cardView,
-} from './bowobharata-game/screens';
+import { DataError, FailCard, FallbackPlay, Finale, Gate, type GatePosters, Hud, Intro, Paused, Recorded, SanjayaReport } from './bowobharata-game/screens';
 import '../styles/bowobharata-game.css';
 
 interface Props { locale: Locale; forceFallback?: boolean; data?: GameData; posters?: GatePosters }
@@ -47,7 +47,6 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const [ready, setReady] = useState(0);
   const [hud, setHud] = useState<HudState>({ caught: 0, missed: 0, decoys: 0 });
   const [sight, setSightState] = useState(false);
-  const [card, setCard] = useState<EventCard | null>(null);
   const [taken, setTaken] = useState(0);
   const [reticle, setReticle] = useState<{ x: number; y: number } | null>(null);
   // The pause panel's toggles, for this session only: never written to storage.
@@ -63,7 +62,6 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const sightRef = useRef(false);
   const pausedRef = useRef(false);
   const attemptRef = useRef(0);
-  const cardsRef = useRef<EventCard[]>([]);
   const reticleRef = useRef<{ x: number; y: number } | null>(null);
 
   pausedRef.current = flow.paused;
@@ -154,15 +152,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     const game = scene?.game;
     if (!game || !layer) return;
     const i = flow.chapter;
-    cardsRef.current = data.events[i] ?? [];
     const seed = 1009 * (i + 1) + attemptRef.current++;
     const wave = i === 0
       ? buildWave(0, [], seed, Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS, data.prologue.length)))
-      : buildWave(i, cardsRef.current.map((e) => e.slug), seed);
+      : buildWave(i, (data.events[i] ?? []).map((e) => e.slug), seed);
     let run = startRun(wave);
     runRef.current = run;
     setHud(hudOf(run));
-    setCard(null);
     setSight(false);
     game.setPose(PARVA_POSES[Math.min(i, PARVA_POSES.length - 1)]);
     let finished = false;
@@ -207,14 +203,9 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (id === null) return;
     const next = catchArrow(run, id);
     if (next === run) return;
+    // During play a record shows only in the HUD count; its title, date and channel wait for the Tercatat screen.
     runRef.current = next;
     setHud(hudOf(next));
-    // An event's arrow shows its card, looked up by slug. The prologue's arrows carry no event: their count is in the HUD
-    // and their dates come on Tercatat, inside the framed block.
-    const arrow = next.wave.arrows.find((a) => a.id === id);
-    const slug = arrow?.kind === 'real' ? arrow.eventSlug : null;
-    const found = slug ? cardsRef.current.find((e) => e.slug === slug) : undefined;
-    if (found) setCard(found);
   }, []);
 
   const moveReticle = useCallback((x: number, y: number) => {
@@ -310,7 +301,6 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
       {flow.screen === 'play' && flow.mode === '3d' && (
         <>
           <Hud locale={locale} {...hud} sight={sight} paused={flow.paused} onPause={() => dispatch({ type: 'togglePause' })} />
-          <div className="bg-cards" aria-live="polite">{card && <CatchCard locale={locale} card={cardView(card, locale)} />}</div>
           {flow.paused && (
             <Paused
               locale={locale}

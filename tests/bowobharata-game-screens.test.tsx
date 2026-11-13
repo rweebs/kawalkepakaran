@@ -27,6 +27,15 @@ const TITLES = game.events.flat().flatMap((c) => [c.title.id, c.title.en]);
 const blocks = (html: string, tag: string, attr: string): string[] =>
   [...html.matchAll(new RegExp(`<${tag}[^>]*${attr}[^>]*>[\\s\\S]*?</${tag}>`, 'g'))].map((m) => m[0]);
 const count = (html: string, s: string) => html.split(s).length - 1;
+/** Each part is present, and its first occurrence comes after the first occurrence of the part before it. */
+function expectOrder(html: string, parts: string[]) {
+  let prev = -1;
+  for (const part of parts) {
+    const i = html.indexOf(part);
+    expect(i, `${part} after position ${prev}`).toBeGreaterThan(prev);
+    prev = i;
+  }
+}
 const settings = { assist: false, easy: false };
 
 describe('cardView', () => {
@@ -186,6 +195,23 @@ describe('Paused', () => {
     });
   }
 
+  for (const l of LOCALES) {
+    it(`${l}: the brief's order: resume, FRAMING, the notes, the reply link, the controls, the toggles, then the version without animation`, () => {
+      const c = GAME_COPY[l];
+      const framing = l === 'id' ? FRAMING : FRAMING_EN;
+      const html = renderToString(<Paused locale={l} onResume={noop} settings={settings} onSettings={noop} onRetry={noop} onToMarker={noop} onUseStill={noop} />);
+      expectOrder(html, [
+        esc(c.actions.resume), esc(c.settings.retry), esc(c.settings.toMarker),
+        ...framing.map(esc), esc(c.armyNote), esc(c.pelaporNote), reply(l),
+        esc(c.controlsTitle.keys), esc(c.controlsTitle.touch),
+        esc(c.settings.title), 'aria-pressed=', 'href="?fallback=1"',
+      ]);
+      const toggle = html.indexOf('aria-pressed=');
+      for (const line of [...c.controlsKeys, ...c.controlsTouch]) expect(html.indexOf(esc(line)), line).toBeLessThan(toggle);
+      expect(html.indexOf('href="?fallback=1"')).toBeGreaterThan(html.lastIndexOf('aria-pressed='));
+    });
+  }
+
   it('offers retry and the way to the marker only when given', () => {
     const c = GAME_COPY.en;
     const html = renderToString(<Paused locale="en" onResume={noop} settings={settings} onSettings={noop} onRetry={noop} onToMarker={noop} onUseStill={noop} />);
@@ -207,11 +233,16 @@ describe('Gate', () => {
         expect(i, note).toBeGreaterThan(framing);
         expect(i, note).toBeLessThan(start);
       }
+      expectOrder(html, [esc((l === 'id' ? FRAMING : FRAMING_EN)[0]), esc(c.armyNote), esc(c.pelaporNote), reply(l), esc(c.gateStart)]);
+      expect(count(html, reply(l))).toBe(1);
       const keys = html.indexOf(esc(c.controlsTitle.keys));
       const touch = html.indexOf(esc(c.controlsTitle.touch));
       expect(keys).toBeGreaterThan(-1);
       expect(touch).toBeGreaterThan(keys);
-      for (const line of c.controlsKeys) expect(html.indexOf(esc(line)), line).toBeGreaterThan(keys);
+      for (const line of c.controlsKeys) {
+        expect(html.indexOf(esc(line)), line).toBeGreaterThan(keys);
+        expect(html.indexOf(esc(line)), line).toBeLessThan(touch);
+      }
       for (const line of c.controlsTouch) expect(html.indexOf(esc(line)), line).toBeGreaterThan(touch);
       expect(html.match(/<ul class="bg-controls">/g)).toHaveLength(2);
     });
@@ -239,7 +270,7 @@ describe('Finale', () => {
       const html = renderToString(<Finale locale={l} totals={game.totals} onAgain={noop} />);
       const framed = blocks(html, 'article', 'data-entry="finale-close"');
       expect(framed).toHaveLength(1);
-      expect(framed[0]).toMatch(/^<article class="bg-close" data-entry="finale-close">/);
+      expect(framed[0]).toMatch(/^<article class="bg-entry bg-close" data-entry="finale-close">/);
       expect(framed[0]).toContain(esc(GAME_COPY[l].finaleClose));
       expect(framed[0]).toContain(esc(GAME_COPY[l].allegation));
       expect(framed[0]).toContain(reply(l));

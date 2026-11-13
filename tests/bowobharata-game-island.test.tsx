@@ -313,6 +313,31 @@ describe('island wiring (source)', () => {
   it('pauses when the tab is hidden', () => {
     expect(src).toContain('visibilitychange');
   });
+  it('shows Tercatat from the game data, and the fail card with its fails and the assist setting', () => {
+    expect(src).toContain('const cards = data?.events[flow.chapter] ?? [];');
+    expect(src).toMatch(
+      /flow\.screen === 'recorded' && data && \(\s*<Recorded locale=\{locale\} chapterIndex=\{flow\.chapter\} cards=\{cards\} prologue=\{data\.prologue\} whole=\{whole\}/,
+    );
+    expect(src).toMatch(/flow\.screen === 'lost' && \(\s*<FailCard\b[^>]*?\sfails=\{flow\.fails\}[^>]*?\sassist=\{settings\.assist\}/);
+    expect(src).toMatch(/<FallbackPlay\b[^>]*?\scards=\{cards\}[^>]*?\sprologue=\{data\.prologue\}/);
+  });
+  it('the skip marks the record as filled in before it dispatches, and every play makes the record whole again', () => {
+    expect(src).toMatch(/onSkip=\{\(\) => \{ setWhole\(false\); dispatch\(\{ type: 'skip' \}\); \}\}/);
+    expect(src).toMatch(/useEffect\(\(\) => \{ if \(flow\.screen === 'play'\) setWhole\(true\); \}, \[flow\.screen\]\);/);
+  });
+  it('shows no event card during play: CatchCard renders only inside Recorded and FallbackPlay', () => {
+    // Spec call 7: names, titles and dossier facts appear only on still screens. While playing, the HUD count reports
+    // each record; the island neither renders a card nor builds one, and has no in-play card overlay.
+    expect(src).not.toMatch(/\bCatchCard\b/);
+    expect(src).not.toMatch(/\bcardView\b/);
+    expect(src).not.toContain('bg-cards');
+    const screens = readFileSync('src/components/bowobharata-game/screens.tsx', 'utf8');
+    const renderers = screens
+      .split(/\n(?=(?:export )?(?:function|const) )/)
+      .filter((part) => part.includes('<CatchCard'))
+      .map((part) => part.match(/^(?:export )?(?:function|const) (\w+)/)?.[1]);
+    expect(renderers.sort()).toEqual(['FallbackPlay', 'Recorded']);
+  });
 });
 
 describe('data error screen', () => {
