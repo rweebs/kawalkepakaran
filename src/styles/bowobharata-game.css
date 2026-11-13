@@ -51,7 +51,9 @@
 .bg-radar-slot { position: absolute; top: 0.75rem; right: 0.75rem; }
 .bg-gauges { position: absolute; bottom: 0.75rem; right: 0.75rem; display: grid; gap: 0.35rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-toasts { position: absolute; bottom: 0.75rem; left: 0.75rem; display: grid; gap: 0.35rem; max-width: min(22rem, 60%); }
-.bg-hud[data-touch] .bg-toasts { top: 5.5rem; bottom: auto; }
+/* On touch the toasts take the right column, under the radar's band and beside the objective panel (46% wide, so they start past 46% + 1rem), clear of the steer zone, the buttons and the capsule. The speed moves to the bottom left, off the buttons. */
+.bg-hud[data-touch] .bg-toasts { top: 7rem; bottom: auto; left: auto; right: 0.5rem; max-width: min(22rem, calc(54% - 1.5rem)); }
+.bg-hud[data-touch] .bg-gauges { bottom: 0.5rem; left: 0.5rem; right: auto; }
 .bg-hud dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; }
 .bg-hud dl div { display: flex; gap: 0.35rem; }
 .bg-hud dt { color: var(--text-secondary); font-size: 0.85rem; }
@@ -71,6 +73,20 @@
 .bg-cards .bg-catch { max-width: 28rem; background: rgba(11, 16, 32, 0.88); pointer-events: auto; }
 /* Above the letterbox bars (2), the lakon card and the wipe (3): a pause during a lakon intro shows the whole panel. */
 .bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 4; }
+
+/* Touch controls: the steer zone (left 46% x bottom 55%) and the buttons, anchored to the stage's bottom corners. */
+.bg-touch { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.bg-touch__steer { position: absolute; left: 0; bottom: 0; width: 46%; height: 55%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.bg-touch__capsule { position: absolute; width: 140px; height: 56px; transform: translate(-50%, -50%); border-radius: 28px; border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(11, 16, 32, 0.45); pointer-events: none; }
+.bg-touch__knob { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
+.bg-touch__btn { position: absolute; display: grid; place-items: center; min-width: 56px; min-height: 56px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(11, 16, 32, 0.6); color: var(--text-primary, #fff); font: inherit; font-weight: 600; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.bg-touch__btn[data-held] { background: rgba(255, 255, 255, 0.28); border-color: var(--accent-amber); }
+.bg-touch__btn .bg-ring { color: inherit; pointer-events: none; }
+.bg-touch__btn .bg-ring[data-lit] { color: var(--accent-amber); }
+.bg-touch__btn--rem { right: 24px; bottom: 24px; width: 72px; height: 72px; }
+.bg-touch__btn--surge { right: 108px; bottom: 40px; width: 60px; height: 60px; }
+.bg-touch__btn--mata { right: 40px; bottom: 112px; width: 60px; height: 60px; }
+.bg-touch__btn--ride { right: 24px; bottom: 184px; width: 80px; height: 80px; }
 
 /* Play surface and intro cinema. */
 .bg-stage[data-play='on'] { touch-action: none; }

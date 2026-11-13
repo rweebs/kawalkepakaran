@@ -1,9 +1,9 @@
-// The game's screens, rendered from props only (no effects), so they can be checked with renderToString.
+// The game's screens, rendered from props only (TouchControls alone keeps pointer state), so they can be checked with renderToString.
 // Every named person and every block of dossier dates sits in an element marked data-entry together with the allegation
 // line and the reply link, and every event card carries both too. The driving HUD (GameHud) shows counts, timers and
 // speeds, and its toasts (toastText) counts, dates and channels only, never a name or an event title.
 // The only casting of a real person, Abil Sudarman as Sengkuni, is the page's own labelled poster on the gate.
-import type { MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { routePath, type Locale } from '../../i18n';
 import { FRAMING, PARVAS, POSTERS } from '../../lib/bowobharata';
 import { BOWO_UI, FRAMING_EN, PARVAS_EN, POSTERS_EN } from '../../lib/bowobharata-en';
@@ -11,6 +11,7 @@ import { GAME_COPY } from '../../lib/bowobharata-game/copy';
 import type { ChapterView, EntryView, EventCard, PrologueRecord } from '../../lib/bowobharata-game/data';
 import { SKIP_AFTER_FAILS, type Settings } from '../../lib/bowobharata-game/flow';
 import type { HudSnapshot } from '../../lib/bowobharata-game/hud';
+import { NO_TOUCH, type TouchState } from '../../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../../lib/bowobharata-game/mission-run';
 import type { MissionType } from '../../lib/bowobharata-game/missions';
 import type { Totals } from '../../lib/bowobharata-game/record';
@@ -381,6 +382,126 @@ export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscr
       <div className="bg-toasts" role="status" aria-live="polite">
         {toasts.map((t) => <p key={t.id} className="bg-toast">{t.text}</p>)}
       </div>
+    </div>
+  );
+}
+
+/** The capsule that floats under the steer finger: 140 x 56 px, with a knob at the finger's travel. */
+const CAPSULE = { w: 140, h: 56 } as const;
+
+type Hold = 'brake' | 'boost' | 'sight' | 'ride';
+
+/**
+ * The touch controls (phones): the steer zone (left 46% x bottom 55%) with a floating capsule under the finger, and the
+ * Rem, Laju and Mata buttons (Maju too in manual mode). Laju and Mata carry the same rings as GameHud's. Each control
+ * captures its own pointer and lets go on lift, cancel, leave or lost capture, so nothing stays on. `onChange` gets the
+ * whole state on every change; it is left idle when the controls unmount.
+ */
+export function TouchControls({ locale, manual, onChange, surge, sight }: {
+  locale: Locale; manual: boolean; onChange: (t: TouchState) => void; surge: HudSnapshot['surge']; sight: HudSnapshot['sight'];
+}) {
+  const c = GAME_COPY[locale].touch;
+  const state = useRef<TouchState>({ ...NO_TOUCH });
+  const change = useRef(onChange);
+  change.current = onChange;
+  // The pointer each control holds, by control; a different pointer of the same control is ignored.
+  const holds = useRef<Partial<Record<Hold | 'steer', number>>>({});
+  const origin = useRef({ x: 0, y: 0 });
+  const [capsule, setCapsule] = useState<{ x: number; y: number; dx: number } | null>(null);
+  const [lit, setLit] = useState<Partial<Record<Hold, true>>>({});
+
+  const emit = (patch: Partial<TouchState>) => {
+    state.current = { ...state.current, ...patch };
+    change.current(state.current);
+  };
+  useEffect(() => () => {
+    holds.current = {};
+    change.current({ ...NO_TOUCH });
+  }, []);
+
+  const capture = (e: ReactPointerEvent<HTMLElement>) => {
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* a pointer that is already gone */ }
+  };
+
+  const hold = (k: Hold) => ({
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+      if (holds.current[k] !== undefined) return;
+      e.preventDefault();
+      capture(e);
+      holds.current[k] = e.pointerId;
+      setLit((l) => ({ ...l, [k]: true }));
+      emit({ [k]: true });
+    },
+    onPointerUp: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
+    onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
+    onPointerLeave: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
+    onLostPointerCapture: (e: ReactPointerEvent<HTMLElement>) => letGo(k, e.pointerId),
+    onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
+  });
+  const letGo = (k: Hold, id: number) => {
+    if (holds.current[k] !== id) return;
+    delete holds.current[k];
+    setLit((l) => {
+      const { [k]: _gone, ...rest } = l;
+      return rest;
+    });
+    emit({ [k]: false });
+  };
+
+  const steerGo = (id: number) => {
+    if (holds.current.steer !== id) return;
+    delete holds.current.steer;
+    setCapsule(null);
+    emit({ steerDx: null });
+  };
+  const steer = {
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+      if (holds.current.steer !== undefined) return;
+      e.preventDefault();
+      capture(e);
+      holds.current.steer = e.pointerId;
+      const r = e.currentTarget.getBoundingClientRect();
+      origin.current = { x: e.clientX, y: e.clientY };
+      setCapsule({ x: e.clientX - r.left, y: e.clientY - r.top, dx: 0 });
+      emit({ steerDx: 0 });
+    },
+    onPointerMove: (e: ReactPointerEvent<HTMLElement>) => {
+      if (holds.current.steer !== e.pointerId) return;
+      const dx = e.clientX - origin.current.x;
+      setCapsule((cap) => (cap ? { ...cap, dx } : cap));
+      emit({ steerDx: dx });
+    },
+    onPointerUp: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
+    onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
+    onPointerLeave: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
+    onLostPointerCapture: (e: ReactPointerEvent<HTMLElement>) => steerGo(e.pointerId),
+    onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
+  };
+  const knob = capsule ? Math.max(-1, Math.min(1, capsule.dx / 56)) * (CAPSULE.w / 2 - CAPSULE.h / 2) : 0;
+
+  return (
+    <div className="bg-touch">
+      <div className="bg-touch__steer" data-steer aria-label={c.steer} role="group" {...steer}>
+        {capsule && (
+          <span className="bg-touch__capsule" style={{ left: capsule.x, top: capsule.y }} aria-hidden="true">
+            <span className="bg-touch__knob" style={{ transform: `translateX(${knob}px)` }} />
+          </span>
+        )}
+      </div>
+      <button type="button" className="bg-touch__btn bg-touch__btn--rem" aria-label={c.brake} data-held={lit.brake ? '' : undefined} {...hold('brake')}>
+        <span className="bg-touch__label">{c.brake}</span>
+      </button>
+      <button type="button" className="bg-touch__btn bg-touch__btn--surge" aria-label={c.surge} data-held={lit.boost ? '' : undefined} {...hold('boost')}>
+        <Ring kind="surge" label={c.surge} fill={surge.frac} lit={surge.ready} />
+      </button>
+      <button type="button" className="bg-touch__btn bg-touch__btn--mata" aria-label={c.sight} data-held={lit.sight ? '' : undefined} {...hold('sight')}>
+        <Ring kind="sight" label={c.sight} fill={sight.charge} lit={sight.on} />
+      </button>
+      {manual && (
+        <button type="button" className="bg-touch__btn bg-touch__btn--ride" aria-label={c.ride} data-held={lit.ride ? '' : undefined} {...hold('ride')}>
+          <span className="bg-touch__label">{c.ride}</span>
+        </button>
+      )}
     </div>
   );
 }

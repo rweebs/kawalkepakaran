@@ -8,7 +8,7 @@ import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
 import { CHAPTER_TYPES } from '../src/lib/bowobharata-game/missions';
 import {
-  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, cardView,
+  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, TouchControls, cardView,
 } from '../src/components/bowobharata-game/screens';
 import BowobharataGame from '../src/components/BowobharataGame';
 
@@ -144,12 +144,13 @@ describe("Sanjaya's report", () => {
         checked.push(renderToString(<FailCard locale={locale} reason={reason} fails={2} assist={false} onRetry={noop} onSkip={noop} />));
       }
       checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} />));
+      checked.push(renderToString(<TouchControls locale={locale} manual onChange={noop} surge={{ ready: true, frac: 1 }} sight={{ on: false, charge: 0 }} />));
       screens.push(paused(locale));
     }
-    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, Recorded (prologue), FailCard ×2 and the finale; then the
+    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, Recorded (prologue), FailCard ×2, the finale and TouchControls; then the
     // whitelisted 24 event cards, 8 Tercatat screens and the pause screen.
     expect(CHAPTER_TYPES).toHaveLength(COUNT - 1);
-    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + 1 + 2 + 1));
+    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + 1 + 2 + 1 + 1));
     expect(screens).toHaveLength(2 * (game.events.flat().length + PARVAS.length + 1));
     const strict = checked.join('\n');
     expect(eNames).toContain('Abil Sudarman');
@@ -509,6 +510,20 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/scrollIntoView\(\{ block: 'start', behavior: reduced \? 'auto' : 'smooth' \}\)/);
     expect(src).toMatch(/scrolledFor\.current === flow\.chapter/);
     expect(src).toMatch(/data-paused=\{flow\.paused \? 'on' : undefined\}/);
+  });
+
+  it('reads touch and a gamepad, guarded, and feeds the rings to TouchControls', () => {
+    expect(src).toContain('(pointer: coarse)');
+    expect(src).toContain('getGamepads');
+    expect(src).toMatch(/typeof navigator\.getGamepads !== 'function'/);
+    expect(src).toContain('<TouchControls');
+    expect(src).toMatch(/<TouchControls[\s\S]*?\bsurge=\{hud\.surge\}[\s\S]*?\bsight=\{hud\.sight\}/);
+    expect(src).toContain('mergeInputs(');
+    // Easy control is a session setting: turned on for touch, never written to storage.
+    expect(src).toMatch(/easy: true/);
+    expect(src).not.toMatch(/writeSaved\([^)]*easy/);
+    // The dev automation hook stays inside its DEV blocks.
+    expect(src).toMatch(/if \(import\.meta\.env\.DEV\) \{[^}]*devInput/);
   });
 
   it('times the fail shot on the game clock (a unit-level check of the rule)', async () => {

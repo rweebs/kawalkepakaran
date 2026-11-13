@@ -12,7 +12,7 @@ import type { HudSnapshot, ObjectiveKey } from '../src/lib/bowobharata-game/hud'
 import type { GameEvent, HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { CHAPTER_TYPES, type MissionType } from '../src/lib/bowobharata-game/missions';
 import {
-  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Recorded, SlowPrompt, cardView, toastText, type HudToast,
+  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Recorded, SlowPrompt, TouchControls, cardView, toastText, type HudToast,
 } from '../src/components/bowobharata-game/screens';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
@@ -568,5 +568,37 @@ describe('GameHud', () => {
       }
     }
     expect(rendered).toBe(2 * 9 * 4 * OBJECTIVES.length * 2);
+  });
+});
+
+describe('TouchControls', () => {
+  const surge = { ready: true, frac: 0.5 };
+  const sight = { on: false, charge: 0.25 };
+  const render = (locale: Locale, manual: boolean, sg = surge) => renderToString(<TouchControls locale={locale} manual={manual} onChange={noop} surge={sg} sight={sight} />);
+  const button = (html: string, cls: string) => html.match(new RegExp(`<button[^>]*${cls}[^>]*>[\\s\\S]*?</button>`))?.[0] ?? '';
+
+  for (const l of LOCALES) {
+    it(`${l}: labels come from touch.*, with the Rem, Laju and Mata classes and the steer zone`, () => {
+      const t = GAME_COPY[l].touch;
+      const html = render(l, false);
+      for (const k of ['brake', 'surge', 'sight'] as const) expect(html).toContain(`aria-label="${esc(t[k])}"`);
+      expect(html).toContain(`aria-label="${esc(t.steer)}"`);
+      for (const c of ['bg-touch__btn--rem', 'bg-touch__btn--surge', 'bg-touch__btn--mata']) expect(html).toContain(c);
+      expect(html).toContain('data-steer');
+      expect(html).not.toContain('bg-touch__btn--ride');
+      expect(render(l, true)).toContain('bg-touch__btn--ride');
+    });
+  }
+
+  it('the Laju button holds one surge ring and the Mata button one sight ring; surge 0.5 sweeps 180 degrees', () => {
+    const html = render('id', false);
+    const laju = button(html, 'bg-touch__btn--surge');
+    const mata = button(html, 'bg-touch__btn--mata');
+    expect(count(laju, 'data-ring="surge"')).toBe(1);
+    expect(count(laju, 'data-ring="sight"')).toBe(0);
+    expect(laju).toContain('data-sweep="180"');
+    expect(count(mata, 'data-ring="sight"')).toBe(1);
+    expect(mata).toContain('data-sweep="90"');
+    expect(button(html, 'bg-touch__btn--rem')).not.toContain('data-ring');
   });
 });

@@ -156,4 +156,39 @@ describe('bowobharata-game.css stage and HUD', () => {
       for (const t of durations(value)) expect(t).toBeGreaterThanOrEqual(0.5);
     }
   });
+
+  it('sizes and anchors the touch controls', () => {
+    for (const b of ['.bg-touch__btn']) {
+      for (const p of ['min-width', 'min-height']) expect(parseFloat(declared(b, p)[0]), `${b} ${p}`).toBeGreaterThanOrEqual(56);
+    }
+    const anchors = { rem: [24, 24, 72], surge: [108, 40, 60], mata: [40, 112, 60], ride: [24, 184, 80] } as const;
+    for (const [k, [right, bottom, size]] of Object.entries(anchors)) {
+      const sel = `.bg-touch__btn--${k}`;
+      expect(declared(sel, 'right'), sel).toEqual([`${right}px`]);
+      expect(declared(sel, 'bottom'), sel).toEqual([`${bottom}px`]);
+      expect(parseFloat(declared(sel, 'width')[0]), sel).toBeGreaterThanOrEqual(56);
+      expect(declared(sel, 'width'), sel).toEqual([`${size}px`]);
+    }
+    expect(declared('.bg-touch__steer', 'left')).toEqual(['0']);
+    expect(declared('.bg-touch__steer', 'bottom')).toEqual(['0']);
+    expect(declared('.bg-touch__steer', 'height')).toEqual(['55%']);
+    expect(declared('.bg-touch__steer', 'width')).toEqual(['46%']);
+    expect(declared('.bg-touch__steer', 'touch-action')).toEqual(['none']);
+    expect(declared('.bg-touch__capsule', 'width')).toEqual(['140px']);
+    expect(declared('.bg-touch__capsule', 'height')).toEqual(['56px']);
+  });
+
+  it('keeps the touch toasts and speed clear of the objective panel, the steer zone and the buttons', () => {
+    const t = '.bg-hud[data-touch] .bg-toasts';
+    // The toasts sit in the right column, past the panel's 46% (+ its 0.5rem inset) and clear of the buttons below.
+    expect(declared(t, 'right')).toEqual(['0.5rem']);
+    expect(declared(t, 'left')).toEqual(['auto']);
+    expect(declared(t, 'bottom')).toEqual(['auto']);
+    expect(declared(t, 'max-width')).toEqual(['min(22rem, calc(54% - 1.5rem))']);
+    expect(parseFloat(declared(t, 'top')[0])).toBeGreaterThanOrEqual(7);
+    // The speed leaves the bottom right, where the buttons are.
+    const g = '.bg-hud[data-touch] .bg-gauges';
+    expect(declared(g, 'right')).toEqual(['auto']);
+    expect(declared(g, 'left')).toEqual(['0.5rem']);
+  });
 });

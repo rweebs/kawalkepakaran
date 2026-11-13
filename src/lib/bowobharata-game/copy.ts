@@ -72,6 +72,8 @@ export interface GameCopy {
   };
   /** The speed unit, then the names of Krishna's sight (Mata), the surge (Laju) and the clamour (Riuh). */
   ride: { speedUnit: string; sight: string; surge: string; riuh: string };
+  /** The touch controls' names (their aria-labels and visible labels): the steer zone, Rem, Laju, Mata and Maju (manual mode). */
+  touch: { steer: string; brake: string; surge: string; sight: string; ride: string };
   /** Toasts while driving: counts, dates and channels only, never a name or an event title. */
   toasts: {
     recorded: (o: { n: number; total: number; date: string; channel: string }) => string;
@@ -157,6 +159,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       stop: 'Berhenti sejenak di dalam lingkaran.',
     },
     ride: { speedUnit: 'km/jam', sight: 'Mata', surge: 'Laju', riuh: 'Riuh' },
+    touch: { steer: 'Kemudi', brake: 'Rem', surge: 'Laju', sight: 'Mata', ride: 'Maju' },
     toasts: {
       recorded: ({ n, total, date, channel }) => `Tercatat ${n}/${total} · ${date} · ${channel}`,
       recordedPrologue: ({ n, total }) => `Tercatat ${n}/${total}`,
@@ -291,6 +294,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       stop: 'Stop inside the circle for a moment.',
     },
     ride: { speedUnit: 'km/h', sight: 'Sight', surge: 'Surge', riuh: 'Clamour' },
+    touch: { steer: 'Steer', brake: 'Brake', surge: 'Surge', sight: 'Sight', ride: 'Go' },
     toasts: {
       recorded: ({ n, total, date, channel }) => `Recorded ${n}/${total} · ${date} · ${channel}`,
       recordedPrologue: ({ n, total }) => `Recorded ${n}/${total}`,

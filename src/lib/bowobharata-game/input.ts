@@ -84,3 +84,80 @@ export function keyboardInput(
     skip: held(codes, 'skip'),
   };
 }
+
+// Touch and gamepad. Both read the same drive input as the keyboard; the island merges the three (mergeInputs).
+
+/** Finger travel (px) inside which the steer stays 0, and at which it reaches full lock. */
+export const TOUCH_STEER = { dead: 6, full: 56 } as const;
+/** A brake held through a turn at least this sharp, above this speed (m/s), pulls the reins instead of braking. */
+const SLIDE = { steer: 0.6, speed: 10 } as const;
+const PAD_DEAD = 0.15;
+
+/** The steer for a finger that has slid `dxPx` from where it landed: 0 inside 6 px, linear to ±1 at 56 px. */
+export function touchSteer(dxPx: number): number {
+  const d = finite(dxPx);
+  const m = Math.abs(d);
+  if (m <= TOUCH_STEER.dead) return 0;
+  return Math.sign(d) * clamp((m - TOUCH_STEER.dead) / (TOUCH_STEER.full - TOUCH_STEER.dead), 0, 1);
+}
+
+/** What the fingers hold: the steer finger's travel (null when none), and the buttons. `ride` is the Maju button of manual mode. */
+export interface TouchState { steerDx: number | null; brake: boolean; boost: boolean; sight: boolean; ride: boolean }
+export const NO_TOUCH: Readonly<TouchState> = Object.freeze({ steerDx: null, brake: false, boost: false, sight: false, ride: false });
+
+/**
+ * One frame of the touch controls. In easy control the throttle is `cruiseThrottle` at the forward `speed` (cut while
+ * braking); otherwise Maju gives it. A brake held through a sharp turn (|steer| > 0.6) above 10 m/s is a slide: the reins
+ * are pulled and the brake is not applied.
+ */
+export function touchInput(t: TouchState, speed: number, easy: boolean): { drive: ChariotInput; sight: boolean } {
+  const steer = t.steerDx === null ? 0 : touchSteer(t.steerDx);
+  const slide = t.brake && Math.abs(steer) > SLIDE.steer && finite(speed) > SLIDE.speed;
+  const braking = t.brake && !slide;
+  const throttle = easy ? (braking ? 0 : cruiseThrottle(speed)) : t.ride ? 1 : 0;
+  return { drive: { throttle, brake: braking ? 1 : 0, steer, drift: slide, boost: t.boost }, sight: t.sight };
+}
+
+interface PadLike { axes: readonly number[]; buttons: readonly { value: number; pressed: boolean }[] }
+
+/**
+ * One frame of a gamepad. Axis 0 steers past a 0.15 dead zone; button 7 is the throttle, 6 the brake, 0 Laju, 2 the
+ * reins, 4 and 5 Mata, 9 pause and 1 skip. Missing axes and buttons read as released.
+ */
+export function gamepadInput(p: PadLike): { drive: ChariotInput; sight: boolean; skip: boolean; pause: boolean } {
+  const a = finite(p.axes[0] ?? 0);
+  const steer = Math.abs(a) <= PAD_DEAD ? 0 : clamp(Math.sign(a) * ((Math.abs(a) - PAD_DEAD) / (1 - PAD_DEAD)), -1, 1);
+  const btn = (i: number) => p.buttons[i];
+  const on = (i: number) => btn(i)?.pressed === true;
+  const val = (i: number) => {
+    const b = btn(i);
+    return b ? clamp(finite(b.value) || (b.pressed ? 1 : 0), 0, 1) : 0;
+  };
+  return {
+    drive: { throttle: val(7), brake: val(6), steer, drift: on(2), boost: on(0) },
+    sight: on(4) || on(5),
+    skip: on(1),
+    pause: on(9),
+  };
+}
+
+export interface InputPart { drive: ChariotInput; sight: boolean; skip?: boolean; pause?: boolean }
+
+/** The inputs as one: the largest throttle, brake and steer (by size), and any held switch. */
+export function mergeInputs(...parts: readonly InputPart[]): { drive: ChariotInput; sight: boolean; skip: boolean; pause: boolean } {
+  const drive: ChariotInput = { throttle: 0, brake: 0, steer: 0, drift: false, boost: false };
+  let sight = false;
+  let skip = false;
+  let pause = false;
+  for (const p of parts) {
+    drive.throttle = Math.max(drive.throttle, p.drive.throttle);
+    drive.brake = Math.max(drive.brake, p.drive.brake);
+    if (Math.abs(p.drive.steer) > Math.abs(drive.steer)) drive.steer = p.drive.steer;
+    drive.drift = drive.drift || p.drive.drift;
+    drive.boost = drive.boost || p.drive.boost;
+    sight = sight || p.sight;
+    skip = skip || p.skip === true;
+    pause = pause || p.pause === true;
+  }
+  return { drive, sight, skip, pause };
+}

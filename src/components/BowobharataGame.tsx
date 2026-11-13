@@ -5,7 +5,7 @@
 // period. Names, event titles and dossier facts appear only on those still screens, never during play: the HUD and its
 // toasts carry counts, dates, channels and timers. The flow is a pure reducer (lib/bowobharata-game/flow.ts) and the
 // screens are presentational (bowobharata-game/screens.tsx). This file loads the scene with the runtime that drives it
-// (lib/bowobharata-game/world/runtime.ts), reads the keyboard, and turns the runtime's HUD snapshots and events into the
+// (lib/bowobharata-game/world/runtime.ts), reads the keyboard, the touch controls and a gamepad, and turns the runtime's HUD snapshots and events into the
 // HUD, the toasts, the lakon card with its letterbox, and the end of each play.
 import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Locale } from '../i18n';
@@ -16,13 +16,13 @@ import { speedOf } from '../lib/bowobharata-game/drive';
 import type { FrameInput, GameState } from '../lib/bowobharata-game/engine';
 import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
 import { failShotDone, sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
-import { keyAction, keyboardInput } from '../lib/bowobharata-game/input';
+import { gamepadInput, keyAction, keyboardInput, mergeInputs, NO_TOUCH, type InputPart, touchInput, type TouchState } from '../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
 import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
 import type { Runtime } from '../lib/bowobharata-game/world/runtime';
 import {
   DataError, FailCard, FallbackPlay, Finale, GameHud, Gate, type GatePosters, type HudToast, Intro, MissionCard, Paused, Recorded,
-  SanjayaReport, SlowPrompt, toastText,
+  SanjayaReport, SlowPrompt, toastText, TouchControls,
 } from './bowobharata-game/screens';
 import '../styles/bowobharata-game.css';
 
@@ -36,6 +36,15 @@ const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['rec
 /** Toasts on screen at once, and how long each stays (ms). */
 const TOAST_MAX = 2;
 const TOAST_MS = 4000;
+
+/** The first connected gamepad, or null: no API, no pad, or an entry that is null all mean no gamepad input. */
+function firstGamepad(): Gamepad | null {
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return null;
+    for (const p of Array.from(navigator.getGamepads() ?? [])) if (p && p.connected !== false) return p;
+  } catch { /* a browser that refuses */ }
+  return null;
+}
 
 const storage = (): Storage | undefined => {
   try { return window.localStorage; } catch { return undefined; }
@@ -94,6 +103,10 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const steer = useRef(0);
   const readAt = useRef(0);
   const skipPulse = useRef(false);
+  // The touch controls' state, whether the device is touch, and the gamepad's pause and skip buttons of the frame before.
+  const touch = useRef<TouchState>({ ...NO_TOUCH });
+  const touchDevice = useRef(false);
+  const padHeld = useRef({ skip: false, pause: false });
   // The play view's clockwork: its pending timers (toasts), the toast ids, whether
   // the lakon card is up, and whether the next HUD snapshot is the chapter's first.
   const timers = useRef(new Set<number>());
@@ -148,6 +161,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     first.current = false;
     failClock.current = null;
     skipPulse.current = false;
+    touch.current = { ...NO_TOUCH };
     setHud(null);
     setToasts((list) => (list.length > 0 ? [] : list));
     setMission(false);
@@ -225,11 +239,23 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     readAt.current = now;
     const car = runtimeRef.current?.state()?.car;
     const s = settingsRef.current;
-    const kb = keyboardInput(keys.current, steer.current, dt, { on: s.easy, speed: car ? speedOf(car) : 0 });
+    const speed = car ? speedOf(car) : 0;
+    const kb = keyboardInput(keys.current, steer.current, dt, { on: s.easy, speed: speed });
     steer.current = kb.drive.steer;
+    const parts: InputPart[] = [{ drive: kb.drive, sight: kb.sight }];
+    if (touchDevice.current) parts.push(touchInput(touch.current, speed, s.easy));
+    const pad = firstGamepad();
+    let padSkip = false;
+    if (pad) {
+      const g = gamepadInput(pad);
+      parts.push({ drive: g.drive, sight: g.sight });
+      padSkip = g.skip && !padHeld.current.skip && canSkip();
+      padHeld.current.skip = g.skip;
+    } else padHeld.current.skip = false;
+    const m = mergeInputs(...parts);
     const skip = skipPulse.current;
     skipPulse.current = false;
-    return { drive: kb.drive, sight: kb.sight, skip, assist: s.assist };
+    return { drive: m.drive, sight: m.sight, skip: skip || padSkip, assist: s.assist };
   };
 
   // The runtime holds these for its whole life; through this ref it always calls the ones of the latest render.
@@ -275,7 +301,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   // The device: a coarse pointer words the hints for touch and leaves the rings to the touch buttons; full screen only
   // where the browser allows it.
   useEffect(() => {
-    setDevice({ touch: window.matchMedia('(pointer: coarse)').matches, canFullscreen: document.fullscreenEnabled === true });
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    touchDevice.current = coarse;
+    // Easy control is on by default on touch; it is a session setting and is never written to storage.
+    if (coarse) setSettings((s) => ({ ...s, easy: true }));
+    setDevice({ touch: coarse, canFullscreen: document.fullscreenEnabled === true });
     const onFullscreenChange = () => setFullscreen(document.fullscreenElement !== null && document.fullscreenElement === stageRef.current);
     document.addEventListener('fullscreenchange', onFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
@@ -328,6 +358,18 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
+
+  // The gamepad's pause button (9) pauses and resumes while a 3D play runs; polled, so it also works while paused.
+  useEffect(() => {
+    if (!playing3d || typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
+    const id = window.setInterval(() => {
+      const pad = firstGamepad();
+      const down = pad ? gamepadInput(pad).pause : false;
+      if (down && !padHeld.current.pause) dispatch({ type: 'togglePause' });
+      padHeld.current.pause = down;
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [playing3d]);
 
   // The 3D scene and its runtime live from the first intro until the fallback takes over or the island unmounts.
   const wants3d = flow.mode === '3d' && flow.screen !== 'gate';
@@ -517,6 +559,15 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               onFullscreen={toggleFullscreen}
               canFullscreen={device.canFullscreen}
               fullscreen={fullscreen}
+            />
+          )}
+          {playing3d && device.touch && hud && !flow.paused && (
+            <TouchControls
+              locale={locale}
+              manual={!settings.easy}
+              onChange={(t) => { touch.current = t; }}
+              surge={hud.surge}
+              sight={hud.sight}
             />
           )}
           {playing3d && mission && hud && <MissionCard locale={locale} chapterIndex={flow.chapter} type={hud.type} />}

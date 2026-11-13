@@ -9,6 +9,11 @@ import {
   keyAction,
   keyboardInput,
   steerToward,
+  touchSteer,
+  touchInput,
+  gamepadInput,
+  mergeInputs,
+  NO_TOUCH,
 } from '../src/lib/bowobharata-game/input';
 import { DRIVE } from '../src/lib/bowobharata-game/tuning';
 
@@ -137,5 +142,74 @@ describe('input: keyboard driving', () => {
     expect(cruiseThrottle(5, 8)).toBe(1);
     expect(cruiseThrottle(7, 8)).toBeCloseTo(1 / 3, 9);
     expect(cruiseThrottle(NaN)).toBe(0);
+  });
+});
+
+describe('input: touch', () => {
+  it('touchSteer is 0 inside 6 px and linear to +-1 at 56 px', () => {
+    expect(touchSteer(5)).toBe(0);
+    expect(touchSteer(-6)).toBe(0);
+    expect(touchSteer(31)).toBeCloseTo(0.5, 9);
+    expect(touchSteer(56)).toBe(1);
+    expect(touchSteer(-80)).toBe(-1);
+    expect(touchSteer(NaN)).toBe(0);
+  });
+
+  it('easy control cruises: throttle 1 at 0 m/s and 0 at 13 m/s', () => {
+    expect(touchInput({ ...NO_TOUCH }, 0, true).drive.throttle).toBe(1);
+    expect(touchInput({ ...NO_TOUCH }, 13, true).drive.throttle).toBe(0);
+  });
+
+  it('manual: Maju is the throttle; the brake is throttle 0 and brake 1', () => {
+    expect(touchInput({ ...NO_TOUCH, ride: true }, 0, false).drive.throttle).toBe(1);
+    expect(touchInput({ ...NO_TOUCH }, 0, false).drive.throttle).toBe(0);
+    for (const easy of [false, true]) {
+      const d = touchInput({ ...NO_TOUCH, brake: true }, 5, easy).drive;
+      expect([d.throttle, d.brake, d.drift]).toEqual([0, 1, false]);
+    }
+  });
+
+  it('brake through a sharp turn above 10 m/s is a slide with no brake', () => {
+    const d = touchInput({ ...NO_TOUCH, brake: true, steerDx: 0.8 * 50 + 6 }, 12, false).drive;
+    expect(d.steer).toBeCloseTo(0.8, 9);
+    expect(d.drift).toBe(true);
+    expect(d.brake).toBe(0);
+    const slow = touchInput({ ...NO_TOUCH, brake: true, steerDx: 56 }, 8, false).drive;
+    expect([slow.drift, slow.brake]).toEqual([false, 1]);
+  });
+
+  it('Laju and Mata come from their buttons', () => {
+    const t = touchInput({ ...NO_TOUCH, boost: true, sight: true }, 0, false);
+    expect([t.drive.boost, t.sight]).toEqual([true, true]);
+  });
+});
+
+describe('input: gamepad', () => {
+  const btns = (over: Record<number, number> = {}) => Array.from({ length: 17 }, (_, i) => ({ value: over[i] ?? 0, pressed: (over[i] ?? 0) > 0.5 }));
+  it('axis 0 steers with a 0.15 dead zone', () => {
+    expect(gamepadInput({ axes: [0.1], buttons: btns() }).drive.steer).toBe(0);
+    expect(gamepadInput({ axes: [-1], buttons: btns() }).drive.steer).toBe(-1);
+    expect(gamepadInput({ axes: [1], buttons: btns() }).drive.steer).toBe(1);
+  });
+  it('buttons: 7 throttle, 6 brake, 0 Laju, 2 reins, 4 and 5 Mata, 9 pause, 1 skip', () => {
+    expect(gamepadInput({ axes: [0], buttons: btns({ 7: 0.6 }) }).drive.throttle).toBe(0.6);
+    expect(gamepadInput({ axes: [0], buttons: btns({ 6: 1 }) }).drive.brake).toBe(1);
+    expect(gamepadInput({ axes: [0], buttons: btns({ 0: 1 }) }).drive.boost).toBe(true);
+    expect(gamepadInput({ axes: [0], buttons: btns({ 2: 1 }) }).drive.drift).toBe(true);
+    for (const i of [4, 5]) expect(gamepadInput({ axes: [0], buttons: btns({ [i]: 1 }) }).sight).toBe(true);
+    expect(gamepadInput({ axes: [0], buttons: btns({ 9: 1 }) }).pause).toBe(true);
+    expect(gamepadInput({ axes: [0], buttons: btns({ 1: 1 }) }).skip).toBe(true);
+  });
+  it('a pad with no axes or buttons gives no input', () => {
+    expect(gamepadInput({ axes: [], buttons: [] })).toEqual({ drive: { ...NO_INPUT }, sight: false, skip: false, pause: false });
+  });
+});
+
+describe('input: mergeInputs', () => {
+  it('takes the largest throttle, brake and steer, and any held switch', () => {
+    const a = { drive: { throttle: 0.2, brake: 0, steer: -0.3, drift: false, boost: true }, sight: false };
+    const b = { drive: { throttle: 0.9, brake: 0.5, steer: 0.7, drift: true, boost: false }, sight: true, skip: true };
+    expect(mergeInputs(a, b)).toEqual({ drive: { throttle: 0.9, brake: 0.5, steer: 0.7, drift: true, boost: true }, sight: true, skip: true, pause: false });
+    expect(mergeInputs()).toEqual({ drive: { ...NO_INPUT }, sight: false, skip: false, pause: false });
   });
 });
