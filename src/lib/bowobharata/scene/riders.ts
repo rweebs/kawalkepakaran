@@ -161,11 +161,12 @@ interface Tier { hi: boolean }
 const seg = (t: Tier, desk: number, phone: number) => (t.hi ? desk : phone);
 
 /** The head's centre in the figure's standing coordinates, where the crown and hair were authored; the head turns about it. */
-export const HEAD = Object.freeze([0.015, 1.7, 0] as const);
+const HEAD = [0.015, 1.7, 0] as const;
 
 /**
  * The torso's rings, hips to neck: [height, centre x, depth in front, depth behind, half-width, squareness]. A lion waist
- * under a broad chest. The back stays flat: behind Krishna it keeps forward of x −0.065, clear of the prabha's spikes.
+ * under a broad chest. The back stays flat: where the prabha's spikes sweep behind Krishna (y 1.25–1.41) it keeps to x −0.065
+ * or forward, the edge of their bases, so at most a breath brushes them.
  */
 const TORSO = [
   [0.84, 0, 0.1, 0.1, 0.16, 2.2],
