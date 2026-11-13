@@ -49,7 +49,7 @@ function byId(id: string): Collider {
   return c;
 }
 const TOWER = byId('tower');
-const CAM_KEYS = ['yaw', 'dist', 'height', 'fov', 'boostK', 'shake', 'boom'] as const;
+const CAM_KEYS = ['yaw', 'dist', 'height', 'fov', 'boostK', 'shake', 'boom', 'look'] as const;
 
 /** At (x, z) facing `yaw`, rolling along the heading at v m/s (backward when v < 0). */
 function chariot(v: number, yaw = 0, x = 0, z = 0): ChariotState {
@@ -398,6 +398,29 @@ describe('turning', () => {
     const yaw = stepChase({ ...initChase(car, OPTS), yaw: 3.1 }, car, DT, OPTS).yaw;
     expect(yaw).toBeGreaterThan(3.1);
     expect(yaw).toBeLessThanOrEqual(Math.PI);
+  });
+
+  it('eases its look the short way round too: from 3.1 toward −3.1 it passes through ±π, never back across 0', () => {
+    // At rest the look's target is the heading, −3.1.
+    const car = chariot(0, -3.1);
+    let cam: ChaseCam = { ...initChase(car, OPTS), look: 3.1 };
+    const first = stepChase(cam, car, DT, OPTS).look;
+    expect(first).toBeGreaterThan(3.1);
+    expect(first).toBeLessThanOrEqual(Math.PI);
+    let wrapped = false;
+    for (let f = 0; f < 120; f++) {
+      const before = cam.look;
+      cam = stepChase(cam, car, DT, OPTS);
+      expect(Number.isFinite(cam.look)).toBe(true);
+      expect(cam.look).toBeGreaterThan(-Math.PI);
+      expect(cam.look).toBeLessThanOrEqual(Math.PI);
+      expect(Math.abs(cam.look)).toBeGreaterThanOrEqual(3.1 - 1e-12);
+      // Each step moves it forward round the circle (toward +π, then on from −π), never back.
+      expect(angleDiff(cam.look, before)).toBeGreaterThanOrEqual(0);
+      if (before > 0 && cam.look < 0) wrapped = true;
+    }
+    expect(wrapped).toBe(true);
+    expect(Math.abs(angleDiff(cam.look, -3.1))).toBeLessThan(1e-6);
   });
 
   it('keeps the heading in reverse', () => {
