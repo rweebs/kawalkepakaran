@@ -361,7 +361,7 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
   const headPos = new THREE.Vector3();
 
   // Driven: the motion the game last set, how far each wheel has turned, the team's stride, each real horse's three clips,
-  // and when the halo's latest pulse began (a pulse() starts it at the next update).
+  // and when the halo's latest pulse began (a pulse() starts one at the next update after any fall in progress).
   let motion: ChariotMotion = { speed: 0, yawRate: 0, boost: false };
   const wheelTurn = [0, 0];
   let stride = 0;
@@ -376,21 +376,20 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
       }
     : undefined;
 
-  // A wheel rolls at the chariot's speed; in a turn the outer wheel rolls |yawRate| × WHEEL_Z m/s faster. Yaw growing (a left
-  // turn) puts the right wheel (+z) outside going forward, and the left one outside backing up.
+  // Each wheel rolls at its own side's rigid-body speed, the chariot's speed ± yawRate × WHEEL_Z (the right wheel is at +z).
+  // The outer wheel of a turn rolls |yawRate| × WHEEL_Z m/s faster in its direction of travel and the inner one as much slower,
+  // so in a pivot on the spot they turn opposite ways.
   const rollWheels = (dt: number) => {
-    const dir = motion.speed < 0 ? -1 : 1;
-    const outer = Math.abs(motion.yawRate) * WHEEL_Z * dir;
-    const rightOuter = motion.yawRate * dir > 0;
-    wheelTurn[0] = spinWheel(wheelTurn[0], motion.speed + (rightOuter ? 0 : outer), dt);
-    wheelTurn[1] = spinWheel(wheelTurn[1], motion.speed + (rightOuter ? outer : 0), dt);
+    wheelTurn[0] = spinWheel(wheelTurn[0], motion.speed - motion.yawRate * WHEEL_Z, dt);
+    wheelTurn[1] = spinWheel(wheelTurn[1], motion.speed + motion.yawRate * WHEEL_Z, dt);
     wheels.forEach((w, i) => { w.rotation.z = -wheelTurn[i]; });
   };
-  // Each real horse plays Idle, Walk and Gallop at once, weighted and paced by the gait.
-  const blendGait = (clips: (typeof gaitClips)[number] | undefined, g: Gait) => {
+  // Each real horse plays Idle, Walk and Gallop at once, weighted and paced by the gait; `dir` is the sign of the speed,
+  // so backing up plays Walk and Gallop backward (a looping action runs in reverse on a negative timeScale).
+  const blendGait = (clips: (typeof gaitClips)[number] | undefined, g: Gait, dir: number) => {
     clips?.idle?.setEffectiveWeight(g.idle);
-    if (clips?.walk) { clips.walk.setEffectiveWeight(g.walk); clips.walk.timeScale = g.walkRate; }
-    if (clips?.gallop) { clips.gallop.setEffectiveWeight(g.gallop); clips.gallop.timeScale = g.gallopRate; }
+    if (clips?.walk) { clips.walk.setEffectiveWeight(g.walk); clips.walk.timeScale = dir * g.walkRate; }
+    if (clips?.gallop) { clips.gallop.setEffectiveWeight(g.gallop); clips.gallop.timeScale = dir * g.gallopRate; }
   };
 
   return {
@@ -415,9 +414,11 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
       const dt = Math.min(0.05, Math.max(0.001, time - last));
       last = time;
       const gait = drivable ? gaitAt(motion.speed) : null;
+      // The team steps the way the chariot rolls (gaitAt reads only the size of the speed).
+      const dir = Math.sign(motion.speed);
       heroes.forEach((h) => h.update(dt));
       realHorses.forEach((rig, i) => {
-        if (gait) blendGait(gaitClips[i], gait);
+        if (gait) blendGait(gaitClips[i], gait, dir);
         rig.mixer.update(dt);
         const head = rig.bone('Head');
         if (head) {
@@ -430,9 +431,10 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
       });
       scarfDriver(Math.sin(time * 1.9) * 0.3 + Math.sin(time * 0.7 + 1) * 0.15, dt);
       if (drivable) {
-        // The prabha only turns, slowly; the halo flares on a pulse and falls back over PULSE_FALL, once per call.
+        // The prabha only turns, slowly; the halo flares on a pulse and falls back over PULSE_FALL. A pulse called during a fall
+        // waits for it to end, so calls coalesce, none is lost, and the halo rises at most twice a second.
         k.turning.rotation.z = time * PRABHA_TURN;
-        if (pulseQueued) { pulseFrom = time; pulseQueued = false; }
+        if (pulseQueued && time - pulseFrom >= PULSE_FALL) { pulseFrom = time; pulseQueued = false; }
         const pulseK = Math.min(1, Math.max(0, 1 - (time - pulseFrom) / PULSE_FALL));
         (k.halo.material as THREE.SpriteMaterial).opacity = 0.12 + 0.2 * mix + 0.48 * pulseK;
         rollWheels(dt);
@@ -441,8 +443,8 @@ export function createChariot(ctx: SceneContext, opts: { drivable?: boolean } = 
         k.wheelOfLight.position.y = 2.25 + Math.sin(time * 1.4) * 0.05;
         (k.halo.material as THREE.SpriteMaterial).opacity = 0.18 + 0.3 * mix;
       }
-      // The procedural legs keep time with the real clips: a stride per Walk or Gallop cycle, at the gait's pace.
-      if (gait) stride += dt * Math.PI * 2 * ((gait.walk * gait.walkRate) / WALK_STRIDE + (gait.gallop * gait.gallopRate) / GALLOP_STRIDE);
+      // The procedural legs keep time with the real clips: a stride per Walk or Gallop cycle, at the gait's pace and in its direction.
+      if (gait) stride += dir * dt * Math.PI * 2 * ((gait.walk * gait.walkRate) / WALK_STRIDE + (gait.gallop * gait.gallopRate) / GALLOP_STRIDE);
       horses.forEach((h, i) => {
         h.legs.forEach((leg, j) => { leg.rotation.z = Math.sin(time * 1.2 + i + j * 1.7) * 0.04; });
         h.legs[0].rotation.z = Math.max(0, Math.sin(time * 0.9 + i * 2.1)) * 0.5;

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
-import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { gaitAt, spinWheel } from '../src/lib/bowobharata/scene/gait';
 import { ARJUNA_ARMS, KRISHNA_ARMS, createChariot, type ChariotPart } from '../src/lib/bowobharata/scene/chariot';
 import { armyMotion, createArmies, frontClip } from '../src/lib/bowobharata/scene/army';
@@ -155,6 +155,38 @@ describe('the page’s chariot', () => {
     for (const name of ['wheel-left', 'wheel-right']) expect(named(part, name).rotation.z, name).toBe(0);
     expect(named(part, 'krishna-halo').scale.x).toBe(6);
   });
+  it('draws and moves as it always has: tall banner, raised chakra, the reins in one hand, Arjuna aiming', () => {
+    const part = atOrigin(createChariot(context()));
+    const flag = new THREE.Box3().setFromObject(named(part, 'banner'));
+    const size = flag.getSize(new THREE.Vector3()); // geometry is stored in 32-bit floats
+    expect(size.x).toBeCloseTo(1.5, 6);
+    expect(size.y).toBeCloseTo(1, 6);
+    expect(flag.getCenter(new THREE.Vector3()).y).toBeCloseTo(DECK + 3.85, 6);
+    // The banner pole is the chariot's only 4 cm cylinder.
+    const poles = part.object.children.filter((c) => ((c as THREE.Mesh).geometry as THREE.CylinderGeometry | undefined)?.parameters?.radiusTop === 0.04);
+    expect(poles).toHaveLength(1);
+    expect(new THREE.Box3().setFromObject(poles[0]).max.y).toBeCloseTo(DECK + 4.4, 6);
+    const chakra = named(part, 'chakra');
+    expect(spritesUnder(chakra).map((s) => [s.scale.x, s.material.opacity])).toEqual([[2.2, 0.85], [5, 0.22]]);
+    const halo = named(part, 'krishna-halo');
+    for (const [t, mix] of [[0.5, 0], [1.3, 0.4], [2.7, 1]]) {
+      part.update(t, mix);
+      expect(chakra.rotation.z, `${t}`).toBeCloseTo(2.2 * t, 9);
+      expect(chakra.position.y, `${t}`).toBeCloseTo(2.25 + 0.05 * Math.sin(1.4 * t), 9);
+      expect(opacity(halo), `${t}`).toBeCloseTo(0.18 + 0.3 * mix, 9);
+    }
+    const reins = (named(part, 'reins') as THREE.LineSegments).geometry.getAttribute('position');
+    for (let i = 0; i < reins.count; i += 2) {
+      expect(reins.getY(i)).toBeCloseTo(DECK + 1.12, 6);
+      expect(reins.getZ(i)).toBeCloseTo(0.2, 6);
+    }
+    const hands: number[] = [];
+    named(part, 'arjuna').traverse((n) => {
+      const geo = (n as THREE.Mesh).geometry as THREE.SphereGeometry | undefined;
+      if (geo?.type === 'SphereGeometry' && geo.parameters.radius === 0.035) hands.push(n.position.y);
+    });
+    expect(hands.sort((x, y) => x - y)).toEqual([1.35, 1.36]);
+  });
   it('dresses both riders and stands the team, once the models load', () => {
     const played = recordPlays();
     const part = createChariot(context());
@@ -238,6 +270,8 @@ describe('the drivable chariot', () => {
     const holds = Array.from({ length: reins.count / 2 }, (_, i) => [reins.getY(i * 2), reins.getZ(i * 2)]);
     for (const [y] of holds) expect(y).toBeCloseTo(DECK + 1.12, 6);
     expect([...new Set(holds.map(([, z]) => Math.round(z * 100) / 100))].sort((a, b) => a - b)).toEqual([-0.2, 0.2]);
+    // Each hand holds the pair on its own side: no rein crosses to the other side's horses.
+    for (let i = 0; i < reins.count; i += 2) expect(Math.sign(reins.getZ(i)), `rein ${i / 2}`).toBe(Math.sign(reins.getZ(i + 1)));
     // The procedural figure's hands are the 3.5 cm spheres at the wrists.
     const hands: number[] = [];
     named(part, 'arjuna').traverse((n) => {
@@ -247,6 +281,43 @@ describe('the drivable chariot', () => {
     expect(hands).toHaveLength(2);
     for (const y of hands) expect(y).toBeLessThanOrEqual(0.95);
   });
+});
+
+describe('the drivable chariot with the real models', () => {
+  /** The site's own horse and mannequin, parsed from public/models (they hold no images, so no DOM is needed). */
+  async function realModels(): Promise<LoadedModels> {
+    const parse = (file: string) => {
+      const b = readFileSync(file);
+      return new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, '');
+    };
+    const [horse, base] = await Promise.all([parse('public/models/horse.glb'), parse('public/models/base.glb')]);
+    return { horse, base, human: fakeSoldier() };
+  }
+
+  it('stays under the silhouette, dressed, standing, walking and galloping', async () => {
+    const part = atOrigin(createChariot(context(), { drivable: true }));
+    part.upgrade!(await realModels());
+    const limit = Object.fromEntries(CHARIOT_SILHOUETTE.map((s) => [s.name, s.y + 0.02]));
+    // The real horses' roots stand at x 3.35; their highest skinned vertex is measured against the horse-heads point.
+    const horses = part.object.children.filter((c) => Math.abs(c.position.x - 3.35) < 1e-9 && c.getObjectsByProperty('isSkinnedMesh', true).length > 0);
+    expect(horses).toHaveLength(4);
+    const top: Record<string, number> = {};
+    const raise = (name: string, y: number) => { top[name] = Math.max(top[name] ?? -Infinity, y); };
+    let t = 0;
+    for (const speed of [0, 2, 5, 17]) {
+      part.rig!.setMotion({ speed, yawRate: 0, boost: false });
+      // 3.4 s at each speed: a whole Idle cycle (3.33 s), and several of every Walk and Gallop cycle.
+      for (let f = 0; f < 204; f++) {
+        t += FRAME;
+        part.update(t, 0);
+        part.object.updateMatrixWorld(true);
+        for (const name of ['prabha', 'krishna-feather', 'arjuna-crown', 'banner']) raise(name, new THREE.Box3().setFromObject(named(part, name)).max.y);
+        if (f % 2 === 0) for (const h of horses) raise('horse-heads', new THREE.Box3().setFromObject(h, true).max.y);
+      }
+    }
+    expect(Object.keys(top).sort()).toEqual(CHARIOT_SILHOUETTE.map((s) => s.name).sort());
+    for (const [name, y] of Object.entries(top)) expect(y, name).toBeLessThanOrEqual(limit[name]);
+  }, 60_000);
 });
 
 describe('the riders’ arms', () => {
@@ -300,17 +371,33 @@ describe('the drivable chariot’s wheels', () => {
     part.update(0.05, 0);
     for (const name of ['wheel-left', 'wheel-right']) expect(Math.abs(named(part, name).rotation.z + 0.5), name).toBeLessThanOrEqual(1e-6);
   });
-  it('roll the outer wheel of a turn |yawRate| × 1.08 m/s faster, going forward or backing up', () => {
+  it('roll each wheel at its own side’s speed: the outer one of a turn |yawRate| × 1.08 m/s faster, the inner one as much slower', () => {
     const part = drivable();
     part.rig!.setMotion({ speed: 9, yawRate: 0.5, boost: false }); // yaw grows: a left turn, the right wheel outside
     part.update(0.05, 0);
     expect(named(part, 'wheel-right').rotation.z).toBeCloseTo(-((9 + 0.54) * 0.05) / 0.9, 9);
-    expect(named(part, 'wheel-left').rotation.z).toBeCloseTo(-0.5, 9);
+    expect(named(part, 'wheel-left').rotation.z).toBeCloseTo(-((9 - 0.54) * 0.05) / 0.9, 9);
     const back = drivable();
     back.rig!.setMotion({ speed: -9, yawRate: 0.5, boost: false }); // backing up while yaw grows: the left wheel is outside
     back.update(0.05, 0);
     expect(named(back, 'wheel-left').rotation.z).toBeCloseTo(((9 + 0.54) * 0.05) / 0.9, 9);
-    expect(named(back, 'wheel-right').rotation.z).toBeCloseTo(0.5, 9);
+    expect(named(back, 'wheel-right').rotation.z).toBeCloseTo(((9 - 0.54) * 0.05) / 0.9, 9);
+  });
+  it('turn opposite ways in a pivot on the spot, and change smoothly through a standstill', () => {
+    const wheelsAt = (speed: number) => {
+      const part = drivable();
+      part.rig!.setMotion({ speed, yawRate: 0.9, boost: false });
+      part.update(0.05, 0);
+      return ['wheel-left', 'wheel-right'].map((name) => named(part, name).rotation.z);
+    };
+    const [left, right] = wheelsAt(0);
+    expect(left).toBeCloseTo((0.9 * 1.08 * 0.05) / 0.9, 9); // the left wheel rolls back
+    expect(right).toBeCloseTo(-(0.9 * 1.08 * 0.05) / 0.9, 9); // the right one forward
+    for (const speed of [-1e-9, 1e-9]) {
+      const [l, r] = wheelsAt(speed);
+      expect(Math.abs(l - left), `${speed}`).toBeLessThan(1e-9);
+      expect(Math.abs(r - right), `${speed}`).toBeLessThan(1e-9);
+    }
   });
   it('ignore a speed or yaw rate that is not a finite number', () => {
     const part = drivable();
@@ -340,6 +427,32 @@ describe('the prabha’s pulse', () => {
       if (i === 14) expect(Math.abs(opacity(halo) - 0.36)).toBeLessThanOrEqual(0.01); // halfway at 0.25 s
     }
     expect(Math.abs(opacity(halo) - 0.12)).toBeLessThanOrEqual(0.01);
+  });
+  it('lets a pulse called during a fall wait for it to end: at most one rise per 0.5 s, and none lost', () => {
+    const run = (pulseAt: (t: number) => boolean) => {
+      const part = createChariot(context(), { drivable: true });
+      const halo = named(part, 'krishna-halo');
+      part.update(1, 0);
+      const rises: number[] = [];
+      let before = opacity(halo);
+      for (let i = 1; i <= 180; i++) {
+        const t = 1 + i * FRAME;
+        if (pulseAt(t)) part.rig!.pulse();
+        part.update(t, 0);
+        if (opacity(halo) > before + 1e-9) rises.push(t);
+        before = opacity(halo);
+      }
+      return rises;
+    };
+    // pulse() every 0.2 s for 2 s.
+    const steady = run((t) => t <= 3 + 1e-9 && Math.abs(((t - 1) / 0.2) - Math.round((t - 1) / 0.2)) < 1e-6);
+    for (let i = 1; i < steady.length; i++) expect(steady[i] - steady[i - 1], `rise ${i}`).toBeGreaterThanOrEqual(0.5 - 1e-9);
+    expect(steady.length).toBeGreaterThanOrEqual(4); // a pulse keeps coming every 0.5 s while the calls do
+    // Two calls 0.2 s apart: the second waits for the first's fall, then flares.
+    const pair = run((t) => Math.abs(t - (1 + 6 * FRAME)) < 1e-9 || Math.abs(t - (1 + 18 * FRAME)) < 1e-9);
+    expect(pair).toHaveLength(2);
+    expect(pair[1] - pair[0]).toBeGreaterThanOrEqual(0.5 - 1e-9);
+    expect(pair[1] - pair[0]).toBeLessThan(0.5 + 2 * FRAME);
   });
   it('brightens with the dharma mix', () => {
     const part = createChariot(context(), { drivable: true });
@@ -384,6 +497,41 @@ describe('the drivable team', () => {
     for (const w of [...weights('Walk'), ...weights('Gallop')]) expect(w).toBeCloseTo(0.5, 9);
     for (const a of played.filter((x) => clipName(x) === 'Walk')) expect(a.timeScale).toBe(1.6);
     for (const a of played.filter((x) => clipName(x) === 'Gallop')) expect(a.timeScale).toBe(0.7);
+  });
+  it('steps backward when the chariot backs up: the clips run in reverse and the stride turns back', () => {
+    const clipScales = (speed: number) => {
+      const played = recordPlays();
+      const part = createChariot(context(), { drivable: true });
+      part.upgrade!(fakeModels());
+      part.rig!.setMotion({ speed, yawRate: 0, boost: false });
+      part.update(0.05, 0);
+      const scales = (name: string) => played.filter((a) => clipName(a) === name).map((a) => a.timeScale);
+      vi.restoreAllMocks();
+      return { walk: scales('Walk'), gallop: scales('Gallop') };
+    };
+    expect(clipScales(4)).toEqual({ walk: [1.6, 1.6, 1.6, 1.6], gallop: [0.7, 0.7, 0.7, 0.7] });
+    expect(clipScales(-4)).toEqual({ walk: [-1.6, -1.6, -1.6, -1.6], gallop: [-0.7, -0.7, -0.7, -0.7] });
+
+    // The procedural stride's phase, read off the +z hind legs of the first two horses, which swing 0.4 rad apart
+    // (at 4 m/s the standing fidget has faded out entirely, so each swing is sin(phase) times one amplitude).
+    const strideStep = (speed: number) => {
+      const part = createChariot(context(), { drivable: true });
+      part.rig!.setMotion({ speed, yawRate: 0, boost: false });
+      const phase = () => {
+        const legs = hindLegs(part);
+        const a = legs[1].rotation.z;
+        const b = legs[3].rotation.z;
+        return Math.atan2(a, (b - a * Math.cos(0.4)) / Math.sin(0.4));
+      };
+      part.update(1, 0);
+      const from = phase();
+      part.update(1 + FRAME, 0);
+      const d = phase() - from;
+      return Math.atan2(Math.sin(d), Math.cos(d));
+    };
+    const ahead = strideStep(4);
+    expect(ahead).toBeGreaterThan(0);
+    expect(strideStep(-4)).toBeCloseTo(-ahead, 9);
   });
   it('leaves Krishna’s own body on the reins once the models load', () => {
     const part = createChariot(context(), { drivable: true });
