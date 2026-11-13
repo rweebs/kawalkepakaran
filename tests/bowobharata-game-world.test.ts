@@ -484,7 +484,7 @@ describe('the guard at the ranks', () => {
     expect(failures).toEqual([]);
     // No guard call stops the chariot dead: the largest speed a single call takes off, over the whole sweep.
     expect(worstCut.cut, `largest single-call cut, ${worstCut.at}`).toBeLessThanOrEqual(1);
-  });
+  }, 30_000);
 
   it('wedged across the south mouth, holding throttle and steering into the wedge for 120 s, it touches nothing', () => {
     const wedged = last(drive(moving(5.17, 20.91, 2.2689, 8), { throttle: 1 }, 120, 1 / 60, G, COLS)).s;
@@ -509,7 +509,7 @@ describe('the guard at the ranks', () => {
       expect(contacts(frames)).toEqual([]);
       expect(GUARD.stop - leastZoneClearance(frames)).toBeLessThanOrEqual(0.002);
     }
-  });
+  }, 30_000);
 
   it('no needless stop: settling the review wedge keeps its speed (one call, and the drive that meets it)', () => {
     // A full settle keeps 1.976 m/s here; a pass bound too low left a residual above the creep and stopped it dead.

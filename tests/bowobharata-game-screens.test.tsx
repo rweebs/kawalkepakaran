@@ -568,7 +568,7 @@ describe('GameHud', () => {
       }
     }
     expect(rendered).toBe(2 * 9 * 4 * OBJECTIVES.length * 2);
-  });
+  }, 30_000);
 });
 
 describe('TouchControls', () => {

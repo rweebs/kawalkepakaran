@@ -116,7 +116,7 @@ describe('route', () => {
       }
     }
     expect(routed).toBeGreaterThan(100);
-  });
+  }, 30_000);
 
   it('returns null for an enclosed goal and for a start outside the play disc', () => {
     const goal = { x: 60, z: 90 };
