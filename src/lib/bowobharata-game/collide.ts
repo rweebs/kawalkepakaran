@@ -259,8 +259,8 @@ export function figureGuard(figures: readonly Collider[]): Guard {
       return result(0, 0);
     },
     blocksTurn(x, z, fromYaw, toYaw) {
-      const after = hullClearance(x, z, toYaw, figures);
-      return after < GUARD.stop && after < hullClearance(x, z, fromYaw, figures);
+      const after = hullClearance(x, z, toYaw, boxes);
+      return after < GUARD.stop && after < hullClearance(x, z, fromYaw, boxes);
     },
   };
 }
