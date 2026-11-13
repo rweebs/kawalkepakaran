@@ -6,7 +6,7 @@ import { dressingLayout } from './dressing-layout';
 import { canvasTexture, fxLayer, type Part, type SceneContext } from './effects';
 
 /** A clump of grass blades on a transparent canvas: a few dozen leaning blades tapering to a point. */
-function grassTexture(): THREE.CanvasTexture {
+export function grassTexture(): THREE.CanvasTexture {
   return canvasTexture(128, 128, (g, w, h) => {
     const rnd = mulberry32(5);
     for (let i = 0; i < 26; i++) {
