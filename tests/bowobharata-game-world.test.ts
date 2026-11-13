@@ -278,6 +278,13 @@ describe('open ground', () => {
     expect(hullClearance(TOWER_EXIT.x, TOWER_EXIT.z, TOWER_EXIT.yaw, COLS)).toBeGreaterThanOrEqual(5);
   });
 
+  it('SPAWN and TOWER_EXIT are plain poses that one variable can hold', () => {
+    // This only typechecks when neither is narrowed to literal types.
+    let pose = SPAWN;
+    pose = TOWER_EXIT;
+    expect(pose).toBe(TOWER_EXIT);
+  });
+
   it('every anchor but the tower is 20 m inside the field with at least 4 m around it', () => {
     for (const [name, p] of Object.entries(ANCHORS)) {
       if (name === 'tower') continue;
@@ -360,6 +367,16 @@ describe('the guard at the ranks', () => {
     expect(guardCap(0.5)).toBe(0);
     expect(guardCap(1.5)).toBeCloseTo(Math.sqrt(28), 12);
     expect(guardCap(0.5 + 289 / 28)).toBeCloseTo(17, 12);
+  });
+
+  it('guards every figure: they are all boxes, and figureGuard refuses any other shape', () => {
+    for (const n of [GAME_WARRIORS, 700]) {
+      const figures = staticColliders(n).filter((c) => c.figure);
+      expect(figures.map((c) => c.kind)).toEqual(['box', 'box']);
+      expect(() => figureGuard(figures)).not.toThrow();
+    }
+    const ring: Collider = { kind: 'circle', id: 'ring', x: 0, z: 0, r: 2, figure: true, tall: false };
+    expect(() => figureGuard([...ZONE_BOXES, ring])).toThrow(/ring/);
   });
 
   const FIXTURES: [XZ, XZ][] = [

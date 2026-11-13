@@ -9,8 +9,8 @@ export const PLAY = { cx: 0, cz: -10, r: 160, wall: 150, push: 6 } as const;
 export const GAME_WARRIORS = 1024;
 /** Metres from the outermost soldier to the edge of the army's collider. */
 export const ARMY_PAD = 0.9;
-export const SPAWN = { x: 0, z: 9, yaw: -Math.PI / 2 } as const;
-export const TOWER_EXIT = { x: -40, z: 60, yaw: 0 } as const;
+export const SPAWN: Readonly<{ x: number; z: number; yaw: number }> = { x: 0, z: 9, yaw: -Math.PI / 2 };
+export const TOWER_EXIT: Readonly<{ x: number; z: number; yaw: number }> = { x: -40, z: 60, yaw: 0 };
 export const ANCHORS = {
   tower: { x: -46, z: 52 },
   camp: { x: -100, z: -10 },

@@ -214,9 +214,13 @@ function guardPass(circles: readonly Circle[], boxes: readonly Box[], vx: number
  *   pair still closes too fast (every pair accepts v = 0, since guardCap ≥ 0). `removed` is the total closing speed
  *   taken off, plus the speed taken by such a stop.
  * - `blocksTurn` refuses a turn that leaves the hull under GUARD.stop from a figure and closer than before.
+ * Every figure must be a box: any other shape throws rather than go unguarded.
  */
 export function figureGuard(figures: readonly Collider[]): Guard {
-  const boxes = figures.filter((c): c is Box => c.kind === 'box');
+  const boxes = figures.map((c): Box => {
+    if (c.kind !== 'box') throw new Error(`figureGuard: figure "${c.id}" is a ${c.kind}; the guard covers only boxes`);
+    return c;
+  });
   return {
     cap(x, z, yaw, vx, vz) {
       const circles = hullCircles(x, z, yaw);
@@ -231,8 +235,8 @@ export function figureGuard(figures: readonly Collider[]): Guard {
       return { vx: 0, vz: 0, removed: removed + Math.hypot(vx, vz) };
     },
     blocksTurn(x, z, fromYaw, toYaw) {
-      const after = hullClearance(x, z, toYaw, boxes);
-      return after < GUARD.stop && after < hullClearance(x, z, fromYaw, boxes);
+      const after = hullClearance(x, z, toYaw, figures);
+      return after < GUARD.stop && after < hullClearance(x, z, fromYaw, figures);
     },
   };
 }
