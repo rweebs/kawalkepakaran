@@ -272,14 +272,14 @@ describe('the drivable chariot', () => {
     expect([...new Set(holds.map(([, z]) => Math.round(z * 100) / 100))].sort((a, b) => a - b)).toEqual([-0.2, 0.2]);
     // Each hand holds the pair on its own side: no rein crosses to the other side's horses.
     for (let i = 0; i < reins.count; i += 2) expect(Math.sign(reins.getZ(i)), `rein ${i / 2}`).toBe(Math.sign(reins.getZ(i + 1)));
-    // The procedural figure's hands are the 3.5 cm spheres at the wrists.
-    const hands: number[] = [];
-    named(part, 'arjuna').traverse((n) => {
-      const geo = (n as THREE.Mesh).geometry as THREE.SphereGeometry | undefined;
-      if (geo?.type === 'SphereGeometry' && geo.parameters.radius === 0.035) hands.push(n.position.y);
-    });
-    expect(hands).toHaveLength(2);
-    for (const y of hands) expect(y).toBeLessThanOrEqual(0.95);
+    // The game's Arjuna (riders.ts) names his hands; each hangs at his side, in his figure's coordinates.
+    const arjuna = named(part, 'arjuna');
+    for (const side of ['left', 'right']) {
+      const hand = named(part, `arjuna-hand-${side}`);
+      const at = arjuna.worldToLocal(hand.getWorldPosition(new THREE.Vector3()));
+      expect(at.y, side).toBeLessThanOrEqual(0.95);
+      expect(Math.abs(at.z), side).toBeGreaterThan(0.18);
+    }
   });
 });
 
@@ -317,6 +317,8 @@ describe('the drivable chariot with the real models', () => {
     }
     expect(Object.keys(top).sort()).toEqual(CHARIOT_SILHOUETTE.map((s) => s.name).sort());
     for (const [name, y] of Object.entries(top)) expect(y, name).toBeLessThanOrEqual(limit[name]);
+    // Neither rider wears the mannequin: Arjuna's crown is measured on his own head.
+    for (const name of ['krishna', 'arjuna']) expect(named(part, name).getObjectsByProperty('isSkinnedMesh', true), name).toHaveLength(0);
   }, 60_000);
 });
 
@@ -325,8 +327,8 @@ describe('the riders’ arms', () => {
     for (const arm of [ARJUNA_ARMS.lowered.left, ARJUNA_ARMS.lowered.right]) expect(arm[2][1]).toBeLessThanOrEqual(0.95);
     for (const arm of [KRISHNA_ARMS.reins.left, KRISHNA_ARMS.reins.right]) expect(arm[2][1]).toBeLessThanOrEqual(1.25);
   });
-  it('keeps Krishna’s armlets halfway down his upper arms, raised or on the reins', () => {
-    for (const [drivable, arms] of [[false, KRISHNA_ARMS.raised], [true, KRISHNA_ARMS.reins]] as const) {
+  it('keeps Krishna’s armlets halfway down his upper arms on the page, one arm raised', () => {
+    for (const [drivable, arms] of [[false, KRISHNA_ARMS.raised]] as const) {
       const bands: THREE.Vector3[] = [];
       named(createChariot(context(), { drivable }), 'krishna').traverse((n) => {
         const geo = (n as THREE.Mesh).geometry as THREE.TorusGeometry | undefined;
@@ -337,6 +339,16 @@ describe('the riders’ arms', () => {
       for (const arm of [arms.left, arms.right]) {
         expect(Math.min(...bands.map((b) => b.distanceTo(mid(arm)))), `${drivable}`).toBeLessThan(1e-9);
       }
+    }
+  });
+  it('keeps the game Krishna’s named armlets halfway down his upper arms, both hands on the reins', () => {
+    const krishna = named(createChariot(context(), { drivable: true }), 'krishna');
+    const mid = (arm: readonly (readonly number[])[]) => new THREE.Vector3(...arm[0]).lerp(new THREE.Vector3(...arm[1]), 0.5);
+    for (const side of ['left', 'right'] as const) {
+      const band = named({ object: krishna }, `krishna-armlet-${side}`);
+      krishna.updateMatrixWorld(true);
+      const at = krishna.worldToLocal(band.getWorldPosition(new THREE.Vector3()));
+      expect(at.distanceTo(mid(KRISHNA_ARMS.reins[side])), side).toBeLessThan(1e-6);
     }
   });
   it('freezes both tables down to every joint, since the page’s figures are built from them', () => {
@@ -477,13 +489,13 @@ describe('the drivable team', () => {
     expect(swing(0)).toBeLessThanOrEqual(0.04 + 1e-9);
     expect(swing(9)).toBeGreaterThan(0.4);
   });
-  it('blends the real horses’ Idle, Walk and Gallop by speed, and dresses Arjuna alone, standing', () => {
+  it('blends the real horses’ Idle, Walk and Gallop by speed, and dresses neither rider', () => {
     const played = recordPlays();
     const part = createChariot(context(), { drivable: true });
     part.upgrade!(fakeModels());
     const horseClips = played.map(clipName).filter((n) => !BASE_CLIPS.includes(n));
     expect(horseClips.sort()).toEqual([...Array(4).fill('Gallop'), ...Array(4).fill('Idle'), ...Array(4).fill('Walk')]);
-    expect(played.map(clipName).filter((n) => BASE_CLIPS.includes(n))).toEqual(['Idle_Loop']);
+    expect(played.map(clipName).filter((n) => BASE_CLIPS.includes(n))).toEqual([]);
 
     const weights = (name: string) => played.filter((a) => clipName(a) === name).map((a) => a.getEffectiveWeight());
     part.rig!.setMotion({ speed: 0, yawRate: 0, boost: false });
@@ -533,17 +545,21 @@ describe('the drivable team', () => {
     expect(ahead).toBeGreaterThan(0);
     expect(strideStep(-4)).toBeCloseTo(-ahead, 9);
   });
-  it('leaves Krishna’s own body on the reins once the models load', () => {
+  it('keeps both riders’ own bodies once the models load: no mannequin, nothing hidden', () => {
     const part = createChariot(context(), { drivable: true });
     part.upgrade!(fakeModels());
     part.update(0.05, 0);
-    const body: boolean[] = [];
-    named(part, 'krishna').traverse((n) => { if (n.userData.body) body.push(n.visible); });
-    expect(body.length).toBeGreaterThan(0);
-    expect(body.every(Boolean)).toBe(true);
-    const arjuna: boolean[] = [];
-    named(part, 'arjuna').traverse((n) => { if (n.userData.body) arjuna.push(n.visible); });
-    expect(arjuna.some(Boolean)).toBe(false);
+    for (const name of ['krishna', 'arjuna']) {
+      const rider = named(part, name);
+      expect(rider.getObjectsByProperty('isSkinnedMesh', true), name).toHaveLength(0);
+      const meshes = rider.getObjectsByProperty('isMesh', true);
+      expect(meshes.length, name).toBeGreaterThan(5);
+      for (const m of meshes) {
+        let shown = true;
+        for (let o: THREE.Object3D | null = m; o && o !== part.object; o = o.parent) shown &&= o.visible;
+        expect(shown, `${name}: ${m.name || m.type}`).toBe(true);
+      }
+    }
   });
 });
 
@@ -597,11 +613,16 @@ describe('the ranks', () => {
 describe('the figures’ source', () => {
   const chariot = readFileSync('src/lib/bowobharata/scene/chariot.ts', 'utf8');
   const army = readFileSync('src/lib/bowobharata/scene/army.ts', 'utf8');
-  it('dresses Arjuna standing when driven, and Krishna only on the page', () => {
-    expect(chariot).toContain("drivable ? 'Idle_Loop' : 'Pistol_Aim_Neutral'");
-    const krishna = chariot.match(/^.*dressHero\(k\.group.*$/gm) ?? [];
-    expect(krishna).toHaveLength(1);
-    expect(krishna[0]).toMatch(/^\s*if \(!drivable\) /);
+  // Ruling CB-04 had the driven Arjuna wear the mannequin playing Idle_Loop; the owner's request of 2026-11-14 gives both
+  // driven riders their own bodies (riders.ts), so the mannequin dresses the page's two riders only, with their page clips.
+  it('dresses both riders with the mannequin on the page only', () => {
+    expect(chariot).not.toContain("'Idle_Loop'");
+    for (const [who, clip] of [['k', 'Spell_Simple_Idle_Loop'], ['a', 'Pistol_Aim_Neutral']]) {
+      const calls = chariot.match(new RegExp(`^.*dressHero\\(${who}\\.group.*$`, 'gm')) ?? [];
+      expect(calls, who).toHaveLength(1);
+      expect(calls[0], who).toMatch(/^\s*if \(!drivable\) /);
+      expect(calls[0], who).toContain(`'${clip}'`);
+    }
   });
   it('keeps the shared soldier kit and one roll per real soldier', () => {
     expect(army).toContain('getSoldierKit(models, ctx.uTime)');
