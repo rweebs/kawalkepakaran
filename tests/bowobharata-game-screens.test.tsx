@@ -2,13 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { routePath, type Locale } from '../src/i18n';
-import { FRAMING, PARVAS } from '../src/lib/bowobharata';
+import { FRAMING, PARVAS, parvaEvents } from '../src/lib/bowobharata';
 import { FRAMING_EN, PARVAS_EN } from '../src/lib/bowobharata-en';
+import { localizeEvent } from '../src/lib/linimasa-locale';
 import type { Perkara } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
-import type { GameEvent } from '../src/lib/bowobharata-game/mission-run';
-import { FailCard, Finale, Gate, Intro, MissionCard, Paused, Recorded, SlowPrompt, cardView, toastText } from '../src/components/bowobharata-game/screens';
+import type { HudSnapshot, ObjectiveKey } from '../src/lib/bowobharata-game/hud';
+import type { GameEvent, HintKey } from '../src/lib/bowobharata-game/mission-run';
+import { CHAPTER_TYPES, type MissionType } from '../src/lib/bowobharata-game/missions';
+import {
+  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Recorded, SlowPrompt, cardView, toastText, type HudToast,
+} from '../src/components/bowobharata-game/screens';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 const game = gameData(data);
@@ -27,6 +32,21 @@ const TITLES = game.events.flat().flatMap((c) => [c.title.id, c.title.en]);
 const blocks = (html: string, tag: string, attr: string): string[] =>
   [...html.matchAll(new RegExp(`<${tag}[^>]*${attr}[^>]*>[\\s\\S]*?</${tag}>`, 'g'))].map((m) => m[0]);
 const count = (html: string, s: string) => html.split(s).length - 1;
+/** The outer HTML of the first element whose start tag holds `marker`, up to its own closing tag. */
+function element(html: string, marker: string): string {
+  const at = html.indexOf(marker);
+  expect(at, marker).toBeGreaterThan(-1);
+  const start = html.lastIndexOf('<', at);
+  const tag = /^<([a-z][a-z0-9]*)/i.exec(html.slice(start))![1];
+  const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'g');
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let m = tags.exec(html); m; m = tags.exec(html)) {
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + m[0].length);
+  }
+  throw new Error(`${marker}: the element is not closed`);
+}
 /** Each part is present, and its first occurrence comes after the first occurrence of the part before it. */
 function expectOrder(html: string, parts: string[]) {
   let prev = -1;
@@ -371,5 +391,182 @@ describe('toastText', () => {
     }
     expect(dated).toBe(2 * game.events.flat().length);
     expect(texts.length).toBeGreaterThan(dated);
+  });
+});
+
+describe('GameHud', () => {
+  /** A HUD snapshot of the prologue, 2 of 8 recorded, with any field replaced. */
+  const snap = (o: Partial<HudSnapshot> = {}): HudSnapshot => ({
+    phase: 'active', chapter: 0, type: 'himpun', objective: 'prologue', done: 2, total: 8, lap: null, timer: null, speedKmh: 31,
+    surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.5 }, hint: null, ...o,
+  });
+  interface Opts {
+    locale?: Locale; hud?: Partial<HudSnapshot>; touch?: boolean; paused?: boolean; toasts?: HudToast[]; canFullscreen?: boolean; fullscreen?: boolean;
+  }
+  const gameHud = (o: Opts = {}) =>
+    renderToString(
+      <GameHud
+        locale={o.locale ?? 'id'} hud={snap(o.hud)} touch={o.touch ?? false} paused={o.paused ?? false} toasts={o.toasts ?? []}
+        onPause={noop} onFullscreen={noop} canFullscreen={o.canFullscreen ?? true} fullscreen={o.fullscreen}
+      />,
+    );
+  const OBJECTIVES: ObjectiveKey[] = ['roam', 'prologue', 'collect', 'tower', 'gate', 'course', 'laps', 'stop', 'none'];
+  const HINTS: HintKey[] = ['ride', 'steer', 'slow', 'rewrites', 'sight', 'stop', 'surge', 'drift'];
+
+  it('shows the objective, the frame line and the pause button, in both locales', () => {
+    for (const l of LOCALES) {
+      const c = GAME_COPY[l];
+      const html = gameHud({ locale: l });
+      expect(html).toContain(esc(c.objectives.prologue({ done: 2, total: 8 })));
+      expect(html).toContain(esc(c.hudFrame));
+      expect(html).toContain('<button');
+      expect(html).toContain(esc(c.hud.pause));
+    }
+  });
+
+  it('the objective panel holds the objective, the hint line, the timer, the frame line and both buttons', () => {
+    const c = GAME_COPY.id;
+    const html = gameHud({ hud: { hint: 'sight', timer: 75 } });
+    const panel = element(html, 'class="bg-objective"');
+    for (const part of [c.objectives.prologue({ done: 2, total: 8 }), c.hints.sight.keys, '1:15', c.hudFrame, c.hud.pause, c.fullscreen]) {
+      expect(panel, part).toContain(esc(part));
+    }
+    expect(panel.match(/<button/g)).toHaveLength(2);
+    expect(count(html, '<button')).toBe(2);
+  });
+
+  it('the hint line is a .bg-hint inside .bg-objective, worded for the keys or for touch, and absent without a hint', () => {
+    for (const l of LOCALES) {
+      const c = GAME_COPY[l];
+      for (const key of HINTS) {
+        for (const touch of [false, true]) {
+          const html = gameHud({ locale: l, hud: { hint: key }, touch });
+          const hint = element(element(html, 'class="bg-objective"'), 'class="bg-hint"');
+          expect(hint).toMatch(/^<p class="bg-hint">/);
+          expect(hint, `${l} ${key} ${touch}`).toContain(esc(touch ? c.hints[key].touch : c.hints[key].keys));
+          expect(count(html, 'class="bg-hint"')).toBe(1);
+        }
+      }
+    }
+    expect(gameHud()).not.toContain('bg-hint');
+  });
+
+  it('the toasts sit in a polite status region, in order', () => {
+    const empty = gameHud();
+    expect(empty).toContain('<div class="bg-toasts" role="status" aria-live="polite"></div>');
+    const toasts = [{ id: 7, text: GAME_COPY.id.toasts.checkpoint }, { id: 8, text: GAME_COPY.id.toasts.recordedPrologue({ n: 3, total: 8 }) }];
+    const region = element(gameHud({ toasts }), 'class="bg-toasts"');
+    expect(region).toMatch(/^<div class="bg-toasts" role="status" aria-live="polite">/);
+    expectOrder(region, toasts.map((t) => esc(t.text)));
+  });
+
+  it('the timer reads m:ss, and shows nothing when the lakon has none', () => {
+    const none = gameHud({ hud: { timer: null } });
+    expect(none).not.toContain('bg-timer');
+    expect(none).not.toMatch(/\d:\d\d/);
+    expect(element(gameHud({ hud: { timer: 25 } }), 'class="bg-timer"')).toContain('>0:25<');
+    expect(gameHud({ hud: { timer: 125 } })).toContain('>2:05<');
+    expect(gameHud({ hud: { timer: 600 } })).toContain('>10:00<');
+    expect(gameHud({ hud: { timer: 0 } })).toContain('>0:00<');
+  });
+
+  it('the root is .bg-hud, with data-touch only on touch', () => {
+    expect(gameHud()).toMatch(/^<div class="bg-hud">/);
+    expect(gameHud({ touch: true })).toMatch(/^<div class="bg-hud" data-touch="">/);
+    expect(gameHud()).not.toContain('data-touch');
+  });
+
+  it('the gauges show the speed, and the Laju and Mata rings unless on touch', () => {
+    for (const l of LOCALES) {
+      const c = GAME_COPY[l];
+      const desk = element(gameHud({ locale: l }), 'class="bg-gauges"');
+      const speed = element(desk, 'data-gauge="speed"');
+      expect(speed).toContain('>31<');
+      expect(speed).toContain(esc(c.ride.speedUnit));
+      expect(count(desk, 'data-ring="surge"')).toBe(1);
+      expect(count(desk, 'data-ring="sight"')).toBe(1);
+      expect(element(desk, 'data-ring="surge"')).toContain(esc(c.ride.surge));
+      expect(element(desk, 'data-ring="sight"')).toContain(esc(c.ride.sight));
+      const touch = gameHud({ locale: l, touch: true });
+      expect(element(touch, 'class="bg-gauges"')).toContain('data-gauge="speed"');
+      expect(touch).not.toContain('data-ring');
+    }
+  });
+
+  it('each ring sweeps 360° times its fill, and lights when Laju is ready or Mata is on', () => {
+    const ring = (hud: Partial<HudSnapshot>, kind: 'surge' | 'sight') => element(gameHud({ hud }), `data-ring="${kind}"`);
+    expect(ring({ surge: { ready: false, frac: 0.5 } }, 'surge')).toContain('data-sweep="180"');
+    expect(ring({ surge: { ready: true, frac: 1 } }, 'surge')).toContain('data-sweep="360"');
+    expect(ring({ sight: { on: false, charge: 0.25 } }, 'sight')).toContain('data-sweep="90"');
+    expect(ring({ sight: { on: false, charge: 0 } }, 'sight')).toContain('data-sweep="0"');
+    expect(ring({ surge: { ready: true, frac: 1 } }, 'surge')).toContain('data-lit');
+    expect(ring({ surge: { ready: false, frac: 0.5 } }, 'surge')).not.toContain('data-lit');
+    expect(ring({ sight: { on: true, charge: 0.6 } }, 'sight')).toContain('data-lit');
+    expect(ring({ sight: { on: false, charge: 0.6 } }, 'sight')).not.toContain('data-lit');
+    // A meter for assistive technology: its value in percent, its name from the copy.
+    const sight = ring({ sight: { on: false, charge: 0.25 } }, 'sight');
+    expect(sight).toContain('role="meter"');
+    expect(sight).toContain('aria-valuenow="25"');
+    expect(sight).toContain(`aria-label="${esc(GAME_COPY.id.ride.sight)}"`);
+  });
+
+  it('the pause button is pressed while paused; the full-screen button only where the browser allows it', () => {
+    const c = GAME_COPY.en;
+    expect(gameHud({ locale: 'en', paused: true })).toMatch(/<button[^>]*aria-pressed="true"[^>]*>Pause<\/button>/);
+    expect(gameHud({ locale: 'en' })).toMatch(/<button[^>]*aria-pressed="false"[^>]*>Pause<\/button>/);
+    expect(gameHud({ locale: 'en', canFullscreen: false })).not.toContain(esc(c.fullscreen));
+    expect(count(gameHud({ locale: 'en', canFullscreen: false }), '<button')).toBe(1);
+    expect(gameHud({ locale: 'en', fullscreen: true })).toMatch(/<button[^>]*aria-pressed="true"[^>]*>Full screen<\/button>/);
+  });
+
+  it('each objective has its line; the ones without copy yet show none, and the frame line stays', () => {
+    for (const l of LOCALES) {
+      const o = GAME_COPY[l].objectives;
+      const line: Partial<Record<ObjectiveKey, string>> = {
+        roam: o.roam, prologue: o.prologue({ done: 2, total: 8 }), collect: o.collect({ done: 2, total: 8 }), tower: o.tower, stop: o.stop,
+      };
+      for (const key of OBJECTIVES) {
+        const html = gameHud({ locale: l, hud: { objective: key } });
+        expect(html, key).toContain(esc(GAME_COPY[l].hudFrame));
+        const want = line[key];
+        if (want) expect(element(html, 'class="bg-objective"'), key).toContain(esc(want));
+        else expect(html, key).not.toContain('bg-objective__line');
+      }
+    }
+  });
+
+  it('for every chapter and type, in both locales, it holds no terlapor name and no event title', () => {
+    /** Every parva event title, from parvaEvents, in Indonesian and English. */
+    const titles = PARVAS.flatMap((p) => parvaEvents(p)).flatMap((e) => [e.title, localizeEvent(e, 'en').title]);
+    expect(titles).toHaveLength(2 * game.events.flat().length);
+    const types: MissionType[] = ['himpun', 'antar', 'lintasan', 'uji'];
+    const quiet: GameEvent[] = [{ type: 'filed' }, { type: 'rewriteTaken' }, { type: 'held' }, { type: 'checkpoint' }, { type: 'wall' }];
+    let rendered = 0;
+    for (const l of LOCALES) {
+      for (let chapter = 0; chapter < CHAPTER_TYPES.length; chapter++) {
+        const cards = game.events[chapter];
+        const total = chapter === 0 ? game.prologue.length : cards.length;
+        const cardOf = (card: number) => (cards[card] ? { date: cards[card].dateLabel[l], channel: cards[card].channel[l] } : null);
+        const records: GameEvent[] = Array.from({ length: total }, (_, k) => ({ type: 'recorded', id: `r${k}`, card: k, n: k + 1, total }));
+        const toasts = [...records, ...quiet].flatMap((e, id) => {
+          const text = toastText(e, l, chapter, cardOf);
+          return text === null ? [] : [{ id, text }];
+        });
+        for (const type of new Set<MissionType>([CHAPTER_TYPES[chapter], ...types])) {
+          for (const [k, objective] of OBJECTIVES.entries()) {
+            for (const touch of [false, true]) {
+              const html = gameHud({
+                locale: l, touch, toasts,
+                hud: { chapter, type, objective, done: Math.min(2, total), total, timer: 90 + k, hint: HINTS[k % HINTS.length] },
+              });
+              for (const n of NAMES) expect(html, `${n}: ${l} chapter ${chapter} ${type}`).not.toContain(esc(n));
+              for (const t of titles) expect(html, `${t}: ${l} chapter ${chapter} ${type}`).not.toContain(esc(t));
+              rendered++;
+            }
+          }
+        }
+      }
+    }
+    expect(rendered).toBe(2 * 9 * 4 * OBJECTIVES.length * 2);
   });
 });

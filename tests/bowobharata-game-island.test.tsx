@@ -8,7 +8,7 @@ import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
 import { CHAPTER_TYPES } from '../src/lib/bowobharata-game/missions';
 import {
-  Gate, Intro, SanjayaReport, CatchCard, Finale, Hud, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, cardView,
+  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, cardView,
 } from '../src/components/bowobharata-game/screens';
 import BowobharataGame from '../src/components/BowobharataGame';
 
@@ -251,7 +251,7 @@ describe('catch cards and the fallback play', () => {
   });
 });
 
-describe('finale, pause and HUD', () => {
+describe('finale and pause', () => {
   it('shows reportsBy and reportsAgainst and links to /pantau', () => {
     const html = renderToString(<Finale locale="id" totals={totals} onAgain={noop} />);
     expect(html).toContain(`${totals.reportsBy} laporan dibuat Rahmat Wibowo, ${totals.reportsAgainst} laporan terhadapnya`);
@@ -279,16 +279,20 @@ describe('finale, pause and HUD', () => {
     expect(paused('en')).toContain(esc(FRAMING_EN[0]));
     expect(paused('en')).toContain('href="/en/right-of-reply"');
   });
-
-  it('the HUD names its counts and has a pause button', () => {
-    const html = renderToString(<Hud locale="en" caught={2} missed={1} decoys={0} sight paused={false} onPause={noop} />);
-    for (const k of ['caught', 'missed', 'decoys', 'pause'] as const) expect(html).toContain(esc(GAME_COPY.en.hud[k]));
-    expect(html).toContain('<button');
-  });
 });
 
 describe('island wiring (source)', () => {
   const src = readFileSync('src/components/BowobharataGame.tsx', 'utf8');
+  /** The argument text of every call to `name`, read up to its matching parenthesis. */
+  const callArgs = (name: string): string[] =>
+    [...src.matchAll(new RegExp(`\\b${name}\\(`, 'g'))].map((m) => {
+      let depth = 1;
+      let i = m.index! + m[0].length;
+      const from = i;
+      for (; i < src.length && depth > 0; i++) depth += src[i] === '(' ? 1 : src[i] === ')' ? -1 : 0;
+      return src.slice(from, i - 1);
+    });
+
   it('loads the scene dynamically as the game, and falls back on failure', () => {
     expect(src).toContain("import('../lib/bowobharata/KurukshetraScene')");
     expect(src).toMatch(/game: true/);
@@ -296,20 +300,133 @@ describe('island wiring (source)', () => {
     expect(src).toContain('prefers-reduced-motion: reduce');
     expect(src).toMatch(/fallback/);
   });
-  it('uses the parva pose, the 28px pick radius and a 350ms long-press', () => {
-    expect(src).toContain('PARVA_POSES[Math.min(');
-    expect(src).toContain('PICK_RADIUS = 28');
-    expect(src).toMatch(/pickNearest\([\s\S]*?PICK_RADIUS\)/);
-    expect(src).toContain('350');
-    expect(src).toContain('Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS');
-    expect(src).toContain('MAX_PROLOGUE_ARROWS = 12');
+
+  it('loads the runtime with the scene and wires the keyboard, the device, the cinema and the slow-device offer', () => {
+    for (const s of [
+      "import('../lib/bowobharata-game/world/runtime')", 'createRuntime(', '(pointer: coarse)', 'e.code', "'blur'",
+      'document.fullscreenEnabled', "'introStart'", "'introEnd'", 'data-cine', 'data-play', 'onSlow', 'SlowPrompt', 'useFallback',
+    ]) {
+      expect(src, s).toContain(s);
+    }
+    // Both modules load together, and the runtime is built on the scene just made.
+    expect(src).toMatch(/Promise\.all\(\[\s*import\('\.\.\/lib\/bowobharata\/KurukshetraScene'\),\s*import\('\.\.\/lib\/bowobharata-game\/world\/runtime'\),\s*\]\)/);
+    expect(src).toContain('createRuntime(scene, {');
   });
-  it('restarts play once a new scene arrives, and never syncs a disposed layer', () => {
-    expect(src).toMatch(/\[playing3d, ready,/);
-    expect(src).toContain('setReady(0)');
-    expect(src).toContain('layerRef.current === layer');
-    expect(src).toContain('e.button === 0');
+
+  it('a runtime error falls back to the version without animation: onError dispatches contextLost', () => {
+    expect(src).toMatch(/onError: \(\) => dispatch\(\{ type: 'contextLost' \}\)/);
   });
+
+  it('never stores the settings: no writeSaved( call passes them', () => {
+    const calls = callArgs('writeSaved');
+    expect(calls).toHaveLength(2);
+    for (const args of calls) expect(args).not.toMatch(/settings/i);
+  });
+
+  it('the tap game is gone: no pick, wave, catch, pose or linimasa import', () => {
+    for (const s of ['pickNearest', 'PARVA_POSES', 'buildWave(', 'catchArrow(', 'catchItems(', 'linimasa-locale', 'parvaEvents(']) {
+      expect(src, s).not.toContain(s);
+    }
+  });
+
+  it('drives the runtime by screen: orbit on the intro, start (or retry after a fail) on play, the finale on the finale', () => {
+    expect(src).toContain("if (flow.screen === 'intro') rt.orbit();");
+    expect(src).toContain("else if (flow.screen === 'finale') rt.finale();");
+    // A retry only on the runtime that failed: a new one has no checkpoint, so it starts the chapter afresh.
+    expect(src).toContain("const fromLost = last.rt === rt && last.screen === 'lost';");
+    expect(src).toMatch(/if \(fromLost\) rt\.retry\(\);\s*else rt\.start\(flow\.chapter, \(data\.events\[flow\.chapter\] \?\? \[\]\)\.map\(\(e\) => e\.slug\), seed\);/);
+    // Each command once per screen and runtime: a new runtime (ready) or the data arriving does not start a chapter twice.
+    expect(src).toMatch(/\}, \[flow\.screen, flow\.chapter, flow\.mode, ready, data\]\);/);
+    expect(src).toContain('last.rt === rt && last.screen === flow.screen && last.chapter === flow.chapter');
+  });
+
+  it('stills the scene on Tercatat, Sanjaya and the fail card, and while paused', () => {
+    expect(src).toContain("const STILL_SCREENS: readonly Screen[] = ['recorded', 'sanjaya', 'lost'];");
+    expect(src).toContain('sceneRef.current?.setPaused(flow.paused || STILL_SCREENS.includes(flow.screen));');
+  });
+
+  it('ends the play from the events: done wins with its score, a fail loses after the fail shot', () => {
+    expect(src).toMatch(/case 'done':\s*dispatch\(\{ type: 'playResult', result: 'won', score: e\.score \}\);/);
+    expect(src).toMatch(/case 'failed':[\s\S]{0,200}?setFailReason\(e\.reason\);[\s\S]{0,200}?result: 'lost'[\s\S]{0,80}?MISSION_TIMING\.failSeconds \* 1000\)/);
+    // A fail card cut short by the version without animation, or a new play, cancels the pending loss.
+    expect(src).toMatch(/for \(const t of timers\.current\) window\.clearTimeout\(t\);/);
+  });
+
+  it('shows the lakon card and the cinema on introStart and on a chapter that starts in its intro; introEnd hides both; outroStart brings the bars back', () => {
+    expect(src).toMatch(/case 'introStart':\s*showMission\(\);/);
+    expect(src).toMatch(/case 'introEnd':\s*hideMission\(\);/);
+    expect(src).toMatch(/case 'outroStart':\s*setCine\(true\);/);
+    // The prologue begins in its intro, so no introStart comes for it: its first HUD snapshot opens the card instead.
+    expect(src).toMatch(/if \(first\.current\) \{\s*first\.current = false;\s*if \(h\.phase === 'intro'\) showMission\(\);/);
+    expect(src).toMatch(/<MissionCard locale=\{locale\} chapterIndex=\{flow\.chapter\} type=\{hud\.type\} \/>/);
+    // The gunungan wipe: in at the intro's start, out shortly after.
+    expect(src).toContain('<div className="bg-wipe" aria-hidden="true" />');
+    expect(src).toMatch(/setWipe\('in'\);\s*later\(\(\) => setWipe\('out'\), WIPE_HOLD_MS\);/);
+    expect(src).toMatch(/data-cine=\{playing3d && cine \? 'on' : undefined\}/);
+    expect(src).toMatch(/data-play=\{playing3d \? 'on' : undefined\}/);
+  });
+
+  it('turns the six toast events into at most two toasts of 4 s each, through toastText', () => {
+    expect(src).toContain("new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall'])");
+    expect(src).toContain('const TOAST_MAX = 2;');
+    expect(src).toContain('const TOAST_MS = 4000;');
+    expect(src).toMatch(/toastText\(e, locale, flowRef\.current\.chapter, cardOf\)/);
+    expect(src).toContain('.slice(-TOAST_MAX)');
+    // The HUD redraws only when the snapshot changes.
+    expect(src).toContain('prev && sameHud(prev, h) ? prev : h');
+  });
+
+  it('skips the lakon intro for one frame: Enter or E, or a pointerdown on the stage while the card is up, from 0.8 s', () => {
+    expect(src).toContain('MISSION_TIMING.introSkipAfter');
+    expect(src).toMatch(/onPointerDown=\{onStagePointerDown\}/);
+    // readInput hands the skip over once, then clears it.
+    expect(src).toMatch(/const skip = skipPulse\.current;\s*skipPulse\.current = false;/);
+  });
+
+  it('reads the keyboard on window by e.code, leaves text fields alone, clears held keys on blur and when hidden, and claims the game keys while playing', () => {
+    expect(src).toContain("window.addEventListener('keydown', onKeyDown);");
+    expect(src).toContain("window.addEventListener('keyup', onKeyUp);");
+    expect(src).toContain("window.addEventListener('blur', release);");
+    expect(src).toContain("document.addEventListener('visibilitychange', onVisibility);");
+    for (const s of ["'INPUT'", "'TEXTAREA'", 'isContentEditable', 'keyAction(e.code)', 'e.preventDefault()', 'keys.current.clear()']) expect(src, s).toContain(s);
+    // Every listener comes off again.
+    for (const s of [
+      "window.removeEventListener('keydown', onKeyDown);", "window.removeEventListener('keyup', onKeyUp);",
+      "window.removeEventListener('blur', release);", "document.removeEventListener('visibilitychange', onVisibility);",
+    ]) {
+      expect(src, s).toContain(s);
+    }
+  });
+
+  it('feeds the session settings to the input: steering assist and easy control', () => {
+    expect(src).toContain('const [settings, setSettings] = useState<Settings>({ assist: false, easy: false });');
+    expect(src).toMatch(/keyboardInput\(keys\.current, steer\.current, dt, \{ on: s\.easy, speed: /);
+    expect(src).toMatch(/assist: s\.assist/);
+  });
+
+  it('takes the device from the media queries and the aspect from the canvas each frame', () => {
+    expect(src).toContain("window.matchMedia('(max-width: 700px), (pointer: coarse)').matches");
+    expect(src).toMatch(/aspect: \(\) => \{\s*const r = canvas\.getBoundingClientRect\(\);/);
+  });
+
+  it('full screen: on the stage, only where the browser allows it', () => {
+    expect(src).toContain('stage.requestFullscreen()');
+    expect(src).toMatch(/canFullscreen: document\.fullscreenEnabled === true/);
+    expect(src).toContain("document.addEventListener('fullscreenchange', onFullscreenChange);");
+  });
+
+  it('renders on the server at the gate in 3D: no stage, HUD or toast region before play, and no name', () => {
+    const html = renderToString(<BowobharataGame locale="en" />);
+    expect(html).toContain(esc(FRAMING_EN[0]));
+    for (const s of ['bg-stage', 'bg-hud', 'bg-toasts', 'bg-mission', 'data-cine', 'data-entry']) expect(html, s).not.toContain(s);
+    for (const t of nonE) expect(html).not.toContain(esc(t.nama));
+  });
+
+  it('disposes the runtime before the scene, and shows the HUD only during play in 3D', () => {
+    expect(src).toMatch(/runtime\?\.dispose\(\);\s*scene\?\.dispose\(\);/);
+    expect(src).toMatch(/\{playing3d && hud && \(\s*<GameHud\b/);
+  });
+
   it('pauses when the tab is hidden', () => {
     expect(src).toContain('visibilitychange');
   });
@@ -321,8 +438,8 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/flow\.screen === 'lost' && \(\s*<FailCard\b[^>]*?\sfails=\{flow\.fails\}[^>]*?\sassist=\{settings\.assist\}/);
     expect(src).toMatch(/<FallbackPlay\b[^>]*?\scards=\{cards\}[^>]*?\sprologue=\{data\.prologue\}/);
   });
-  it('the skip marks the record as filled in before it dispatches, and every play makes the record whole again', () => {
-    expect(src).toMatch(/onSkip=\{\(\) => \{ setWhole\(false\); dispatch\(\{ type: 'skip' \}\); \}\}/);
+  it('the skip marks the record as filled in and records the rest in the runtime before it dispatches, and every play makes the record whole again', () => {
+    expect(src).toMatch(/onSkip=\{\(\) => \{ setWhole\(false\); runtimeRef\.current\?\.skip\(\); dispatch\(\{ type: 'skip' \}\); \}\}/);
     expect(src).toMatch(/useEffect\(\(\) => \{ if \(flow\.screen === 'play'\) setWhole\(true\); \}, \[flow\.screen\]\);/);
   });
   it('shows no event card during play: CatchCard renders only inside Recorded and FallbackPlay', () => {

@@ -1,7 +1,7 @@
 // The game's screens, rendered from props only (no effects), so they can be checked with renderToString.
 // Every named person and every block of dossier dates sits in an element marked data-entry together with the allegation
-// line and the reply link, and every event card carries both too. Toasts (toastText) carry counts, dates and channels
-// only, never a name or an event title.
+// line and the reply link, and every event card carries both too. The driving HUD (GameHud) shows counts, timers and
+// speeds, and its toasts (toastText) counts, dates and channels only, never a name or an event title.
 // The only casting of a real person, Abil Sudarman as Sengkuni, is the page's own labelled poster on the gate.
 import type { MouseEvent } from 'react';
 import { routePath, type Locale } from '../../i18n';
@@ -10,6 +10,7 @@ import { BOWO_UI, FRAMING_EN, PARVAS_EN, POSTERS_EN } from '../../lib/bowobharat
 import { GAME_COPY } from '../../lib/bowobharata-game/copy';
 import type { ChapterView, EntryView, EventCard, PrologueRecord } from '../../lib/bowobharata-game/data';
 import { SKIP_AFTER_FAILS, type Settings } from '../../lib/bowobharata-game/flow';
+import type { HudSnapshot } from '../../lib/bowobharata-game/hud';
 import type { FailReason, GameEvent } from '../../lib/bowobharata-game/mission-run';
 import type { MissionType } from '../../lib/bowobharata-game/missions';
 import type { Totals } from '../../lib/bowobharata-game/record';
@@ -283,17 +284,103 @@ export function FallbackPlay({ locale, chapterIndex, cards, prologue, taken, onT
   );
 }
 
-export function Hud({ locale, caught, missed, decoys, sight, paused, onPause }: { locale: Locale; caught: number; missed: number; decoys: number; sight: boolean; paused: boolean; onPause: () => void }) {
-  const h = GAME_COPY[locale].hud;
+/** A toast on the HUD: its line, from toastText, and a key that stays with it while it shows. */
+export interface HudToast { id: number; text: string }
+
+/** The objective line of a snapshot, counts only; null where there is none (the gate, course and lap lines come with
+ * Task 31). */
+function objectiveLine(hud: HudSnapshot, locale: Locale): string | null {
+  const o = GAME_COPY[locale].objectives;
+  switch (hud.objective) {
+    case 'roam':
+      return o.roam;
+    case 'prologue':
+      return o.prologue({ done: hud.done, total: hud.total });
+    case 'collect':
+      return o.collect({ done: hud.done, total: hud.total });
+    case 'tower':
+      return o.tower;
+    case 'stop':
+      return o.stop;
+    default:
+      return null;
+  }
+}
+
+/** Whole seconds as m:ss. */
+const clockOf = (seconds: number) => {
+  const s = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+/** The ring's drawing, in px: the SVG's size, the radius and the stroke width. */
+const RING = { size: 36, r: 15, stroke: 4 } as const;
+
+/**
+ * A ring gauge: a faint track and an arc swept clockwise from the top, 360° times the fill (data-sweep, in whole
+ * degrees). It lights in the accent while `lit`. Laju's ring fills as the surge recharges, Mata's with the sight's charge;
+ * on touch the buttons carry the same markup (Task 35).
+ */
+export function Ring({ kind, label, fill, lit }: { kind: 'surge' | 'sight'; label: string; fill: number; lit: boolean }) {
+  const f = Number.isFinite(fill) ? Math.min(1, Math.max(0, fill)) : 0;
+  const sweep = Math.round(360 * f);
+  const mid = RING.size / 2;
+  const around = 2 * Math.PI * RING.r;
   return (
-    <div className="bg-hud">
-      <dl>
-        <div><dt>{h.caught}</dt><dd>{caught}</dd></div>
-        <div><dt>{h.missed}</dt><dd>{missed}</dd></div>
-        <div><dt>{h.decoys}</dt><dd>{decoys}</dd></div>
-      </dl>
-      {sight && <span className="bg-hud__sight">{h.sight}</span>}
-      <button type="button" className="btn bg-hud__pause" aria-pressed={paused} onClick={onPause}>{h.pause}</button>
+    <div
+      className="bg-ring" data-ring={kind} data-sweep={sweep} data-lit={lit ? '' : undefined}
+      role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(f * 100)}
+    >
+      <svg width={RING.size} height={RING.size} viewBox={`0 0 ${RING.size} ${RING.size}`} aria-hidden="true">
+        <circle cx={mid} cy={mid} r={RING.r} fill="none" stroke="currentColor" strokeOpacity={0.3} strokeWidth={RING.stroke} />
+        {sweep > 0 && (
+          <circle
+            cx={mid} cy={mid} r={RING.r} fill="none" stroke="currentColor" strokeWidth={RING.stroke}
+            strokeDasharray={`${(around * sweep) / 360} ${around}`} transform={`rotate(-90 ${mid} ${mid})`}
+          />
+        )}
+      </svg>
+      <span className="bg-ring__label">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * The driving HUD at the stage's corners, from one snapshot: counts, timers and speeds only, never a name, a title or a
+ * date. Top left, the objective panel: the objective, the muted hint line, the timer, the frame line, pause and full
+ * screen. Bottom right, the speed with the Laju and Mata rings (on touch the buttons carry the rings). The toasts sit in
+ * a polite live region, bottom left (under the objective panel on touch).
+ */
+export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscreen, canFullscreen, fullscreen = false }: {
+  locale: Locale; hud: HudSnapshot; touch: boolean; paused: boolean; toasts: readonly HudToast[];
+  onPause: () => void; onFullscreen: () => void; canFullscreen: boolean; fullscreen?: boolean;
+}) {
+  const c = GAME_COPY[locale];
+  const line = objectiveLine(hud, locale);
+  return (
+    <div className="bg-hud" data-touch={touch ? '' : undefined}>
+      <div className="bg-objective">
+        {line && <p className="bg-objective__line">{line}</p>}
+        {hud.hint && <p className="bg-hint">{c.hints[hud.hint][touch ? 'touch' : 'keys']}</p>}
+        {hud.timer !== null && <p className="bg-timer"><time dateTime={`PT${Math.max(0, Math.floor(hud.timer))}S`}>{clockOf(hud.timer)}</time></p>}
+        <p className="bg-frame">{c.hudFrame}</p>
+        <div className="bg-actions">
+          <button type="button" className="btn" aria-pressed={paused} onClick={onPause}>{c.hud.pause}</button>
+          {canFullscreen && <button type="button" className="btn" aria-pressed={fullscreen} onClick={onFullscreen}>{c.fullscreen}</button>}
+        </div>
+      </div>
+      <div className="bg-gauges">
+        <p className="bg-speed" data-gauge="speed"><b>{hud.speedKmh}</b> {c.ride.speedUnit}</p>
+        {!touch && (
+          <div className="bg-rings">
+            <Ring kind="surge" label={c.ride.surge} fill={hud.surge.frac} lit={hud.surge.ready} />
+            <Ring kind="sight" label={c.ride.sight} fill={hud.sight.charge} lit={hud.sight.on} />
+          </div>
+        )}
+      </div>
+      <div className="bg-toasts" role="status" aria-live="polite">
+        {toasts.map((t) => <p key={t.id} className="bg-toast">{t.text}</p>)}
+      </div>
     </div>
   );
 }

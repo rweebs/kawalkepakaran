@@ -41,7 +41,7 @@ export interface GameCopy {
   fields: { dugaan: string; pasal: string; laporan: string; rows: string };
   /** One guide line per chapter id: 'prologue', each parva id, 'finale'. */
   krishnaLine: Record<string, string>;
-  hud: { caught: string; missed: string; decoys: string; sight: string; pause: string };
+  hud: { sight: string; pause: string };
   catchSource: string;
   fallbackNote: string;
   /** People and events, reports by direction, the excluded cases, then the label of the link to the full dossier. */
@@ -132,7 +132,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       'dharma-menemukan-jalannya': 'Akhirnya bukan kemenangan yang dirayakan. Yang tersisa adalah catatan, terbuka untuk dikoreksi.',
       finale: 'Lihat seluruh catatannya. Setiap catatan tersimpan bersama sumbernya.',
     },
-    hud: { caught: 'Tercatat', missed: 'Terlewat', decoys: 'Tulisan ulang', sight: 'Penglihatan Krishna', pause: 'Jeda' },
+    hud: { sight: 'Penglihatan Krishna', pause: 'Jeda' },
     catchSource: 'Lihat di linimasa, lengkap dengan sumbernya',
     fallbackNote: 'Versi tanpa animasi: parva, peristiwa, dan laporan Sanjaya yang sama, ditampilkan langkah demi langkah.',
     finaleTotals: (t) => [
@@ -266,7 +266,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       'dharma-menemukan-jalannya': 'The end is not a celebrated victory. What remains is the record, open to correction.',
       finale: 'Look at the whole record. Every entry is kept with its sources.',
     },
-    hud: { caught: 'Recorded', missed: 'Passed', decoys: 'Rewrites', sight: "Krishna's sight", pause: 'Pause' },
+    hud: { sight: "Krishna's sight", pause: 'Pause' },
     catchSource: 'See it on the timeline, with its sources',
     fallbackNote: 'A version without animation: the same parva, events and Sanjaya reports, shown step by step.',
     finaleTotals: (t) => [

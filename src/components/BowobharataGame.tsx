@@ -2,70 +2,219 @@
 // casts Rahmat Wibowo as Krishna and the Pandawa (the page's posters cast Rahmat Wibowo as Krishna). Each chapter's dated
 // records are written down and brought to Sanjaya's tower; no one is ever struck. After each chapter the Tercatat screen
 // shows what went on record; then Sanjaya reports, under the allegation line, who the dossier alleges acted in that
-// period. Names, event titles and dossier facts appear only on those still screens, never during play. The flow is a
-// pure reducer (lib/bowobharata-game/flow.ts) and the screens are presentational (bowobharata-game/screens.tsx); this
-// file wires them to the 3D scene and the input. Until the driving runtime takes its place, play in 3D is still the
-// earlier tap game (arrow layer, pick and rules), and the HUD count reports each record.
-import { useCallback, useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+// period. Names, event titles and dossier facts appear only on those still screens, never during play: the HUD and its
+// toasts carry counts, dates, channels and timers. The flow is a pure reducer (lib/bowobharata-game/flow.ts) and the
+// screens are presentational (bowobharata-game/screens.tsx). This file loads the scene with the runtime that drives it
+// (lib/bowobharata-game/world/runtime.ts), reads the keyboard, and turns the runtime's HUD snapshots and events into the
+// HUD, the toasts, the lakon card with its letterbox, and the end of each play.
+import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Locale } from '../i18n';
 import { PARVAS } from '../lib/bowobharata';
-import { PARVA_POSES } from '../lib/bowobharata/stage-math';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
-import type { ArrowLayer } from '../lib/bowobharata-game/arrows3d';
-import { GAME_COPY } from '../lib/bowobharata-game/copy';
 import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
-import { initFlow, readSaved, reduce, writeSaved, type Settings } from '../lib/bowobharata-game/flow';
-import type { FailReason } from '../lib/bowobharata-game/mission-run';
-import { pickNearest } from '../lib/bowobharata-game/pick';
-import { buildWave, catchArrow, startRun, step, type Run } from '../lib/bowobharata-game/rules';
-import { DataError, FailCard, FallbackPlay, Finale, Gate, type GatePosters, Hud, Intro, Paused, Recorded, SanjayaReport } from './bowobharata-game/screens';
+import { speedOf } from '../lib/bowobharata-game/drive';
+import type { FrameInput } from '../lib/bowobharata-game/engine';
+import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
+import { sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
+import { keyAction, keyboardInput } from '../lib/bowobharata-game/input';
+import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
+import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
+import type { Runtime } from '../lib/bowobharata-game/world/runtime';
+import {
+  DataError, FailCard, FallbackPlay, Finale, GameHud, Gate, type GatePosters, type HudToast, Intro, MissionCard, Paused, Recorded,
+  SanjayaReport, SlowPrompt, toastText,
+} from './bowobharata-game/screens';
 import '../styles/bowobharata-game.css';
 
 interface Props { locale: Locale; forceFallback?: boolean; data?: GameData; posters?: GatePosters }
 
 const COUNT = PARVAS.length + 2;
-const PICK_RADIUS = 28;
-const LONG_PRESS_MS = 350;
-const RETICLE_STEP = 24;
-const MIN_PROLOGUE_ARROWS = 6;
-const MAX_PROLOGUE_ARROWS = 12;
-const EMPTY_RUN = startRun({ arrows: [] });
+/** The screens on which the scene stands still; it also stands still while the game is paused. */
+const STILL_SCREENS: readonly Screen[] = ['recorded', 'sanjaya', 'lost'];
+/** The lakon events that show a toast; toastText gives each its line. */
+const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall']);
+/** Toasts on screen at once, and how long each stays (ms). */
+const TOAST_MAX = 2;
+const TOAST_MS = 4000;
+/** How long the gunungan covers the stage when a lakon's intro begins, before it opens (over 0.6 s, in the CSS), in ms. */
+const WIPE_HOLD_MS = 150;
 
 const storage = (): Storage | undefined => {
   try { return window.localStorage; } catch { return undefined; }
 };
 
-interface HudState { caught: number; missed: number; decoys: number }
-const hudOf = (r: Run): HudState => ({ caught: r.caught.length, missed: r.misses, decoys: r.decoysTaken });
+/** Whether a key went to a text field of the page, which the game leaves alone. */
+function typing(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true);
+}
 
 export default function BowobharataGame({ locale, forceFallback, data: given, posters }: Props) {
-  const copy = GAME_COPY[locale];
   const [flow, dispatch] = useReducer(reduce, undefined, () => initFlow(COUNT, { fallback: !!forceFallback }));
   const [data, setData] = useState<GameData | null>(given ?? null);
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [ready, setReady] = useState(0);
-  const [hud, setHud] = useState<HudState>({ caught: 0, missed: 0, decoys: 0 });
-  const [sight, setSightState] = useState(false);
   const [taken, setTaken] = useState(0);
-  const [reticle, setReticle] = useState<{ x: number; y: number } | null>(null);
   // The pause panel's toggles, for this session only: never written to storage.
   const [settings, setSettings] = useState<Settings>({ assist: false, easy: false });
   const [failReason, setFailReason] = useState<FailReason>('time');
   // False after the skip that follows two fails: Tercatat then says the rest was filled in.
   const [whole, setWhole] = useState(true);
+  // The play view: the latest HUD snapshot, the toasts, the lakon card, the letterbox and the gunungan wipe.
+  const [hud, setHud] = useState<HudSnapshot | null>(null);
+  const [toasts, setToasts] = useState<HudToast[]>([]);
+  const [mission, setMission] = useState(false);
+  const [cine, setCine] = useState(false);
+  const [wipe, setWipe] = useState<'in' | 'out' | null>(null);
+  // The device stayed slow at the lowest pixel ratio: the version without animation is offered.
+  const [slow, setSlow] = useState(false);
+  const [device, setDevice] = useState({ touch: false, canFullscreen: false });
+  const [fullscreen, setFullscreen] = useState(false);
 
+  const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<KurukshetraScene | null>(null);
-  const layerRef = useRef<ArrowLayer | null>(null);
-  const runRef = useRef<Run | null>(null);
-  const sightRef = useRef(false);
-  const pausedRef = useRef(false);
-  const attemptRef = useRef(0);
-  const reticleRef = useRef<{ x: number; y: number } | null>(null);
+  const runtimeRef = useRef<Runtime | null>(null);
+  // The latest flow, data and settings, for the runtime's callbacks and the key listeners.
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  // The keyboard: the codes held, the last steer, when the input was last read (ms), and a skip waiting for its frame.
+  const keys = useRef(new Set<string>());
+  const steer = useRef(0);
+  const readAt = useRef(0);
+  const skipPulse = useRef(false);
+  // The play view's clockwork: its pending timers (toasts, the wipe, a loss after the fail shot), the toast ids, whether
+  // the lakon card is up, and whether the next HUD snapshot is the chapter's first.
+  const timers = useRef(new Set<number>());
+  const toastId = useRef(0);
+  const missionUp = useRef(false);
+  const first = useRef(false);
+  // The last screen each runtime was given its command for (see the command effect), and the plays started so far.
+  const issued = useRef<{ rt: Runtime | null; screen: Screen | null; chapter: number }>({ rt: null, screen: null, chapter: -1 });
+  const plays = useRef(0);
 
-  pausedRef.current = flow.paused;
-  const setSight = useCallback((on: boolean) => { sightRef.current = on; setSightState(on); }, []);
+  const playing3d = flow.screen === 'play' && flow.mode === '3d';
+
+  /** Runs `fn` after `ms`, unless the play view is reset first. */
+  const later = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(() => {
+      timers.current.delete(id);
+      fn();
+    }, ms);
+    timers.current.add(id);
+  };
+
+  const pushToast = (text: string) => {
+    const id = ++toastId.current;
+    setToasts((list) => [...list, { id, text }].slice(-TOAST_MAX));
+    later(() => setToasts((list) => list.filter((t) => t.id !== id)), TOAST_MS);
+  };
+
+  /** The lakon card and the letterbox, opened by the gunungan: it covers the stage at once, then opens. */
+  const showMission = () => {
+    if (missionUp.current) return;
+    missionUp.current = true;
+    setMission(true);
+    setCine(true);
+    setWipe('in');
+    later(() => setWipe('out'), WIPE_HOLD_MS);
+  };
+
+  const hideMission = () => {
+    missionUp.current = false;
+    setMission(false);
+    setCine(false);
+    setWipe(null);
+  };
+
+  /** Clears the play view: its timers, the HUD, the toasts, the card, the letterbox and any skip not yet taken. */
+  const resetPlay = () => {
+    for (const t of timers.current) window.clearTimeout(t);
+    timers.current.clear();
+    missionUp.current = false;
+    first.current = false;
+    skipPulse.current = false;
+    setHud(null);
+    setToasts((list) => (list.length > 0 ? [] : list));
+    setMission(false);
+    setCine(false);
+    setWipe(null);
+  };
+
+  /** Whether a skip may be asked for: the lakon card is up and its intro has run MISSION_TIMING.introSkipAfter. */
+  const canSkip = () => {
+    const run = runtimeRef.current?.state()?.run;
+    return missionUp.current && run?.phase === 'intro' && run.phaseT >= MISSION_TIMING.introSkipAfter;
+  };
+
+  /** A record's date and channel for its toast, from the chapter's event cards. */
+  const cardOf = (card: number) => {
+    const e = dataRef.current?.events[flowRef.current.chapter]?.[card];
+    return e ? { date: e.dateLabel[locale], channel: e.channel[locale] } : null;
+  };
+
+  const onHud = (h: HudSnapshot) => {
+    if (flowRef.current.screen !== 'play') return;
+    setHud((prev) => (prev && sameHud(prev, h) ? prev : h));
+    if (first.current) {
+      first.current = false;
+      if (h.phase === 'intro') showMission(); // the prologue begins in its intro, so no introStart comes for it
+    }
+  };
+
+  const onEvents = (events: readonly GameEvent[]) => {
+    // Only a play shows its events: the fail card's skip records the rest while Tercatat is on its way.
+    if (flowRef.current.screen !== 'play') return;
+    for (const e of events) {
+      switch (e.type) {
+        case 'introStart':
+          showMission();
+          break;
+        case 'introEnd':
+          hideMission();
+          break;
+        case 'outroStart':
+          setCine(true);
+          break;
+        case 'done':
+          dispatch({ type: 'playResult', result: 'won', score: e.score });
+          break;
+        case 'failed':
+          // The fail shot plays first; the soft-fail card follows it.
+          setFailReason(e.reason);
+          later(() => dispatch({ type: 'playResult', result: 'lost', score: 0 }), MISSION_TIMING.failSeconds * 1000);
+          break;
+        default:
+          if (TOASTED.has(e.type)) {
+            const text = toastText(e, locale, flowRef.current.chapter, cardOf);
+            if (text) pushToast(text);
+          }
+      }
+    }
+  };
+
+  /** The frame's input: the held keys (the steer ramped on real time), a skip once, and the session's settings. */
+  const readInput = (): Omit<FrameInput, 'aspect'> => {
+    const now = performance.now();
+    const dt = readAt.current > 0 ? Math.min(DRIVE.maxDt, Math.max(0, (now - readAt.current) / 1000)) : 1 / 60;
+    readAt.current = now;
+    const car = runtimeRef.current?.state()?.car;
+    const s = settingsRef.current;
+    const kb = keyboardInput(keys.current, steer.current, dt, { on: s.easy, speed: car ? speedOf(car) : 0 });
+    steer.current = kb.drive.steer;
+    const skip = skipPulse.current;
+    skipPulse.current = false;
+    return { drive: kb.drive, sight: kb.sight, skip, assist: s.assist };
+  };
+
+  // The runtime holds these for its whole life; through this ref it always calls the ones of the latest render.
+  const handlers = useRef({ onHud, onEvents, readInput });
+  handlers.current = { onHud, onEvents, readInput };
 
   // Mount: fallback triggers, saved progress, the dossier data.
   useEffect(() => {
@@ -89,13 +238,61 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (flow.screen !== 'gate') writeSaved(storage(), { best: flow.best, chapter: flow.chapter });
   }, [flow.screen, flow.chapter, flow.best]);
 
+  // The device: a coarse pointer words the hints for touch and leaves the rings to the touch buttons; full screen only
+  // where the browser allows it.
   useEffect(() => {
-    const onVis = () => dispatch({ type: document.hidden ? 'hidden' : 'visible' });
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    setDevice({ touch: window.matchMedia('(pointer: coarse)').matches, canFullscreen: document.fullscreenEnabled === true });
+    const onFullscreenChange = () => setFullscreen(document.fullscreenElement !== null && document.fullscreenElement === stageRef.current);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
   }, []);
 
-  // The 3D scene lives from the first intro until the fallback takes over or the island unmounts.
+  // The keyboard, on window and by e.code. The page's text fields keep their keys, and so does any key with Ctrl, Alt or
+  // Cmd. While a 3D play runs, Esc or P pauses and resumes, and the game's keys drive (their default action is
+  // suppressed, so arrows do not scroll and Space does not press a focused button); while paused the keys are the
+  // page's again. A lost focus or a hidden tab lets go of every held key.
+  useEffect(() => {
+    const driving = () => {
+      const f = flowRef.current;
+      return f.screen === 'play' && f.mode === '3d' && !f.paused && runtimeRef.current !== null;
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const action = keyAction(e.code);
+      const f = flowRef.current;
+      if (action === null || f.screen !== 'play' || f.mode !== '3d') return;
+      if (action === 'pause') {
+        e.preventDefault();
+        if (!e.repeat) dispatch({ type: 'togglePause' });
+        return;
+      }
+      if (!driving()) return;
+      e.preventDefault();
+      keys.current.add(e.code);
+      if (action === 'skip' && !e.repeat && canSkip()) skipPulse.current = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      keys.current.delete(e.code);
+      if (!typing(e.target) && keyAction(e.code) !== null && driving()) e.preventDefault();
+    };
+    const release = () => keys.current.clear();
+    const onVisibility = () => {
+      release();
+      dispatch({ type: document.hidden ? 'hidden' : 'visible' });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', release);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', release);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  // The 3D scene and its runtime live from the first intro until the fallback takes over or the island unmounts.
   const wants3d = flow.mode === '3d' && flow.screen !== 'gate';
   useEffect(() => {
     if (!wants3d) return;
@@ -103,26 +300,39 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (!canvas) return;
     let disposed = false;
     let scene: KurukshetraScene | undefined;
-    let layer: ArrowLayer | undefined;
-    const onResize = () => {
+    let runtime: Runtime | undefined;
+    const fit = () => {
       const r = canvas.getBoundingClientRect();
       scene?.resize(Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height)));
     };
+    // The canvas also changes size in and out of full screen, which a window resize does not always report.
+    const sizes = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
     (async () => {
       try {
-        const [{ createScene }, { createArrowLayer }] = await Promise.all([
+        const [{ createScene }, { createRuntime }] = await Promise.all([
           import('../lib/bowobharata/KurukshetraScene'),
-          import('../lib/bowobharata-game/arrows3d'),
+          import('../lib/bowobharata-game/world/runtime'),
         ]);
         if (disposed) return;
-        const mobile = window.matchMedia('(max-width: 700px)').matches;
+        const mobile = window.matchMedia('(max-width: 700px), (pointer: coarse)').matches;
         scene = createScene({ canvas, reducedMotion: false, mobile, onLost: () => dispatch({ type: 'contextLost' }), game: true });
-        if (!scene.game) throw new Error('scene has no game API');
-        layer = createArrowLayer(scene.game, { sight: () => sightRef.current });
+        runtime = createRuntime(scene, {
+          mobile,
+          aspect: () => {
+            const r = canvas.getBoundingClientRect();
+            return r.width / r.height;
+          },
+          readInput: () => handlers.current.readInput(),
+          onHud: (h) => handlers.current.onHud(h),
+          onEvents: (e) => handlers.current.onEvents(e),
+          onError: () => dispatch({ type: 'contextLost' }),
+          onSlow: () => setSlow(true),
+        });
         sceneRef.current = scene;
-        layerRef.current = layer;
-        onResize();
-        window.addEventListener('resize', onResize);
+        runtimeRef.current = runtime;
+        fit();
+        if (sizes) sizes.observe(canvas);
+        else window.addEventListener('resize', fit);
         setReady((n) => n + 1);
       } catch {
         if (!disposed) dispatch({ type: 'contextLost' });
@@ -130,142 +340,89 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     })();
     return () => {
       disposed = true;
-      window.removeEventListener('resize', onResize);
-      layer?.dispose();
+      sizes?.disconnect();
+      window.removeEventListener('resize', fit);
+      runtime?.dispose();
       scene?.dispose();
       sceneRef.current = null;
-      layerRef.current = null;
+      runtimeRef.current = null;
+      issued.current = { rt: null, screen: null, chapter: -1 };
+      keys.current.clear();
+      setSlow(false);
       setReady(0);
     };
   }, [wants3d]);
 
   useEffect(() => {
-    sceneRef.current?.setPaused(flow.paused);
-  }, [flow.paused, ready]);
+    sceneRef.current?.setPaused(flow.paused || STILL_SCREENS.includes(flow.screen));
+  }, [flow.paused, flow.screen, ready]);
 
-  // One play of the current chapter in 3D: a fresh wave, the chapter's camera, and a per-frame step.
-  const playing3d = flow.screen === 'play' && flow.mode === '3d' && ready > 0 && data !== null;
+  // The runtime follows the screens: it circles the chariot behind a chapter's intro card, plays the chapter (afresh,
+  // or from its checkpoint after a fail) and circles the tower in the finale. Each command goes once per screen and
+  // runtime, so a new runtime gets the current one, and data that arrives late starts the play that waited for it.
   useEffect(() => {
-    if (!playing3d || !data) return;
-    const scene = sceneRef.current;
-    const layer = layerRef.current;
-    const game = scene?.game;
-    if (!game || !layer) return;
-    const i = flow.chapter;
-    const seed = 1009 * (i + 1) + attemptRef.current++;
-    const wave = i === 0
-      ? buildWave(0, [], seed, Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS, data.prologue.length)))
-      : buildWave(i, (data.events[i] ?? []).map((e) => e.slug), seed);
-    let run = startRun(wave);
-    runRef.current = run;
-    setHud(hudOf(run));
-    setSight(false);
-    game.setPose(PARVA_POSES[Math.min(i, PARVA_POSES.length - 1)]);
-    let finished = false;
-    const off = game.onFrame((_t, dt) => {
-      const before = runRef.current;
-      if (pausedRef.current || finished || !before) return;
-      run = step({ ...before, sight: sightRef.current }, dt);
-      runRef.current = run;
-      layer.sync(run);
-      setHud((h) => {
-        const n = hudOf(run);
-        return h.caught === n.caught && h.missed === n.missed && h.decoys === n.decoys ? h : n;
-      });
-      if (run.result !== 'playing') {
-        finished = true;
-        // Lost before this step: a rewrite too many went into the record. Lost in it: too many records went by.
-        if (run.result === 'lost') setFailReason(before.result === 'lost' ? 'muddied' : 'time');
-        dispatch({ type: 'playResult', result: run.result, score: run.score });
+    const rt = runtimeRef.current;
+    if (!rt || flow.mode !== '3d') return;
+    const last = issued.current;
+    if (last.rt === rt && last.screen === flow.screen && last.chapter === flow.chapter) return;
+    if (flow.screen === 'play' && !data) return;
+    issued.current = { rt, screen: flow.screen, chapter: flow.chapter };
+    try {
+      if (flow.screen === 'intro') rt.orbit();
+      else if (flow.screen === 'finale') rt.finale();
+      else if (flow.screen === 'play' && data) {
+        resetPlay();
+        first.current = true;
+        steer.current = 0;
+        const seed = 1009 * (flow.chapter + 1) + plays.current++;
+        const fromLost = last.rt === rt && last.screen === 'lost';
+        if (fromLost) rt.retry();
+        else rt.start(flow.chapter, (data.events[flow.chapter] ?? []).map((e) => e.slug), seed);
       }
-    });
-    return () => {
-      off();
-      runRef.current = null;
-      // The scene's own cleanup may already have disposed the layer (fallback or unmount); only clear a live one.
-      if (layerRef.current === layer) layer.sync(EMPTY_RUN);
-      setSight(false);
-    };
-  }, [playing3d, ready, flow.chapter, flow.screen, data, setSight]);
+    } catch (err) {
+      // The data and the lakon table disagree (a chapter's slugs): the version without animation still tells it.
+      console.error('BOWOBHARATA: the runtime could not take the chapter.', err);
+      dispatch({ type: 'contextLost' });
+    }
+  }, [flow.screen, flow.chapter, flow.mode, ready, data]);
+
+  // Out of play the play view is cleared, so nothing from one play (a toast, the letterbox, a pending loss) reaches the
+  // next screen; the same on unmount.
+  useEffect(() => {
+    if (!playing3d) resetPlay();
+  }, [playing3d]);
+  useEffect(() => () => {
+    for (const t of timers.current) window.clearTimeout(t);
+  }, []);
 
   // Fallback play starts from the first event each time a chapter's play begins.
   useEffect(() => { setTaken(0); }, [flow.screen, flow.chapter, flow.mode]);
   // Every play makes the record whole again; only the skip from the fail card leaves part of it filled in.
   useEffect(() => { if (flow.screen === 'play') setWhole(true); }, [flow.screen]);
 
-  const catchAt = useCallback((x: number, y: number) => {
-    const run = runRef.current;
-    const layer = layerRef.current;
-    const canvas = canvasRef.current;
-    if (!run || !layer || !canvas || pausedRef.current) return;
-    const r = canvas.getBoundingClientRect();
-    const id = pickNearest(layer.screenPoints(r.width, r.height), { x, y }, PICK_RADIUS);
-    if (id === null) return;
-    const next = catchArrow(run, id);
-    if (next === run) return;
-    // During play a record shows only in the HUD count; its title, date and channel wait for the Tercatat screen.
-    runRef.current = next;
-    setHud(hudOf(next));
-  }, []);
+  // Offered on the screens that leave the top of the stage clear: play, and a chapter's intro in its corner.
+  const slowShown = slow && flow.mode === '3d' && (flow.screen === 'play' || flow.screen === 'intro');
 
-  const moveReticle = useCallback((x: number, y: number) => {
-    reticleRef.current = { x, y };
-    setReticle({ x, y });
-  }, []);
-
-  // Keyboard: arrows move the reticle, Space catches under it, K held is Krishna's sight, Esc or P pauses.
+  // Full screen holds the stage alone, and the still screens and the slow-device offer sit outside it: it ends with the
+  // play, or when the offer comes.
   useEffect(() => {
-    if (flow.screen !== 'play' || flow.mode !== '3d') return;
-    const onDown = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      const key = e.key.toLowerCase();
-      if (key === 'escape' || key === 'p') { e.preventDefault(); dispatch({ type: 'togglePause' }); return; }
-      if (pausedRef.current) return;
-      if (key === 'k') { if (!e.repeat) setSight(true); return; }
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const r = canvas.getBoundingClientRect();
-      const cur = reticleRef.current ?? { x: r.width / 2, y: r.height / 2 };
-      const clamp = (v: number, max: number) => Math.min(Math.max(0, v), max);
-      const moves: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
-      if (moves[key]) {
-        e.preventDefault();
-        const [dx, dy] = moves[key];
-        moveReticle(clamp(cur.x + dx * RETICLE_STEP, r.width), clamp(cur.y + dy * RETICLE_STEP, r.height));
-      } else if (key === ' ' || e.code === 'Space') {
-        e.preventDefault();
-        if (!reticleRef.current) moveReticle(cur.x, cur.y);
-        catchAt(cur.x, cur.y);
-      }
-    };
-    const onUp = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'k') setSight(false); };
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
-  }, [flow.screen, flow.mode, catchAt, moveReticle, setSight]);
+    if (playing3d && !slowShown) return;
+    const stage = stageRef.current;
+    if (stage && document.fullscreenElement === stage) Promise.resolve(document.exitFullscreen()).catch(() => {});
+  }, [playing3d, slowShown]);
 
-  // Pointer: a mouse click catches at once; a touch catches on release, unless held long enough to be Krishna's sight.
-  const press = useRef<{ timer: number; long: boolean } | null>(null);
-  useEffect(() => () => { if (press.current) window.clearTimeout(press.current.timer); }, []);
-  const local = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  const toggleFullscreen = () => {
+    const stage = stageRef.current;
+    if (!stage || !document.fullscreenEnabled) return;
+    // A refusal (no user gesture, or a browser that will not) leaves the stage as it is.
+    const change = document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen();
+    Promise.resolve(change).catch(() => {});
   };
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const p = local(e);
-    if (e.pointerType === 'mouse') { if (e.button === 0) catchAt(p.x, p.y); return; }
-    const state = { timer: 0, long: false };
-    state.timer = window.setTimeout(() => { state.long = true; setSight(true); }, LONG_PRESS_MS);
-    press.current = state;
-  };
-  const endPress = (e: ReactPointerEvent<HTMLDivElement>, cancelled: boolean) => {
-    const state = press.current;
-    press.current = null;
-    if (!state) return;
-    window.clearTimeout(state.timer);
-    if (state.long) setSight(false);
-    else if (!cancelled) { const p = local(e); catchAt(p.x, p.y); }
+
+  // A press on the stage skips the lakon intro while its card is up; a press on a button or a link is not a skip.
+  const onStagePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (flowRef.current.paused || (e.target as Element).closest('button, a')) return;
+    if (canSkip()) skipPulse.current = true;
   };
 
   const next = () => dispatch({ type: 'next' });
@@ -276,32 +433,31 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   return (
     <div className="bg-game" data-mode={flow.mode} data-screen={flow.screen}>
       {show3d && (
-        <div className="bg-stage">
+        <div
+          ref={stageRef}
+          className="bg-stage"
+          data-play={playing3d ? 'on' : undefined}
+          data-cine={playing3d && cine ? 'on' : undefined}
+          data-wipe={playing3d && cine && wipe ? wipe : undefined}
+          onPointerDown={onStagePointerDown}
+        >
           <canvas ref={canvasRef} className="bg-canvas" aria-hidden="true" />
-          {flow.screen === 'play' && (
-            <div
-              className="bg-surface"
-              role="application"
-              aria-label={`${copy.title}. ${copy.controlsKeys.join(' ')}`}
-              onPointerDown={onPointerDown}
-              onPointerUp={(e) => endPress(e, false)}
-              onPointerCancel={(e) => endPress(e, true)}
-              onPointerLeave={(e) => endPress(e, true)}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              {reticle && <span className="bg-reticle" aria-hidden="true" style={{ left: reticle.x, top: reticle.y }} />}
-            </div>
+          <div className="bg-wipe" aria-hidden="true" />
+          {playing3d && hud && (
+            <GameHud
+              locale={locale}
+              hud={hud}
+              touch={device.touch}
+              paused={flow.paused}
+              toasts={toasts}
+              onPause={() => dispatch({ type: 'togglePause' })}
+              onFullscreen={toggleFullscreen}
+              canFullscreen={device.canFullscreen}
+              fullscreen={fullscreen}
+            />
           )}
-        </div>
-      )}
-
-      {loadError && !data && flow.screen !== 'gate' && flow.screen !== 'intro' && <DataError locale={locale} onRetry={() => setAttempt((n) => n + 1)} />}
-      {flow.screen === 'gate' && <Gate locale={locale} fallback={flow.mode === 'fallback'} onStart={() => dispatch({ type: 'start' })} posters={posters} />}
-      {flow.screen === 'intro' && <Intro locale={locale} chapterIndex={flow.chapter} onNext={next} layout={show3d ? 'corner' : undefined} />}
-      {flow.screen === 'play' && flow.mode === '3d' && (
-        <>
-          <Hud locale={locale} {...hud} sight={sight} paused={flow.paused} onPause={() => dispatch({ type: 'togglePause' })} />
-          {flow.paused && (
+          {playing3d && mission && hud && <MissionCard locale={locale} chapterIndex={flow.chapter} type={hud.type} />}
+          {playing3d && flow.paused && (
             <Paused
               locale={locale}
               onResume={() => dispatch({ type: 'togglePause' })}
@@ -310,8 +466,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               onUseStill={() => dispatch({ type: 'useFallback' })}
             />
           )}
-        </>
+        </div>
       )}
+
+      {slowShown && <SlowPrompt locale={locale} onUseStill={() => dispatch({ type: 'useFallback' })} onKeepPlaying={() => setSlow(false)} />}
+      {loadError && !data && flow.screen !== 'gate' && flow.screen !== 'intro' && <DataError locale={locale} onRetry={() => setAttempt((n) => n + 1)} />}
+      {flow.screen === 'gate' && <Gate locale={locale} fallback={flow.mode === 'fallback'} onStart={() => dispatch({ type: 'start' })} posters={posters} />}
+      {flow.screen === 'intro' && <Intro locale={locale} chapterIndex={flow.chapter} onNext={next} layout={show3d ? 'corner' : undefined} />}
       {flow.screen === 'play' && flow.mode === 'fallback' && data && (
         <FallbackPlay
           locale={locale}
@@ -334,7 +495,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           fails={flow.fails}
           assist={settings.assist}
           onRetry={() => dispatch({ type: 'retry' })}
-          onSkip={() => { setWhole(false); dispatch({ type: 'skip' }); }}
+          onSkip={() => { setWhole(false); runtimeRef.current?.skip(); dispatch({ type: 'skip' }); }}
         />
       )}
       {flow.screen === 'finale' && data && <Finale locale={locale} totals={data.totals} onAgain={() => { writeSaved(storage(), { best: flow.best, chapter: 0 }); dispatch({ type: 'restart' }); }} />}
