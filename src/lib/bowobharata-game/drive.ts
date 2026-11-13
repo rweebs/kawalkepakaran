@@ -24,7 +24,10 @@ export interface ChariotState {
   holdOff: number;
   /** Seconds the brake has been held at rest (or rolling back). */
   reverseHold: number;
-  /** The largest closing speed (m/s) the guard removed during the last step. */
+  /**
+   * The largest change of velocity (m/s, |Δv|) the guard made in one substep of the last step: on a single face,
+   * the closing speed it removed.
+   */
   held: number;
 }
 
