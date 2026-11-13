@@ -47,3 +47,22 @@ export const CHASE = {
   boostIn: 0.15, boostOut: 0.5, groundClear: 1.4, boomMin: 0.5, boomMargin: 0.5,
   shakeBump: 0.18, shakeDecay: 6, shakeMinImpact: 6,
 } as const;
+
+/** Riuh, the clamour (0..max). Rates are per second; delays and the grace are in world seconds. */
+export const RIUH = {
+  max: 5, grace: 45, graceCap: 2,
+  ambientDelay: 10, ambientPer: 15, ambientCap: 3,
+  watched: 0.35, watchedCap: 4,
+  rewriteTaken: 1, recorded: -0.5, recordedDelay: 10, filed: -0.5, delivered: -3,
+  decay: 0.15, quietDelay: 4, shelterDecay: 0.6,
+} as const;
+
+/** What each whole Riuh level asks of the world: the gap between volleys, clouds, and radar static. */
+export const RIUH_LEVELS = [
+  { volleyEvery: null, clouds: false, radarStatic: 0 },
+  { volleyEvery: 12,   clouds: false, radarStatic: 0 },
+  { volleyEvery: 8,    clouds: false, radarStatic: 0 },
+  { volleyEvery: 6,    clouds: true,  radarStatic: 0 },
+  { volleyEvery: 4.5,  clouds: true,  radarStatic: 0.3 },
+  { volleyEvery: 3.5,  clouds: true,  radarStatic: 0.45 },
+] as const;
