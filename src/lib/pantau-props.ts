@@ -13,7 +13,7 @@ import { localizedEvents, eventPath } from './linimasa-locale';
 import type { Locale } from '../i18n';
 import { stageItems } from './pantau-3d';
 import { WATCH_ORIGIN } from './sitemap-watch';
-import { gameData } from './bowobharata-game/data';
+import { gameData } from './bowobharata-game/data-build';
 
 export const watch = store as WatchStore;
 export const perkara = perkaraRaw as unknown as Perkara;

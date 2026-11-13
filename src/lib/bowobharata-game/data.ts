@@ -1,18 +1,26 @@
-// The dossier as the game uses it: Sanjaya's chapters and the finale totals, built from the dossier at build time and
-// served as /pantau-data/bowobharata-game.json (src/lib/pantau-props.ts), so the island fetches only this and never
-// bundles perkara.json. Category E cases are left out here (buildChapters), not hidden later.
-import { PARVAS } from '../bowobharata';
-import type { Perkara } from '../perkara';
-import { buildChapters, finaleTotals, type Chapter, type SanjayaEntry, type Totals } from './record';
+// The game's data as the island receives it from /pantau-data/bowobharata-game.json: the view types and the URL. It is
+// built at build time by data-build.ts, which only src/lib/pantau-props.ts imports, so the island bundles neither the
+// builders nor perkara.json. Type-only imports keep it that way.
+import type { Locale } from '../../i18n';
+import type { TerlaporKronologi } from '../perkara';
+import type { ChapterId, Totals } from './record';
 
-export interface GameData { chapters: Chapter[]; totals: Totals }
+/** A dossier row as the screens read it. */
+export type RowView = Pick<TerlaporKronologi, 'tanggal' | 'iso' | 'peristiwa'>;
+/** A Sanjaya entry. A name-only one (`full` false) keeps its id and name, and the rest is empty. */
+export interface EntryView {
+  id: string; nama: string; kategori: string; klaster: string | null; dugaan: string; pasal: string[]; laporan: string[];
+  rows: RowView[]; full: boolean;
+}
+export interface ChapterView { id: ChapterId; entries: EntryView[] }
+/** One linimasa event of a parva, localised at build time; `slug` is the Indonesian one, `date` its ISO day. */
+export interface EventCard {
+  slug: string; date: string; channel: Record<Locale, string>; title: Record<Locale, string>; dateLabel: Record<Locale, string>;
+  path: Record<Locale, string>;
+}
+/** A prologue date: the ISO value and the dossier's own `tanggal`. It names nobody. */
+export interface PrologueRecord { iso: string; label: string }
+/** `events[i]` holds chapter i's cards: none for the prologue (0) and the finale (last). */
+export interface GameData { chapters: ChapterView[]; totals: Totals; events: EventCard[][]; prologue: PrologueRecord[] }
 
 export const GAME_DATA_SRC = '/pantau-data/bowobharata-game.json';
-
-/** A name-only entry (a person already reported in an earlier chapter) is shown by name alone, so the rest is dropped. */
-const slim = (e: SanjayaEntry): SanjayaEntry => (e.full ? e : { ...e, kategori: '', klaster: null, dugaan: '', pasal: [], laporan: [], rows: [] });
-
-export function gameData(p: Perkara): GameData {
-  const chapters = buildChapters(PARVAS, p.terlapor).map((c) => ({ ...c, entries: c.entries.map(slim) }));
-  return { chapters, totals: finaleTotals(p) };
-}

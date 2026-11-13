@@ -5,19 +5,20 @@ import { routePath, type Locale } from '../../i18n';
 import { FRAMING, PARVAS, POSTERS, parvaEvents } from '../../lib/bowobharata';
 import { BOWO_UI, FRAMING_EN, PARVAS_EN, POSTERS_EN } from '../../lib/bowobharata-en';
 import { GAME_COPY } from '../../lib/bowobharata-game/copy';
-import type { Chapter, SanjayaEntry, Totals } from '../../lib/bowobharata-game/record';
+import type { ChapterView, EntryView, RowView } from '../../lib/bowobharata-game/data';
+import type { Totals } from '../../lib/bowobharata-game/record';
 import { eventPath, formatDateFor, localizeEvent, type LocalizedEvent } from '../../lib/linimasa-locale';
-import { kategoriLabel, type TerlaporKronologi } from '../../lib/perkara';
+import { kategoriLabel } from '../../lib/perkara';
 
 export type CatchItem =
   | { kind: 'event'; event: LocalizedEvent }
-  | { kind: 'entry'; entry: SanjayaEntry; row: TerlaporKronologi };
+  | { kind: 'entry'; entry: EntryView; row: RowView };
 
-const earliest = (rows: TerlaporKronologi[]): TerlaporKronologi =>
+const earliest = (rows: RowView[]): RowView =>
   rows.reduce((a, b) => ((b.iso ?? '') < (a.iso ?? '') ? b : a));
 
 /** What a chapter's real catches reveal, in order: the parva's events, or (prologue) each full entry's earliest dated row. */
-export function catchItems(chapterIndex: number, chapters: Chapter[], locale: Locale): CatchItem[] {
+export function catchItems(chapterIndex: number, chapters: ChapterView[], locale: Locale): CatchItem[] {
   if (chapterIndex === 0) {
     return (chapters[0]?.entries ?? []).filter((e) => e.full && e.rows.length > 0).map((entry) => ({ kind: 'entry', entry, row: earliest(entry.rows) }));
   }
@@ -121,7 +122,7 @@ export function CatchCard({ locale, item }: { locale: Locale; item: CatchItem })
   );
 }
 
-function FullEntry({ locale, e }: { locale: Locale; e: SanjayaEntry }) {
+function FullEntry({ locale, e }: { locale: Locale; e: EntryView }) {
   const f = GAME_COPY[locale].fields;
   return (
     <article className="bg-entry" data-entry={e.id}>
@@ -144,7 +145,7 @@ function FullEntry({ locale, e }: { locale: Locale; e: SanjayaEntry }) {
   );
 }
 
-export function SanjayaReport({ locale, chapterIndex, chapter, onNext }: { locale: Locale; chapterIndex: number; chapter: Chapter; onNext: () => void }) {
+export function SanjayaReport({ locale, chapterIndex, chapter, onNext }: { locale: Locale; chapterIndex: number; chapter: ChapterView; onNext: () => void }) {
   const c = GAME_COPY[locale];
   const info = chapterInfo(chapterIndex, locale);
   const full = chapter.entries.filter((e) => e.full);
