@@ -100,3 +100,8 @@ export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
     a.hint === b.hint
   );
 }
+
+/** Whether the fail shot has run its seconds on the game clock; a paused scene stops the clock, so a paused shot holds. */
+export function failShotDone(clock: number, failClock: number | null, seconds: number): boolean {
+  return failClock !== null && clock - failClock >= seconds;
+}

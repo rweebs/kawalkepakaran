@@ -29,7 +29,9 @@ function durations(v: string): number[] {
 describe('bowobharata-game.css stage and HUD', () => {
   it('fixes the stage height', () => {
     const s = ".bg-game[data-mode='3d']:not([data-screen='gate'])";
-    expect(has(s, 'height: min(100svh, 56rem)')).toBe(true);
+    // Amends spec call 22 (ruled in Task 26b): the stage is as tall as the area under the site header, capped at 56rem.
+    expect(has(s, 'height: min(calc(100svh - var(--nav-h, 59px)), 56rem)')).toBe(true);
+    expect(has('.bg-stage', 'scroll-margin-top: var(--nav-h, 59px)')).toBe(true);
     expect(has(s, 'grid-template-rows: minmax(0, 1fr)')).toBe(true);
     expect(declared(s, 'min-height')).toEqual([]);
   });
@@ -80,15 +82,38 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(has('.bg-mission', 'position: absolute')).toBe(true);
     expect(has('.bg-mission', 'left: 0.75rem')).toBe(true);
     expect(declared('.bg-wipe', 'pointer-events')).toEqual(['none']);
-    const inV = declared(".bg-stage[data-wipe='in'] .bg-wipe", 'clip-path');
-    const outV = declared(".bg-stage[data-wipe='out'] .bg-wipe", 'clip-path');
-    expect(inV).toHaveLength(1);
-    expect(outV).toHaveLength(1);
-    expect(inV[0]).not.toEqual(outV[0]);
-    const tr = declared('.bg-wipe', 'transition').filter((v) => v !== 'none');
-    expect(tr).toHaveLength(1);
-    expect(tr[0]).toMatch(/^clip-path /);
-    expect(durations(tr[0]).every((d) => d >= 0.5)).toBe(true);
+    // One animation per transition, started by one attribute change: 'a' and 'b' run the same keyframes under two names so
+    // that every transition restarts it. Cover (0.6 s), a 0.15 s hold, then open (0.6 s).
+    const closed = declared('.bg-wipe', 'clip-path').filter((v) => v !== 'none');
+    expect(closed).toEqual(['polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0)']);
+    for (const v of ['a', 'b']) {
+      const an = declared(`.bg-stage[data-wipe='${v}'] .bg-wipe`, 'animation');
+      expect(an, v).toHaveLength(1);
+      expect(durations(an[0])[0]).toBeCloseTo(1.35, 5);
+    }
+    expect(declared('.bg-wipe', 'transition').filter((v) => v !== 'none')).toEqual([]);
+    const names = ['a', 'b'].map((v) => declared(`.bg-stage[data-wipe='${v}'] .bg-wipe`, 'animation')[0].split(' ')[0]);
+    expect(names[0]).not.toEqual(names[1]);
+    for (const n of names) {
+      const kf = css.match(new RegExp(`@keyframes ${n}\\s*\\{([\\s\\S]*?\\})\\s*\\}`));
+      expect(kf, n).not.toBeNull();
+      expect(kf![1]).toContain('polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 0)');
+      expect(kf![1]).toMatch(/0%[^}]*polygon\(50% 0, 50% 0/);
+      expect(kf![1]).toMatch(/100%[^}]*polygon\(50% 0, 50% 0/);
+    }
+  });
+
+  it('hides the site theme-song control while a chapter is driven, never removing it, so the song keeps playing', () => {
+    const rule = rules.find((r) => r.selector.includes("data-play='on'") && r.selector.includes('.theme-song'));
+    expect(rule).toBeDefined();
+    expect(rule!.selector).toContain(':not([data-paused])');
+    expect(rule!.body).toContain('visibility: hidden');
+    expect(rule!.body).toContain('pointer-events: none');
+    expect(css).not.toMatch(/\.theme-song[^{]*\{[^}]*display: none/);
+  });
+
+  it('leaves the still screens room to scroll their last control clear of the fixed song pill', () => {
+    expect(declared(".bg-game[data-mode='3d'] .bg-screen", 'padding-bottom')).toEqual(['4.5rem']);
   });
 
   it('stacks the pause panel above the letterbox bars, the lakon card and the wipe, so a pause during an intro shows it whole', () => {

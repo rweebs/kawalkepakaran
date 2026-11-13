@@ -347,9 +347,13 @@ describe('island wiring (source)', () => {
 
   it('ends the play from the events: done wins with its score, a fail loses after the fail shot', () => {
     expect(src).toMatch(/case 'done':\s*dispatch\(\{ type: 'playResult', result: 'won', score: e\.score \}\);/);
-    expect(src).toMatch(/case 'failed':[\s\S]{0,200}?setFailReason\(e\.reason\);[\s\S]{0,200}?result: 'lost'[\s\S]{0,80}?MISSION_TIMING\.failSeconds \* 1000\)/);
-    // A fail card cut short by the version without animation, or a new play, cancels the pending loss.
-    expect(src).toMatch(/for \(const t of timers\.current\) window\.clearTimeout\(t\);/);
+    // The loss is timed on the game's clock (which a pause stops), not on a wall-clock timer.
+    expect(src).toMatch(/case 'failed':[\s\S]{0,200}?setFailReason\(e\.reason\);\s*failClock\.current = runtimeRef\.current\?\.state\(\)\?\.clock \?\? null;/);
+    expect(src).toMatch(/failClock\.current !== null[\s\S]{0,120}?failShotDone\(clock, failClock\.current, MISSION_TIMING\.failSeconds\)[\s\S]{0,120}?failClock\.current = null;\s*dispatch\(\{ type: 'playResult', result: 'lost', score: 0 \}\)/);
+    expect(src).not.toMatch(/result: 'lost'[^;]*failSeconds \* 1000/);
+    // A new play (start or retry) and the skip forget the remembered fail clock.
+    expect(src).toMatch(/const resetPlay = \(\) => \{[\s\S]*?failClock\.current = null;/);
+    expect(src).toMatch(/onSkip=\{\(\) => \{ failClock\.current = null;/);
   });
 
   it('shows the lakon card and the cinema on introStart and on a chapter that starts in its intro; introEnd hides both; outroStart brings the bars back', () => {
@@ -361,7 +365,10 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/<MissionCard locale=\{locale\} chapterIndex=\{flow\.chapter\} type=\{hud\.type\} \/>/);
     // The gunungan wipe: in at the intro's start, out shortly after.
     expect(src).toContain('<div className="bg-wipe" aria-hidden="true" />');
-    expect(src).toMatch(/setWipe\('in'\);\s*later\(\(\) => setWipe\('out'\), WIPE_HOLD_MS\);/);
+    // One attribute change per transition ('a' and 'b' alternate so the CSS animation restarts): no second flip.
+    expect(src).toMatch(/setWipe\(\(w\) => \(w === 'a' \? 'b' : 'a'\)\);/);
+    expect(src).not.toContain('WIPE_HOLD_MS');
+    expect(src).not.toContain("setWipe('out')");
     expect(src).toMatch(/data-cine=\{playing3d && cine \? 'on' : undefined\}/);
     expect(src).toMatch(/data-play=\{playing3d \? 'on' : undefined\}/);
   });
@@ -450,7 +457,7 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/<FallbackPlay\b[^>]*?\scards=\{cards\}[^>]*?\sprologue=\{data\.prologue\}/);
   });
   it('the skip marks the record as filled in and records the rest in the runtime before it dispatches, and every play makes the record whole again', () => {
-    expect(src).toMatch(/onSkip=\{\(\) => \{ setWhole\(false\); runtimeRef\.current\?\.skip\(\); dispatch\(\{ type: 'skip' \}\); \}\}/);
+    expect(src).toMatch(/onSkip=\{\(\) => \{ failClock\.current = null; setWhole\(false\); runtimeRef\.current\?\.skip\(\); dispatch\(\{ type: 'skip' \}\); \}\}/);
     expect(src).toMatch(/useEffect\(\(\) => \{ if \(flow\.screen === 'play'\) setWhole\(true\); \}, \[flow\.screen\]\);/);
   });
   it('shows no event card during play: CatchCard renders only inside Recorded and FallbackPlay', () => {
@@ -493,6 +500,22 @@ describe('island wiring (source)', () => {
     const others = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
       d.isDirectory() ? others(`${dir}/${d.name}`) : [`${dir}/${d.name}`]);
     for (const f of others('src')) if (f !== 'src/components/BowobharataGame.tsx') expect(readFileSync(f, 'utf8'), f).not.toContain('__bowo');
+  });
+
+  it('clears the site header: measures .nav into --nav-h on the game root, scrolls the stage under it once per chapter, and marks a pause', () => {
+    expect(src).toContain("document.querySelector('.nav')");
+    expect(src).toContain("style.setProperty('--nav-h'");
+    expect(src).toMatch(/addEventListener\('resize', measure\)/);
+    expect(src).toMatch(/scrollIntoView\(\{ block: 'start', behavior: reduced \? 'auto' : 'smooth' \}\)/);
+    expect(src).toMatch(/scrolledFor\.current === flow\.chapter/);
+    expect(src).toMatch(/data-paused=\{flow\.paused \? 'on' : undefined\}/);
+  });
+
+  it('times the fail shot on the game clock (a unit-level check of the rule)', async () => {
+    const { failShotDone } = await import('../src/lib/bowobharata-game/hud');
+    expect(failShotDone(10, null, 1.2)).toBe(false);
+    expect(failShotDone(10.5, 10, 1.2)).toBe(false);
+    expect(failShotDone(11.5, 10, 1.2)).toBe(true);
   });
 });
 

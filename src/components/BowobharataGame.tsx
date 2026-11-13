@@ -15,7 +15,7 @@ import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
 import { speedOf } from '../lib/bowobharata-game/drive';
 import type { FrameInput, GameState } from '../lib/bowobharata-game/engine';
 import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
-import { sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
+import { failShotDone, sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
 import { keyAction, keyboardInput } from '../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
 import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
@@ -36,8 +36,6 @@ const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['rec
 /** Toasts on screen at once, and how long each stays (ms). */
 const TOAST_MAX = 2;
 const TOAST_MS = 4000;
-/** How long the gunungan covers the stage when a lakon's intro begins, before it opens (over 0.6 s, in the CSS), in ms. */
-const WIPE_HOLD_MS = 150;
 
 const storage = (): Storage | undefined => {
   try { return window.localStorage; } catch { return undefined; }
@@ -73,12 +71,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const [toasts, setToasts] = useState<HudToast[]>([]);
   const [mission, setMission] = useState(false);
   const [cine, setCine] = useState(false);
-  const [wipe, setWipe] = useState<'in' | 'out' | null>(null);
+  const [wipe, setWipe] = useState<'a' | 'b' | null>(null);
   // The device stayed slow at the lowest pixel ratio: the version without animation is offered.
   const [slow, setSlow] = useState(false);
   const [device, setDevice] = useState({ touch: false, canFullscreen: false });
   const [fullscreen, setFullscreen] = useState(false);
 
+  const gameRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<KurukshetraScene | null>(null);
@@ -95,12 +94,15 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const steer = useRef(0);
   const readAt = useRef(0);
   const skipPulse = useRef(false);
-  // The play view's clockwork: its pending timers (toasts, the wipe, a loss after the fail shot), the toast ids, whether
+  // The play view's clockwork: its pending timers (toasts), the toast ids, whether
   // the lakon card is up, and whether the next HUD snapshot is the chapter's first.
   const timers = useRef(new Set<number>());
   const toastId = useRef(0);
   const missionUp = useRef(false);
   const first = useRef(false);
+  // The game clock at the failed event, until the fail shot has run; and the chapter the stage was last scrolled for.
+  const failClock = useRef<number | null>(null);
+  const scrolledFor = useRef(-1);
   // The last screen each runtime was given its command for (see the command effect), and the plays started so far.
   const issued = useRef<{ rt: Runtime | null; screen: Screen | null; chapter: number }>({ rt: null, screen: null, chapter: -1 });
   const plays = useRef(0);
@@ -122,14 +124,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     later(() => setToasts((list) => list.filter((t) => t.id !== id)), TOAST_MS);
   };
 
-  /** The lakon card and the letterbox, opened by the gunungan: it covers the stage at once, then opens. */
+  /** The lakon card and the letterbox, opened by the gunungan: one CSS animation covers the stage, then opens it. */
   const showMission = () => {
     if (missionUp.current) return;
     missionUp.current = true;
     setMission(true);
     setCine(true);
-    setWipe('in');
-    later(() => setWipe('out'), WIPE_HOLD_MS);
+    setWipe((w) => (w === 'a' ? 'b' : 'a')); // alternating names restart the animation on every transition
   };
 
   const hideMission = () => {
@@ -145,6 +146,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     timers.current.clear();
     missionUp.current = false;
     first.current = false;
+    failClock.current = null;
     skipPulse.current = false;
     setHud(null);
     setToasts((list) => (list.length > 0 ? [] : list));
@@ -168,6 +170,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const onHud = (h: HudSnapshot) => {
     if (flowRef.current.screen !== 'play') return;
     setHud((prev) => (prev && sameHud(prev, h) ? prev : h));
+    // The fail shot is timed on the game clock, which the scene's pause stops.
+    const clock = runtimeRef.current?.state()?.clock;
+    if (failClock.current !== null && clock !== undefined && failShotDone(clock, failClock.current, MISSION_TIMING.failSeconds)) {
+      failClock.current = null;
+      dispatch({ type: 'playResult', result: 'lost', score: 0 });
+      return;
+    }
     if (first.current) {
       first.current = false;
       if (h.phase === 'intro') showMission(); // the prologue begins in its intro, so no introStart comes for it
@@ -194,7 +203,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
         case 'failed':
           // The fail shot plays first; the soft-fail card follows it.
           setFailReason(e.reason);
-          later(() => dispatch({ type: 'playResult', result: 'lost', score: 0 }), MISSION_TIMING.failSeconds * 1000);
+          failClock.current = runtimeRef.current?.state()?.clock ?? null;
           break;
         default:
           if (TOASTED.has(e.type)) {
@@ -423,6 +432,31 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     for (const t of timers.current) window.clearTimeout(t);
   }, []);
 
+  // The site header's height, measured on mount and on resize, for the stage's height and scroll margin (the CSS falls
+  // back to 59 px).
+  useEffect(() => {
+    const measure = () => {
+      const nav = document.querySelector('.nav');
+      const h = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+      if (h > 0) gameRef.current?.style.setProperty('--nav-h', `${h}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  // When a chapter's play starts, the stage scrolls to sit just under the sticky header; not again within the chapter.
+  useEffect(() => {
+    if (!playing3d) return;
+    if (scrolledFor.current === flow.chapter) return;
+    scrolledFor.current = flow.chapter;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    stageRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+  }, [playing3d, flow.chapter]);
+  useEffect(() => {
+    if (flow.screen === 'gate' || flow.screen === 'intro') scrolledFor.current = -1;
+  }, [flow.screen]);
+
   // Fallback play starts from the first event each time a chapter's play begins.
   useEffect(() => { setTaken(0); }, [flow.screen, flow.chapter, flow.mode]);
   // Every play makes the record whole again; only the skip from the fail card leaves part of it filled in.
@@ -459,12 +493,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const show3d = flow.mode === '3d' && flow.screen !== 'gate';
 
   return (
-    <div className="bg-game" data-mode={flow.mode} data-screen={flow.screen}>
+    <div ref={gameRef} className="bg-game" data-mode={flow.mode} data-screen={flow.screen}>
       {show3d && (
         <div
           ref={stageRef}
           className="bg-stage"
           data-play={playing3d ? 'on' : undefined}
+          data-paused={flow.paused ? 'on' : undefined}
           data-cine={playing3d && cine ? 'on' : undefined}
           data-wipe={playing3d && cine && wipe ? wipe : undefined}
           onPointerDown={onStagePointerDown}
@@ -523,7 +558,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           fails={flow.fails}
           assist={settings.assist}
           onRetry={() => dispatch({ type: 'retry' })}
-          onSkip={() => { setWhole(false); runtimeRef.current?.skip(); dispatch({ type: 'skip' }); }}
+          onSkip={() => { failClock.current = null; setWhole(false); runtimeRef.current?.skip(); dispatch({ type: 'skip' }); }}
         />
       )}
       {flow.screen === 'finale' && data && <Finale locale={locale} totals={data.totals} onAgain={() => { writeSaved(storage(), { best: flow.best, chapter: 0 }); dispatch({ type: 'restart' }); }} />}
