@@ -20,3 +20,6 @@ export const DRIVE = {
   cloudCap: 0.55, cloudDecel: 8, cloudGrip: 0.7,
   bumpHoldOff: 0.3, substep: 1 / 120, maxDt: 0.05,
 } as const;
+
+/** The guard at the ranks: within `range` m it brakes the chariot at `decel` m/s² so the hull stops `stop` m short. */
+export const GUARD = { range: 26, stop: 0.5, decel: 14 } as const;
