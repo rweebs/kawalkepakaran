@@ -14,7 +14,7 @@ describe('KurukshetraScene game API', () => {
     expect(main).toMatch(/game \|\| offset === 0\) camera\.clearViewOffset\(\)/);
   });
   it('runs the frame listeners before draw, and adds root to the scene', () => {
-    expect(main).toMatch(/for \(const cb of frameListeners\) cb\(time, dt\);\s*draw\(\);/);
+    expect(main).toMatch(/for \(const cb of frameListeners\) cb\(time, dt\);\s*(?:\/\/[^\n]*\s*)*if \(disposed\) return;\s*draw\(\);/);
     expect(main).toContain('scene.add(root)');
   });
   it('is never requested by the page', () => {
@@ -81,5 +81,22 @@ describe('KurukshetraScene game mode', () => {
     for (const [s, i] of at) expect(i, s).toBeGreaterThan(-1);
     const positions = at.map(([, i]) => i);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+});
+
+describe('KurukshetraScene after dispose', () => {
+  const from = main.indexOf('const frame = (now: number) => {');
+  const frame = main.slice(from, main.indexOf('\n  };', from));
+
+  it('a frame of a disposed scene returns before it draws or schedules the next', () => {
+    expect(from).toBeGreaterThan(-1);
+    expect(frame).toMatch(/^const frame = \(now: number\) => \{\s*raf = 0;\s*if \(paused \|\| disposed\) return;/);
+  });
+
+  it('a listener that disposes the scene ends the frame there: nothing drawn, nothing scheduled', () => {
+    expect(frame).toMatch(
+      /for \(const cb of frameListeners\) cb\(time, dt\);\s*(?:\/\/[^\n]*\s*)*if \(disposed\) return;\s*draw\(\);\s*raf = requestAnimationFrame\(frame\);$/,
+    );
+    expect(frame.match(/requestAnimationFrame\(/g)).toHaveLength(1);
   });
 });

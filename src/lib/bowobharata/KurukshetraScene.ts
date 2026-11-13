@@ -170,7 +170,7 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
 
   const frame = (now: number) => {
     raf = 0;
-    if (paused) return;
+    if (paused || disposed) return;
     const ms = now - last;
     const dt = Math.min(ms / 1000 || 0, 0.05);
     last = now;
@@ -189,6 +189,8 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
       }
     }
     for (const cb of frameListeners) cb(time, dt);
+    // A listener may have disposed the scene (the game tearing it down after an error): draw nothing, schedule nothing.
+    if (disposed) return;
     draw();
     raf = requestAnimationFrame(frame);
   };
