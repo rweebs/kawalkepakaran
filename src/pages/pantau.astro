@@ -13,7 +13,7 @@ import SitemapDashboard from '../components/SitemapDashboard';
 import PerkaraDashboard from '../components/PerkaraDashboard';
 import FomoDashboard from '../components/FomoDashboard';
 import CrossInsights from '../components/CrossInsights';
-import RelasiGraph from '../components/RelasiGraph';
+import RelasiGraph3D from '../components/RelasiGraph3D';
 import PantauLazy from '../components/PantauLazy';
 import PantauHero from '../components/PantauHero';
 import { HarmResponseChart, HarmTreemap, OperatorFocus } from '../components/PantauHarm';
@@ -27,7 +27,7 @@ import '../styles/pantau-insights.css';
 import '../styles/pantau-perkara.css';
 import '../styles/pantau-fomo.css';
 import '../styles/pantau-page.css';
-import { watch as data, perkara, fomo, fomoDossier, rows, relasiProps, situsProps, islandSrc } from '../lib/pantau-props';
+import { watch as data, perkara, fomo, fomoDossier, rows, situsProps, islandSrc } from '../lib/pantau-props';
 import { snapshotAgeDays, WATCH_ORIGIN } from '../lib/sitemap-watch';
 import { hero, harmVsResponse, harmCategories, operatorFocus, removals, imagesBySection, slugVsFirstSeen, archiveCoverage } from '../lib/pantau-page';
 import { sha256File, dataChangelog, redactionLedger, privacyChecks, optionalJson } from '../lib/pantau-provenance';
@@ -44,7 +44,6 @@ const age = latest ? snapshotAgeDays(latest, buildDay) : 0;
 const STALE_DAYS = 7;
 const sha = latestSnap?.provenance?.sha256;
 const j = perkara.meta.jumlah;
-const relasi = relasiProps();
 const situs = situsProps(locale);
 const cross = { site: rows, fomo: fomo.posts, kronologis: perkara.kronologis, laporan: perkara.laporan, terlapor: perkara.terlapor };
 const heroData = hero({ ...cross, siteTotal: rows.length, fomoThreads: fomo.threads.length }, buildDay);
@@ -70,7 +69,7 @@ const T = {
     title: 'Pantau: rahmatwibowo.net, Gelar Perkara, dan Fomo', h1: 'Pantau',
     description: 'Tiga dasbor dalam satu halaman: pertumbuhan situs rahmatwibowo.net dari sitemap publiknya, berkas gelar perkara terpadu yang diajukan Rahmat Wibowo ke Ditressiber Polda Metro Jaya, dan postingan tentang Pelapor di Fomo 2023–2026. Semua terlapor berstatus dugaan.',
     lead: 'Halaman ini memantau tiga hal: seberapa cepat situs yang menyebut penggagas Kawal Kepakaran sebagai pelaku pelecehan bertambah, bagaimana laporan Pelapor terhadap pihak-pihak yang ia duga mencemarkan namanya ditangani, dan apa yang ditulis tentang dirinya di Fomo.',
-    secRelasi: 'Peta hubungan', relasiH: 'Peta hubungan: semuanya mengarah ke satu orang',
+    secRelasi: 'Peta hubungan', relasiH: 'Peta hubungan 3D: saling terhubung, tanpa satu pusat',
     harmH: 'Serangan, jawaban, dan jenis dugaan perbuatan', secMethod: 'Cara menghitung',
     provSitus: 'Situs rahmatwibowo.net', provPerkara: 'Gelar Perkara', provFomo: 'Fomo', disusun: 'Disusun', dihimpun: 'Dihimpun',
     srcPerkara: 'Berkas Pelapor: Gelar Perkara Terpadu, Dokumen 1', srcFomo: (n: number) => `Bukti Pelapor dari fomo.id (${n} thread)`,
@@ -106,7 +105,7 @@ const T = {
     title: 'Monitor: rahmatwibowo.net, the case review and Fomo', h1: 'Monitor',
     description: "Three dashboards on one page: the growth of rahmatwibowo.net from its public sitemap, the integrated case-review file Rahmat Wibowo submitted to Ditressiber Polda Metro Jaya, and posts about the Pelapor on Fomo, 2023–2026. Every terlapor is an allegation.",
     lead: "This page tracks three things: how fast the site that calls the founder of Kawal Kepakaran a harasser is growing, how the Pelapor's reports against the parties he believes defamed him are being handled, and what was written about him on Fomo.",
-    secRelasi: 'Relationship map', relasiH: 'Relationship map: everything points at one person',
+    secRelasi: 'Relationship map', relasiH: 'Relationship map in 3D: interlinked, with no single centre',
     harmH: 'Attacks, answers and kinds of alleged acts', secMethod: 'How it is counted',
     provSitus: 'rahmatwibowo.net site', provPerkara: 'Case review', provFomo: 'Fomo', disusun: 'Prepared', dihimpun: 'Collected',
     srcPerkara: "Pelapor's file: Gelar Perkara Terpadu, Document 1", srcFomo: (n: number) => `Pelapor's evidence from fomo.id (${n} threads)`,
@@ -154,10 +153,11 @@ const ld = [pageLd({ type: 'CollectionPage', name: T.title, path, locale, descri
 
     <section id="relasi" class="pantau__section" aria-labelledby="relasi-h">
       <h2 id="relasi-h">{T.relasiH}</h2>
-      <PantauLazy client:visible kind="relasi" src={islandSrc('relasi')} props={{ locale }}>
-        <RelasiGraph {...relasi} locale={locale} />
+      <PantauLazy client:visible kind="relasi" src={islandSrc('relasi')} props={{ locale, journeySrc: islandSrc('journey') }}>
+        <RelasiGraph3D nodes={[]} edges={[]} locale={locale} />
       </PantauLazy>
     </section>
+
 
     <div class="pantau-cross">
       <CrossInsights {...cross} locale={locale} />
