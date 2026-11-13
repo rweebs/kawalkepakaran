@@ -134,4 +134,59 @@ describe('riuh', () => {
     r = run(r, 200, 300, { watched: true });
     expect(r.value).toBe(0);
   });
+
+  describe('review fixes', () => {
+    const stepSpan = (r0: Riuh, from: number, to: number, dt: number, o: { watched: boolean; shelter: boolean; decayK?: number }) => {
+      let r = r0;
+      const n = Math.round((to - from) / dt);
+      for (let i = 1; i <= n; i++) r = stepRiuh(r, { t: from + i * dt, ...o }, dt);
+      return r;
+    };
+
+    it('is independent of the step size', () => {
+      const cases: [Riuh, number, number, { watched: boolean; shelter: boolean }][] = [
+        [initRiuh({ start: 3.5, t: 50 }), 50, 62, { watched: false, shelter: false }],
+        [initRiuh({ start: 1, t: 50 }), 50, 62, { watched: true, shelter: false }],
+        [initRiuh({ start: 4, t: 50 }), 50, 52, { watched: false, shelter: true }],
+      ];
+      for (const [r0, a, b, o] of cases) {
+        const fine = stepSpan(r0, a, b, 1 / 60, o);
+        const coarse = stepSpan(r0, a, b, 0.5, o);
+        expect(Math.abs(fine.value - coarse.value)).toBeLessThan(1e-9);
+      }
+    });
+
+    it('ignores bad dt and t', () => {
+      const r0 = initRiuh({ start: 3, t: 50 });
+      const inp = { t: 60, watched: true, shelter: false };
+      for (const dt of [NaN, Infinity, -1]) {
+        const r = stepRiuh(r0, inp, dt);
+        expect(Number.isFinite(r.value)).toBe(true);
+      }
+      expect(stepRiuh(r0, { ...inp, t: NaN }, 1)).toEqual(r0);
+      expect(kickRiuh(r0, 'rewriteTaken', NaN)).toEqual(r0);
+      const r = stepRiuh(r0, { ...inp, t: 60, watched: false, decayK: NaN }, 1);
+      expect(Number.isFinite(r.value)).toBe(true);
+    });
+
+    it('decayK scales the normal decay and leaves a watched rise alone', () => {
+      const r0 = initRiuh({ start: 3.5, t: 50 });
+      const half = stepSpan(r0, 50, 64, 0.5, { watched: false, shelter: false, decayK: 0.5 });
+      expect(Math.abs(half.value - (3.5 - 0.15 * 0.5 * 10))).toBeLessThan(1e-9);
+      const a = stepSpan(initRiuh({ start: 1, t: 50 }), 50, 52, 0.5, { watched: true, shelter: false, decayK: 0.1 });
+      const b = stepSpan(initRiuh({ start: 1, t: 50 }), 50, 52, 0.5, { watched: true, shelter: false });
+      expect(a.value).toBeCloseTo(b.value, 9);
+    });
+
+    it('levelEffects(NaN) does not throw', () => {
+      expect(levelEffects(NaN).volleyEvery).toBeNull();
+    });
+
+    it('a negative kick that the floor lifts does not reset quietT', () => {
+      const r0 = { value: 0.5, floorT: 0, quietT: 10, frozen: false };
+      const r = kickRiuh(r0, 'filed', 100);
+      expect(r.value).toBeGreaterThan(0.5);
+      expect(r.quietT).toBe(10);
+    });
+  });
 });

@@ -40,7 +40,7 @@ function effectiveFloor(r: Riuh, t: number): number {
 }
 
 export function kickRiuh(r: Riuh, k: RiuhKick, t: number): Riuh {
-  if (r.frozen) return r;
+  if (r.frozen || !Number.isFinite(t)) return r;
   const next: Riuh = { ...r };
   if (k === 'recorded') next.floorT = r.floorT + RIUH.recordedDelay;
   else if (k === 'delivered') next.floorT = t;
@@ -48,15 +48,15 @@ export function kickRiuh(r: Riuh, k: RiuhKick, t: number): Riuh {
   if (RIUH[k] > 0 && t < RIUH.grace) v = Math.min(v, Math.max(r.value, RIUH.graceCap));
   v = Math.max(clamp(v, 0, RIUH.max), effectiveFloor(next, t));
   next.value = v;
-  if (v > r.value) next.quietT = t;
+  if (RIUH[k] > 0 && v > r.value) next.quietT = t;
   return next;
 }
 
 /** One step to time `t` (the end of the step), `dt` world seconds long. */
 export function stepRiuh(r: Riuh, i: RiuhInput, dt: number): Riuh {
-  if (r.frozen) return r;
+  if (r.frozen || !Number.isFinite(i.t)) return r;
   const step = Number.isFinite(dt) && dt > 0 ? dt : 0;
-  const k = i.decayK ?? 1;
+  const k = i.decayK !== undefined && Number.isFinite(i.decayK) && i.decayK >= 0 ? i.decayK : 1;
   const inGrace = i.t < RIUH.grace;
   let v = r.value;
   let quietT = r.quietT;
@@ -81,6 +81,6 @@ export function riuhLevel(v: number): 0 | 1 | 2 | 3 | 4 | 5 {
 }
 
 export function levelEffects(level: number): { volleyEvery: number | null; clouds: boolean; radarStatic: number } {
-  const e = RIUH_LEVELS[clamp(Math.floor(level), 0, RIUH_LEVELS.length - 1)];
+  const e = RIUH_LEVELS[riuhLevel(level)];
   return { volleyEvery: e.volleyEvery, clouds: e.clouds, radarStatic: e.radarStatic };
 }
