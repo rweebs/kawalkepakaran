@@ -83,11 +83,25 @@ function army(side: 'dharma' | 'adharma', slots: Slot[], ctx: SceneContext, geom
   return { group: g, mesh };
 }
 
-/** Both armies drawn up along the field: Pandawa in blue and gold on the left, Kurawa in crimson and black on the right. */
-export function createArmies(ctx: SceneContext, dharma: Slot[], adharma: Slot[]): Part {
+/** How the procedural ranks move: on the page they march (legs swinging, a bob at each step, the front ranks leaning in); still, they stand. */
+export function armyMotion(still: boolean): { swing: number; speed: number; bob: number; lean: number } {
+  return still ? { swing: 0, speed: 3.4, bob: 0, lean: 0 } : { swing: 0.5, speed: 3.4, bob: 0.04, lean: 0.28 };
+}
+
+/** A real front-rank soldier's clip from one roll: on the page about one in eight stands idle and the rest walk; still ranks all stand. */
+export function frontClip(roll: number, still: boolean): number {
+  return still ? CLIP.idle : (roll < 0.12 ? CLIP.idle : CLIP.walk);
+}
+
+/**
+ * Both armies drawn up along the field: Pandawa in blue and gold on the left, Kurawa in crimson and black on the right.
+ * `still` stands every soldier where he is, for the game.
+ */
+export function createArmies(ctx: SceneContext, dharma: Slot[], adharma: Slot[], opts: { still?: boolean } = {}): Part {
+  const still = !!opts.still;
   const group = new THREE.Group();
   // Scissoring legs, a bob at each step, and the front ranks leaning forward; every soldier out of step with the next.
-  const material = limbMaterial(ctx.uTime, { swing: 0.5, speed: 3.4, phases: [0, 0, Math.PI], bob: 0.04, lean: 0.28, roughness: 0.65, metalness: 0.3 });
+  const material = limbMaterial(ctx.uTime, { ...armyMotion(still), phases: [0, 0, Math.PI], roughness: 0.65, metalness: 0.3 });
   // Each side gets its own geometry copy, because the per-instance phase attribute lives on the geometry.
   const sides = [
     { side: 'dharma' as const, slots: dharma, built: army('dharma', dharma, ctx, soldierGeometry(), material) },
@@ -113,7 +127,7 @@ export function createArmies(ctx: SceneContext, dharma: Slot[], adharma: Slot[])
         const facing = side === 'dharma' ? 0 : Math.PI;
         const spots: SoldierSpot[] = slots.slice(0, n).map((s) => ({
           x: s.x, z: s.z, rotY: facing + (rnd() - 0.5) * 0.3, phase: s.phase / (Math.PI * 2),
-          clip: rnd() < 0.12 ? CLIP.idle : CLIP.walk, color: tint,
+          clip: frontClip(rnd(), still), color: tint,
         }));
         for (let i = 0; i < n; i++) built.mesh.setMatrixAt(i, hidden);
         built.mesh.instanceMatrix.needsUpdate = true;
