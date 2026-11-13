@@ -11,7 +11,9 @@
 .bg-screen, .bg-cards { position: relative; z-index: 1; }
 .bg-screen { display: grid; align-content: start; gap: 0.75rem; max-width: 46rem; width: 100%; margin: 0 auto; padding: 1.25rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg);
   background: var(--bg-card); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); overflow-wrap: anywhere; box-sizing: border-box; }
-.bg-game[data-mode='3d'] .bg-screen { background: rgba(11, 16, 32, 0.86); min-height: 0; max-height: 100%; overflow-y: auto; align-self: start; padding-bottom: 4.5rem; }
+.bg-game[data-mode='3d'] .bg-screen { background: rgba(11, 16, 32, 0.86); min-height: 0; max-height: 100%; overflow-y: auto; align-self: start; }
+/* The screens that scroll inside the stage leave room for their last control to clear the fixed song pill. */
+.bg-game[data-mode='3d'] :is(.bg-recorded, .bg-sanjaya, .bg-fail, .bg-paused, .bg-error, .bg-slow, .bg-finale) { padding-bottom: 4.5rem; }
 .bg-screen h2, .bg-screen h3 { margin: 0; }
 .bg-screen p { margin: 0; }
 .bg-title { font-size: clamp(1.8rem, 6vw, 2.6rem); letter-spacing: 0.08em; }
@@ -79,14 +81,14 @@
 .bg-wipe { display: none; position: absolute; inset: 0; background: var(--bg-primary, #0b1020); pointer-events: none; z-index: 3;
   clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); }
 .bg-stage[data-cine='on'] .bg-wipe { display: block; }
-/* One animation per transition: cover over 0.6 s, hold 0.15 s, open over 0.6 s. The island alternates a and b so it restarts. */
-.bg-stage[data-wipe='a'] .bg-wipe { animation: bg-wipe-a 1.35s ease-in-out; }
-.bg-stage[data-wipe='b'] .bg-wipe { animation: bg-wipe-b 1.35s ease-in-out; }
-@keyframes bg-wipe-a { 0% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } 44.4%, 55.6% { clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 0); } 100% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } }
-@keyframes bg-wipe-b { 0% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } 44.4%, 55.6% { clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 0); } 100% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } }
+/* One animation per transition: cover over 0.3 s, hold 0.15 s, open over 0.45 s. The island alternates a and b so it restarts. */
+.bg-stage[data-wipe='a'] .bg-wipe { animation: bg-wipe-a 0.9s ease-in-out; }
+.bg-stage[data-wipe='b'] .bg-wipe { animation: bg-wipe-b 0.9s ease-in-out; }
+@keyframes bg-wipe-a { 0% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } 33.3%, 50% { clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 0); } 100% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } }
+@keyframes bg-wipe-b { 0% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } 33.3%, 50% { clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 0); } 100% { clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0); } }
 
 /* While a chapter is driven the site's song control is hidden, never removed: its iframe keeps playing. It returns on pause and on every still screen. */
-html:has(.bg-stage[data-play='on']:not([data-paused])) .theme-song, html:has(.bg-stage[data-play='on']:not([data-paused])) .theme-song__toggle, html:has(.bg-stage[data-play='on']:not([data-paused])) .theme-song__panel { visibility: hidden; pointer-events: none; }
+html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-song__toggle, .theme-song__panel) { visibility: hidden; pointer-events: none; }
 
 @media (max-width: 480px) {
   .bg-screen { padding: 1rem; }

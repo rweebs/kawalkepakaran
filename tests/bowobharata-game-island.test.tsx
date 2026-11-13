@@ -516,6 +516,10 @@ describe('island wiring (source)', () => {
     expect(failShotDone(10, null, 1.2)).toBe(false);
     expect(failShotDone(10.5, 10, 1.2)).toBe(false);
     expect(failShotDone(11.5, 10, 1.2)).toBe(true);
+    expect(failShotDone(11.5, 10.25, 1.25)).toBe(true);
+    expect(failShotDone(11.49, 10.25, 1.25)).toBe(false);
+    expect(failShotDone(Number.NaN, 10, 1.2)).toBe(false);
+    expect(failShotDone(9, 10, 1.2)).toBe(false);
   });
 });
 

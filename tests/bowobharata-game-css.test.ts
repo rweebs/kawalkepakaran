@@ -83,13 +83,13 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(has('.bg-mission', 'left: 0.75rem')).toBe(true);
     expect(declared('.bg-wipe', 'pointer-events')).toEqual(['none']);
     // One animation per transition, started by one attribute change: 'a' and 'b' run the same keyframes under two names so
-    // that every transition restarts it. Cover (0.6 s), a 0.15 s hold, then open (0.6 s).
+    // that every transition restarts it. Cover (0.3 s), a 0.15 s hold, then open (0.45 s): 0.9 s.
     const closed = declared('.bg-wipe', 'clip-path').filter((v) => v !== 'none');
     expect(closed).toEqual(['polygon(50% 0, 50% 0, 50% 0, 50% 0, 50% 0)']);
     for (const v of ['a', 'b']) {
       const an = declared(`.bg-stage[data-wipe='${v}'] .bg-wipe`, 'animation');
       expect(an, v).toHaveLength(1);
-      expect(durations(an[0])[0]).toBeCloseTo(1.35, 5);
+      expect(durations(an[0])[0]).toBeCloseTo(0.9, 5);
     }
     expect(declared('.bg-wipe', 'transition').filter((v) => v !== 'none')).toEqual([]);
     const names = ['a', 'b'].map((v) => declared(`.bg-stage[data-wipe='${v}'] .bg-wipe`, 'animation')[0].split(' ')[0]);
@@ -97,7 +97,7 @@ describe('bowobharata-game.css stage and HUD', () => {
     for (const n of names) {
       const kf = css.match(new RegExp(`@keyframes ${n}\\s*\\{([\\s\\S]*?\\})\\s*\\}`));
       expect(kf, n).not.toBeNull();
-      expect(kf![1]).toContain('polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 0)');
+      expect(kf![1]).toMatch(/33\.3%, 50%\s*\{\s*clip-path: polygon\(50% 0, 100% 0, 100% 100%, 0 100%, 0 0\)/);
       expect(kf![1]).toMatch(/0%[^}]*polygon\(50% 0, 50% 0/);
       expect(kf![1]).toMatch(/100%[^}]*polygon\(50% 0, 50% 0/);
     }
@@ -107,13 +107,19 @@ describe('bowobharata-game.css stage and HUD', () => {
     const rule = rules.find((r) => r.selector.includes("data-play='on'") && r.selector.includes('.theme-song'));
     expect(rule).toBeDefined();
     expect(rule!.selector).toContain(':not([data-paused])');
+    expect(rule!.selector).toContain(':is(.theme-song, .theme-song__toggle, .theme-song__panel)');
     expect(rule!.body).toContain('visibility: hidden');
     expect(rule!.body).toContain('pointer-events: none');
     expect(css).not.toMatch(/\.theme-song[^{]*\{[^}]*display: none/);
   });
 
   it('leaves the still screens room to scroll their last control clear of the fixed song pill', () => {
-    expect(declared(".bg-game[data-mode='3d'] .bg-screen", 'padding-bottom')).toEqual(['4.5rem']);
+    expect(declared(".bg-game[data-mode='3d'] .bg-screen", 'padding-bottom')).toEqual([]);
+    const pad = rules.find((r) => r.selector.startsWith(".bg-game[data-mode='3d'] :is(") && /padding-bottom: 4\.5rem/.test(r.body));
+    expect(pad).toBeDefined();
+    for (const c of ['bg-recorded', 'bg-sanjaya', 'bg-fail', 'bg-paused', 'bg-error', 'bg-slow', 'bg-finale']) expect(pad!.selector).toContain(`.${c}`);
+    for (const c of ['bg-mission', 'bg-gate', 'bg-intro']) expect(pad!.selector).not.toContain(`.${c}`);
+    for (const c of ['.bg-mission', '.bg-gate', '.bg-intro']) expect(declared(c, 'padding-bottom')).toEqual([]);
   });
 
   it('stacks the pause panel above the letterbox bars, the lakon card and the wipe, so a pause during an intro shows it whole', () => {
