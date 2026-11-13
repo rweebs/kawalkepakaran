@@ -53,11 +53,21 @@ export interface DriveEnv {
   guard?: Guard;
 }
 
-export const NO_INPUT: ChariotInput = { throttle: 0, brake: 0, steer: 0, drift: false, boost: false };
+export const NO_INPUT: Readonly<ChariotInput> = Object.freeze({
+  throttle: 0,
+  brake: 0,
+  steer: 0,
+  drift: false,
+  boost: false,
+});
 
 const CLEAR: DriveEnv = { cloud: false };
-/** At or below this forward speed the brake has nothing left to stop, and holding it counts toward reversing. */
+/** At or below this forward speed a held brake stops the chariot dead, and holding it counts toward reversing. */
 const REST_SPEED = 0.05;
+/** Seconds: a surge the guard cancels this soon after it starts gets its cooldown back. */
+const SURGE_REFUND = 0.2;
+/** A pedal or steer reading that is not a finite number counts as 0. */
+const finite = (v: number) => (Number.isFinite(v) ? v : 0);
 
 export function initChariot(x: number, z: number, yaw: number): ChariotState {
   return {
@@ -114,13 +124,12 @@ interface ForwardInputs {
 
 /** vF after one substep of engine or surge, overspeed drag, coasting, brake, reverse pull and slide bleed. */
 function nextForward(vF: number, h: number, p: ForwardInputs): number {
-  // Haze caps a surge too (spec: the speed cap in haze is 9.35 m/s).
+  // Haze caps a surge too (spec: the speed cap in haze is 9.35 m/s): there the surge curve tops out at the cap.
   const top = p.cloud ? DRIVE.topSpeed * DRIVE.cloudCap : p.boosting ? DRIVE.boostTop : DRIVE.topSpeed;
   let pull = 0; // engine, surge or reverse: may carry vF through zero
   let drag = 0; // friction: opposes vF and stops at zero
   if (vF > top) drag += p.cloud ? DRIVE.cloudDecel : DRIVE.overspeedDrag;
-  else if (p.boosting) pull += p.throttle * DRIVE.boostEngine * (1 - (vF / DRIVE.boostTop) ** 2);
-  else pull += p.throttle * DRIVE.engine * (1 - (vF / top) ** 2);
+  else pull += p.throttle * (p.boosting ? DRIVE.boostEngine : DRIVE.engine) * (1 - (vF / top) ** 2);
   if (p.throttle === 0 && p.brake === 0) drag += DRIVE.coast + DRIVE.air * vF * vF;
   // The brake and the reverse pull scale with the pedal, as the engine does with the throttle.
   if (p.brake > 0 && vF > REST_SPEED) drag += DRIVE.brake * p.brake;
@@ -135,11 +144,11 @@ export function stepChariot(s: ChariotState, i: ChariotInput, dt: number, env: D
   const frame = clamp(dt, 0, DRIVE.maxDt);
   const n = Math.ceil(frame / DRIVE.substep - 1e-9);
   const h = n > 0 ? frame / n : 0;
-  const throttleIn = clamp(i.throttle, 0, 1);
-  const brake = clamp(i.brake, 0, 1);
-  const steer = clamp(i.steer, -1, 1);
+  const throttleIn = clamp(finite(i.throttle), 0, 1);
+  const brake = clamp(finite(i.brake), 0, 1);
+  const steer = clamp(finite(i.steer), -1, 1);
   const gripScale = env.cloud ? DRIVE.cloudGrip : 1;
-  // No surge starts in a step that began with the chariot held by the guard.
+  // No surge starts while the guard holds the chariot: in the step before this one (here), or earlier in this one (below).
   const mayBoost = i.boost && s.held === 0;
   let { x, z, yaw, vx, vz, boostT, cooldown, drifting, driftT, gripK, holdOff, reverseHold } = s;
   let held = 0;
@@ -163,14 +172,10 @@ export function stepChariot(s: ChariotState, i: ChariotInput, dt: number, env: D
     gripK = drifting ? 0 : Math.min(1, gripK + h / DRIVE.gripRecover);
     reverseHold = brake > 0 && vF <= REST_SPEED ? reverseHold + h : 0;
 
-    vF = nextForward(vF, h, {
-      throttle,
-      brake,
-      boosting,
-      reversing: reverseHold >= DRIVE.reverseEngage,
-      sliding: drifting,
-      cloud: env.cloud,
-    });
+    const reversing = reverseHold >= DRIVE.reverseEngage;
+    vF = nextForward(vF, h, { throttle, brake, boosting, reversing, sliding: drifting, cloud: env.cloud });
+    // A held brake leaves no crawl, so the chariot is at rest before reverse can engage.
+    if (brake > 0 && !reversing && Math.abs(vF) <= REST_SPEED) vF = 0;
     const grip = (DRIVE.driftGrip + (DRIVE.grip - DRIVE.driftGrip) * gripK) * gripScale;
     vL *= Math.exp(-grip * h);
     vx = vF * f.x + vL * r.x;
@@ -185,6 +190,8 @@ export function stepChariot(s: ChariotState, i: ChariotInput, dt: number, env: D
       vx = capped.vx;
       vz = capped.vz;
       if (capped.removed > 0) {
+        // A surge cancelled this soon after its start is refunded; it could only have started at cooldown 0.
+        if (boostT > DRIVE.boostTime - SURGE_REFUND) cooldown = 0;
         boostT = 0;
         held = Math.max(held, capped.removed);
       }
@@ -192,7 +199,7 @@ export function stepChariot(s: ChariotState, i: ChariotInput, dt: number, env: D
       yaw = turned;
     }
 
-    if (mayBoost && boostT === 0 && cooldown === 0) {
+    if (mayBoost && held === 0 && boostT === 0 && cooldown === 0) {
       const heading = forward(yaw);
       if (vx * heading.x + vz * heading.z > 1) {
         boostT = DRIVE.boostTime;

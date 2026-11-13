@@ -26,6 +26,7 @@ import {
   type DriveEnv,
   type Guard,
 } from '../src/lib/bowobharata-game/drive';
+import { DRIVE } from '../src/lib/bowobharata-game/tuning';
 
 /** Steps `frames` frames of `input` (unset fields come from NO_INPUT) and returns the state after each frame. */
 function run(s: ChariotState, input: Partial<ChariotInput>, frames: number, dt = 1 / 60, env?: DriveEnv): ChariotState[] {
@@ -38,12 +39,20 @@ function run(s: ChariotState, input: Partial<ChariotInput>, frames: number, dt =
   return states;
 }
 
+/** Laju requested on the first frame only, with full throttle on every frame. */
+function surgeRun(s: ChariotState, frames: number, dt = 1 / 60, env?: DriveEnv): ChariotState[] {
+  const first = run(s, { throttle: 1, boost: true }, 1, dt, env);
+  return [...first, ...run(first[0], { throttle: 1 }, frames - 1, dt, env)];
+}
+
 const last = (states: ChariotState[]) => states[states.length - 1];
 /** At the origin facing east (yaw 0), moving east at vx. */
 const moving = (vx: number, extra: Partial<ChariotState> = {}): ChariotState => ({ ...initChariot(0, 0, 0), vx, ...extra });
 const atRest = (s: ChariotState) => Math.abs(speedOf(s)) <= 1e-9;
 const seconds = (frameIndex: number) => (frameIndex + 1) / 60;
 const degrees = (rad: number) => (rad * 180) / Math.PI;
+const HAZE: DriveEnv = { cloud: true };
+const MOTION = ['x', 'z', 'yaw', 'vx', 'vz'] as const;
 
 describe('geometry helpers', () => {
   it('measures distances to points, segments and polylines', () => {
@@ -103,6 +112,22 @@ describe('geometry helpers', () => {
       a = r.a;
     }
   });
+
+  it('nextRand: 1,000 chained steps match mulberry32 from seeds including 0 and negative ones', () => {
+    for (const seed of [0, -1, -404, 404, 2 ** 32 - 1, 123456789]) {
+      const reference = mulberry32(seed);
+      const fromClosure: number[] = [];
+      const fromState: number[] = [];
+      let a = seed;
+      for (let k = 0; k < 1000; k++) {
+        const r = nextRand(a);
+        fromState.push(r.v);
+        fromClosure.push(reference());
+        a = r.a;
+      }
+      expect(fromState).toEqual(fromClosure);
+    }
+  });
 });
 
 describe('drive model', () => {
@@ -132,6 +157,22 @@ describe('drive model', () => {
     const next = states.slice(stop + 1, stop + 13);
     expect(next).toHaveLength(12);
     for (const s of next) expect(speedOf(s)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a partial brake still stops dead, rests 0.25 s, then reverses', () => {
+    const half = run(moving(17), { brake: 0.5 }, 240);
+    const stop = half.findIndex((s) => speedOf(s) === 0);
+    const back = half.findIndex((s) => speedOf(s) < 0);
+    expect(stop).toBeGreaterThanOrEqual(0);
+    expect(back).toBeGreaterThan(stop);
+    for (const s of half.slice(0, back)) expect(speedOf(s)).toBeGreaterThanOrEqual(0);
+    for (const s of half.slice(stop, back)) expect(Math.abs(speedOf(s))).toBe(0);
+    expect(seconds(back) - seconds(stop)).toBeGreaterThanOrEqual(0.25);
+    expect(seconds(back) - seconds(stop)).toBeLessThanOrEqual(0.25 + 2 / 60);
+    const gentle = run(moving(5), { brake: 0.1 }, 300);
+    const rest = gentle.findIndex((s) => speedOf(s) === 0);
+    expect(rest).toBeGreaterThanOrEqual(0);
+    for (const s of gentle.slice(0, rest)) expect(speedOf(s)).toBeGreaterThan(0);
   });
 
   it('coasts from 17 m/s to rest in about 8.65 s over 56–57 m', () => {
@@ -175,8 +216,7 @@ describe('drive model', () => {
   });
 
   it('Laju: a 1.8 s surge toward 25 m/s, then a 7 s cooldown', () => {
-    const first = run(moving(15), { throttle: 1, boost: true }, 1);
-    const states = [...first, ...run(first[0], { throttle: 1 }, 179)];
+    const states = surgeRun(moving(15), 180);
     // 1.8 ± 1/60 s at 60 frames a second is 108 ± 1 frames.
     const boostFrames = states.filter((s) => s.boostT > 0).length;
     expect(boostFrames).toBeGreaterThanOrEqual(107);
@@ -202,9 +242,20 @@ describe('drive model', () => {
   });
 
   it('haze caps the speed', () => {
-    const states = run(moving(17), { throttle: 1 }, 180, 1 / 60, { cloud: true });
+    const states = run(moving(17), { throttle: 1 }, 180, 1 / 60, HAZE);
     for (const s of states.slice(59)) expect(speedOf(s)).toBeLessThanOrEqual(9.55);
     expect(Math.abs(speedOf(states[179]) - 9.35)).toBeLessThanOrEqual(0.05);
+  });
+
+  it('haze caps a surge too, approaching 9.35 m/s from below', () => {
+    // One substep per frame, so every substep is checked.
+    const from9 = surgeRun(moving(9), 240, 1 / 120, HAZE);
+    expect(from9.some((s) => s.boostT > 0)).toBe(true);
+    expect(Math.max(...from9.map(speedOf))).toBeLessThanOrEqual(9.35 + 1e-9);
+    expect(speedOf(last(from9))).toBeGreaterThan(9.3);
+    const from17 = surgeRun(moving(17), 180, 1 / 60, HAZE);
+    expect(from17.some((s) => s.boostT > 0)).toBe(true);
+    for (const s of from17.slice(59)) expect(speedOf(s)).toBeLessThanOrEqual(9.55);
   });
 
   it('gives the same result at any frame rate', () => {
@@ -216,6 +267,14 @@ describe('drive model', () => {
       expect(Math.abs(s.x - reference.x)).toBeLessThanOrEqual(1e-9);
       expect(Math.abs(s.z - reference.z)).toBeLessThanOrEqual(1e-9);
     }
+  });
+
+  it('a frame a hair longer than whole substeps runs that many substeps', () => {
+    const dt = 0.1 - 0.075; // 0.025000000000000008 s: 3.000000000000001 substeps of 1/120 s
+    const i = { ...NO_INPUT, throttle: 1, steer: 0.5 };
+    const noisy = stepChariot(moving(12), i, dt);
+    const exact = stepChariot(moving(12), i, 3 / 120);
+    for (const k of MOTION) expect(Math.abs(noisy[k] - exact[k])).toBeLessThanOrEqual(1e-12);
   });
 
   it('clamps a long frame to 0.05 s', () => {
@@ -248,16 +307,79 @@ describe('drive model', () => {
     expect(Math.abs(speedOf(states[194]) - -3.92)).toBeLessThanOrEqual(0.05);
     expect(Math.min(...states.map(speedOf))).toBeGreaterThanOrEqual(-4);
   });
+
+  it('a bump cuts the throttle for 0.3 s, then the engine pulls again', () => {
+    // One substep per frame: 0.3 s is 36 substeps, and the countdown may take one more.
+    const states = run(moving(10, { holdOff: DRIVE.bumpHoldOff }), { throttle: 1 }, 48, 1 / 120);
+    const released = states.findIndex((s) => s.holdOff === 0) + 1;
+    expect(released).toBeGreaterThanOrEqual(36);
+    expect(released).toBeLessThanOrEqual(37);
+    // speeds[k] is the speed after substep k: it only coasts while the throttle is cut, then it gains.
+    const speeds = [10, ...states.map(speedOf)];
+    for (let k = 1; k <= released; k++) expect(speeds[k]).toBeLessThan(speeds[k - 1]);
+    for (let k = released + 1; k < speeds.length; k++) expect(speeds[k]).toBeGreaterThan(speeds[k - 1]);
+  });
+
+  it('never mutates the state, input or environment it is given', () => {
+    const s = Object.freeze(moving(15, { boostT: 1, cooldown: 3, holdOff: 0.1 }));
+    const i = Object.freeze({ ...NO_INPUT, throttle: 1, steer: 0.5, drift: true, boost: true });
+    const guard: Guard = Object.freeze({
+      cap: (_x: number, _z: number, _yaw: number, vx: number, vz: number) => ({ vx: Math.min(vx, 8), vz, removed: Math.max(0, vx - 8) }),
+      blocksTurn: () => false,
+    });
+    const env = Object.freeze({ cloud: true, guard });
+    const sBefore = { ...s };
+    const iBefore = { ...i };
+    expect(() => stepChariot(s, i, 1 / 60, env)).not.toThrow();
+    expect(s).toEqual(sBefore);
+    expect(i).toEqual(iBefore);
+  });
+
+  it('reads a non-finite throttle, brake or steer as 0', () => {
+    const s = moving(12);
+    const idle = stepChariot(s, NO_INPUT, 1 / 60);
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const out = stepChariot(s, { ...NO_INPUT, throttle: bad, brake: bad, steer: bad }, 1 / 60);
+      for (const k of MOTION) {
+        expect(Number.isFinite(out[k])).toBe(true);
+        expect(out[k]).toBe(idle[k]);
+      }
+    }
+  });
+
+  it('NO_INPUT is frozen and spreads into new inputs', () => {
+    expect(Object.isFrozen(NO_INPUT)).toBe(true);
+    expect({ ...NO_INPUT, throttle: 1 }).toEqual({ throttle: 1, brake: 0, steer: 0, drift: false, boost: false });
+  });
 });
 
 describe('the guard hook', () => {
-  const stub: Guard = {
+  const surge = { ...NO_INPUT, throttle: 1, boost: true };
+  const pull = { ...NO_INPUT, throttle: 1 };
+
+  /** The brief's stub: removes all eastward speed and refuses every turn. */
+  const fullHold: Guard = {
     cap: (_x, _z, _yaw, vx, vz) => ({ vx: 0, vz, removed: Math.abs(vx) }),
     blocksTurn: () => true,
   };
 
-  it('keeps the heading, removes the speed and cancels a surge', () => {
-    const s = stepChariot(moving(15), { ...NO_INPUT, throttle: 1, steer: 1, boost: true }, 1 / 60, { cloud: false, guard: stub });
+  /** Caps eastward speed at `limit` (Infinity removes nothing), logging each removal and the yaw `cap` was given. */
+  function eastCap(limit: number, blocksTurn = false) {
+    const removed: number[] = [];
+    const yaws: number[] = [];
+    const guard: Guard = {
+      cap: (_x, _z, yaw, vx, vz) => {
+        yaws.push(yaw);
+        removed.push(Math.max(0, vx - limit));
+        return { vx: Math.min(vx, limit), vz, removed: removed[removed.length - 1] };
+      },
+      blocksTurn: () => blocksTurn,
+    };
+    return { env: { cloud: false, guard }, removed, yaws };
+  }
+
+  it('a full hold keeps the heading and position, starts no surge and records the held speed', () => {
+    const s = stepChariot(moving(15), { ...surge, steer: 1 }, 1 / 60, { cloud: false, guard: fullHold });
     expect(s.x).toBe(0);
     expect(s.yaw).toBe(0);
     expect(s.boostT).toBe(0);
@@ -265,9 +387,71 @@ describe('the guard hook', () => {
     expect(s.held).toBeLessThanOrEqual(15.1);
   });
 
+  it('blocksTurn keeps the old yaw, and cap is given the yaw it kept', () => {
+    const { env, yaws } = eastCap(Infinity, true);
+    const s = stepChariot(moving(10), { ...NO_INPUT, steer: 1 }, 1 / 60, env);
+    expect(s.yaw).toBe(0);
+    expect(yaws).toEqual([0, 0]);
+  });
+
+  it('a guard that allows the turn and removes nothing changes nothing', () => {
+    const { env } = eastCap(Infinity, false);
+    const i = { ...pull, steer: 1 };
+    const guarded = stepChariot(moving(10), i, 1 / 60, env);
+    expect(guarded).toEqual(stepChariot(moving(10), i, 1 / 60));
+    expect(guarded.yaw).toBeLessThan(0);
+  });
+
+  it('cap sets the velocity the chariot keeps and moves with', () => {
+    const fixed: Guard = { cap: () => ({ vx: 2, vz: -3, removed: 0 }), blocksTurn: () => false };
+    const s = stepChariot(moving(15), pull, 1 / 60, { cloud: false, guard: fixed });
+    expect([s.vx, s.vz]).toEqual([2, -3]);
+    expect(s.x).toBeCloseTo(4 / 120, 12);
+    expect(s.z).toBeCloseTo(-6 / 120, 12);
+  });
+
+  it('a removal cancels a surge already running', () => {
+    const { env } = eastCap(8);
+    expect(stepChariot(moving(15, { boostT: 1, cooldown: 5 }), pull, 1 / 60, env).boostT).toBe(0);
+  });
+
+  it('held is the largest speed removed during the step, and resets when nothing is removed', () => {
+    const { env, removed } = eastCap(8);
+    const s = stepChariot(moving(15), pull, 1 / 60, env);
+    expect(removed).toHaveLength(2);
+    expect(removed[1]).toBeGreaterThan(0);
+    expect(s.held).toBe(Math.max(...removed));
+    expect(s.held).toBeGreaterThan(removed[1]);
+    // Coasting on from the capped 8 m/s, the guard has nothing left to remove.
+    expect(stepChariot(s, NO_INPUT, 1 / 60, env).held).toBe(0);
+  });
+
   it('no surge starts from a state the guard held', () => {
-    const surge = { ...NO_INPUT, throttle: 1, boost: true };
-    expect(stepChariot(moving(15, { held: 3 }), surge, 1 / 60).boostT).toBe(0);
+    const held = stepChariot(moving(15, { held: 3 }), surge, 1 / 60);
+    expect(held.boostT).toBe(0);
+    expect(held.held).toBe(0);
     expect(stepChariot(moving(15), surge, 1 / 60).boostT).toBeGreaterThan(0);
+  });
+
+  it('a surge requested against a partial hold neither starts nor spends the cooldown', () => {
+    const { env } = eastCap(8);
+    const s = stepChariot(moving(15), surge, 1 / 60, env);
+    expect(s.boostT).toBe(0);
+    expect(s.cooldown).toBe(0);
+  });
+
+  it('a surge cancelled within 0.2 s of its start is refunded; one cancelled after 1 s keeps its cooldown', () => {
+    const { env } = eastCap(8);
+    const started = stepChariot(moving(15), surge, 1 / 60);
+    expect(started.boostT).toBeGreaterThan(DRIVE.boostTime - 0.2);
+    const early = stepChariot(started, pull, 1 / 60, env);
+    expect(early.boostT).toBe(0);
+    expect(early.cooldown).toBe(0);
+    const running = last(run(started, { throttle: 1 }, 59));
+    expect(running.boostT).toBeGreaterThan(0);
+    const late = stepChariot(running, pull, 1 / 60, env);
+    expect(late.boostT).toBe(0);
+    expect(late.cooldown).toBeGreaterThan(5.9);
+    expect(late.cooldown).toBe(stepChariot(running, pull, 1 / 60).cooldown);
   });
 });

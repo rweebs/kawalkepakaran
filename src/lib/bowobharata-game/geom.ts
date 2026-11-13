@@ -1,5 +1,6 @@
 // Ground-plane helpers for the open-world game. Units are metres; east is +x and north is −z.
 // Yaw is measured from east toward north: forward(yaw) = (cos yaw, −sin yaw), rightOf(yaw) = (sin yaw, cos yaw).
+import { mulberry32 } from '../sky/rng';
 
 export interface XZ {
   x: number;
@@ -57,11 +58,10 @@ export function smoothstep(e0: number, e1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** One mulberry32 step (src/lib/sky/rng.ts) on a stored state: v is that call's value and a the state to store. */
+/**
+ * One mulberry32 step on a stored state: v is the value mulberry32 gives next, and a the state to store.
+ * A fresh mulberry32(a) makes exactly that step first, and its state advances by the same constant.
+ */
 export function nextRand(a: number): { v: number; a: number } {
-  const next = ((a >>> 0) + 0x6d2b79f5) >>> 0;
-  let t = next;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return { v: ((t ^ (t >>> 14)) >>> 0) / 4294967296, a: next };
+  return { v: mulberry32(a)(), a: ((a >>> 0) + 0x6d2b79f5) >>> 0 };
 }
