@@ -43,9 +43,6 @@ export interface GameCopy {
   krishnaLine: Record<string, string>;
   hud: { caught: string; missed: string; decoys: string; sight: string; pause: string };
   catchSource: string;
-  lost: string;
-  retry: string;
-  controls: string[];
   fallbackNote: string;
   /** People and events, reports by direction, the excluded cases, then the label of the link to the full dossier. */
   finaleTotals: (t: Totals) => string[];
@@ -137,14 +134,6 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     },
     hud: { caught: 'Tercatat', missed: 'Terlewat', decoys: 'Tulisan ulang', sight: 'Penglihatan Krishna', pause: 'Jeda' },
     catchSource: 'Lihat di linimasa, lengkap dengan sumbernya',
-    lost: 'Terlalu banyak anak panah asli yang terlewat, atau terlalu banyak tulisan ulang yang ikut tercatat. Catatan parva ini belum utuh.',
-    retry: 'Coba parva ini lagi',
-    controls: [
-      'Papan ketik: W atau ↑ maju, S atau ↓ rem, A dan D atau ← dan → berbelok.',
-      'Spasi menarik tali kekang, Shift memberi Laju, dan K yang ditahan membuka Mata.',
-      'Enter atau E melewati pembuka lakon; Esc atau P untuk jeda.',
-      'Layar sentuh: geser jari di sisi kiri untuk mengarahkan; tombol Rem, Laju, dan Mata ada di sisi kanan.',
-    ],
     fallbackNote: 'Versi tanpa animasi: parva, peristiwa, dan laporan Sanjaya yang sama, ditampilkan langkah demi langkah.',
     finaleTotals: (t) => [
       `Sanjaya melaporkan ${t.people} nama dan ${t.events} peristiwa.`,
@@ -279,14 +268,6 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     },
     hud: { caught: 'Recorded', missed: 'Passed', decoys: 'Rewrites', sight: "Krishna's sight", pause: 'Pause' },
     catchSource: 'See it on the timeline, with its sources',
-    lost: 'Too many real arrows passed by, or too many rewrites went into the record. The record of this parva is not whole yet.',
-    retry: 'Try this parva again',
-    controls: [
-      'Keyboard: W or ↑ drives, S or ↓ brakes, A and D or ← and → steer.',
-      'Space pulls the reins, Shift gives a Surge, and holding K opens Sight.',
-      "Enter or E skips an episode's opening; Esc or P pauses.",
-      'Touch: slide a finger on the left to steer; the Brake, Surge and Sight buttons sit on the right.',
-    ],
     fallbackNote: 'A version without animation: the same parva, events and Sanjaya reports, shown step by step.',
     finaleTotals: (t) => [
       `Sanjaya reported ${t.people} names and ${t.events} events.`,

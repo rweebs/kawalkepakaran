@@ -1,19 +1,24 @@
-// BOWOBHARATA, the game island. The player rides as Rahmat Wibowo; the campaign's arrows come at him and he only catches
-// them, so they go on record. After each chapter Sanjaya reports, under the allegation line, who the dossier alleges acted
-// in that period. The flow is a pure reducer (lib/bowobharata-game/flow.ts); the screens are presentational
-// (bowobharata-game/screens.tsx); this file wires them to the 3D scene, the arrow layer and the input.
+// BOWOBHARATA, the game island. The player drives the chariot of Krishna and Arjuna, the roles the page gives Rahmat
+// Wibowo, across Kurukshetra, records each chapter's dated records and brings them to Sanjaya's tower; no one is ever
+// struck. After each chapter the Tercatat screen shows what went on record; then Sanjaya reports, under the allegation
+// line, who the dossier alleges acted in that period. The flow is a pure reducer (lib/bowobharata-game/flow.ts) and the
+// screens are presentational (bowobharata-game/screens.tsx); this file wires them to the 3D scene and the input.
+// Until the driving runtime takes its place, play in 3D is still the earlier tap game (arrow layer, pick and rules).
 import { useCallback, useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Locale } from '../i18n';
-import { PARVAS, parvaEvents } from '../lib/bowobharata';
+import { PARVAS } from '../lib/bowobharata';
 import { PARVA_POSES } from '../lib/bowobharata/stage-math';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
 import type { ArrowLayer } from '../lib/bowobharata-game/arrows3d';
 import { GAME_COPY } from '../lib/bowobharata-game/copy';
-import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
-import { initFlow, readSaved, reduce, writeSaved } from '../lib/bowobharata-game/flow';
+import { GAME_DATA_SRC, type EventCard, type GameData } from '../lib/bowobharata-game/data';
+import { initFlow, readSaved, reduce, writeSaved, type Settings } from '../lib/bowobharata-game/flow';
+import type { FailReason } from '../lib/bowobharata-game/mission-run';
 import { pickNearest } from '../lib/bowobharata-game/pick';
 import { buildWave, catchArrow, startRun, step, type Run } from '../lib/bowobharata-game/rules';
-import { CatchCard, DataError, FallbackPlay, Finale, Gate, type GatePosters, Hud, Intro, Lost, Paused, SanjayaReport, catchItems, type CatchItem } from './bowobharata-game/screens';
+import {
+  CatchCard, DataError, FailCard, FallbackPlay, Finale, Gate, type GatePosters, Hud, Intro, Paused, Recorded, SanjayaReport, cardView,
+} from './bowobharata-game/screens';
 import '../styles/bowobharata-game.css';
 
 interface Props { locale: Locale; forceFallback?: boolean; data?: GameData; posters?: GatePosters }
@@ -42,9 +47,14 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const [ready, setReady] = useState(0);
   const [hud, setHud] = useState<HudState>({ caught: 0, missed: 0, decoys: 0 });
   const [sight, setSightState] = useState(false);
-  const [card, setCard] = useState<CatchItem | null>(null);
+  const [card, setCard] = useState<EventCard | null>(null);
   const [taken, setTaken] = useState(0);
   const [reticle, setReticle] = useState<{ x: number; y: number } | null>(null);
+  // The pause panel's toggles, for this session only: never written to storage.
+  const [settings, setSettings] = useState<Settings>({ assist: false, easy: false });
+  const [failReason, setFailReason] = useState<FailReason>('time');
+  // False after the skip that follows two fails: Tercatat then says the rest was filled in.
+  const [whole, setWhole] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<KurukshetraScene | null>(null);
@@ -53,8 +63,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const sightRef = useRef(false);
   const pausedRef = useRef(false);
   const attemptRef = useRef(0);
-  const revealRef = useRef<CatchItem[]>([]);
-  const nextRevealRef = useRef(0);
+  const cardsRef = useRef<EventCard[]>([]);
   const reticleRef = useRef<{ x: number; y: number } | null>(null);
 
   pausedRef.current = flow.paused;
@@ -145,12 +154,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     const game = scene?.game;
     if (!game || !layer) return;
     const i = flow.chapter;
-    revealRef.current = catchItems(i, data.chapters, locale);
-    nextRevealRef.current = 0;
+    cardsRef.current = data.events[i] ?? [];
     const seed = 1009 * (i + 1) + attemptRef.current++;
     const wave = i === 0
-      ? buildWave(0, [], seed, Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS, revealRef.current.length)))
-      : buildWave(i, parvaEvents(PARVAS[i - 1]).map((e) => e.slug), seed);
+      ? buildWave(0, [], seed, Math.min(MAX_PROLOGUE_ARROWS, Math.max(MIN_PROLOGUE_ARROWS, data.prologue.length)))
+      : buildWave(i, cardsRef.current.map((e) => e.slug), seed);
     let run = startRun(wave);
     runRef.current = run;
     setHud(hudOf(run));
@@ -159,8 +167,9 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     game.setPose(PARVA_POSES[Math.min(i, PARVA_POSES.length - 1)]);
     let finished = false;
     const off = game.onFrame((_t, dt) => {
-      if (pausedRef.current || finished || !runRef.current) return;
-      run = step({ ...runRef.current, sight: sightRef.current }, dt);
+      const before = runRef.current;
+      if (pausedRef.current || finished || !before) return;
+      run = step({ ...before, sight: sightRef.current }, dt);
       runRef.current = run;
       layer.sync(run);
       setHud((h) => {
@@ -169,6 +178,8 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
       });
       if (run.result !== 'playing') {
         finished = true;
+        // Lost before this step: a rewrite too many went into the record. Lost in it: too many records went by.
+        if (run.result === 'lost') setFailReason(before.result === 'lost' ? 'muddied' : 'time');
         dispatch({ type: 'playResult', result: run.result, score: run.score });
       }
     });
@@ -179,10 +190,12 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
       if (layerRef.current === layer) layer.sync(EMPTY_RUN);
       setSight(false);
     };
-  }, [playing3d, ready, flow.chapter, flow.screen, data, locale, setSight]);
+  }, [playing3d, ready, flow.chapter, flow.screen, data, setSight]);
 
   // Fallback play starts from the first event each time a chapter's play begins.
   useEffect(() => { setTaken(0); }, [flow.screen, flow.chapter, flow.mode]);
+  // Every play makes the record whole again; only the skip from the fail card leaves part of it filled in.
+  useEffect(() => { if (flow.screen === 'play') setWhole(true); }, [flow.screen]);
 
   const catchAt = useCallback((x: number, y: number) => {
     const run = runRef.current;
@@ -196,13 +209,12 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (next === run) return;
     runRef.current = next;
     setHud(hudOf(next));
+    // An event's arrow shows its card, looked up by slug. The prologue's arrows carry no event: their count is in the HUD
+    // and their dates come on Tercatat, inside the framed block.
     const arrow = next.wave.arrows.find((a) => a.id === id);
-    if (arrow?.kind === 'real') {
-      const item = arrow.eventSlug
-        ? revealRef.current.find((it) => it.kind === 'event' && it.event.idSlug === arrow.eventSlug)
-        : revealRef.current[nextRevealRef.current++ % Math.max(1, revealRef.current.length)];
-      if (item) setCard(item);
-    }
+    const slug = arrow?.kind === 'real' ? arrow.eventSlug : null;
+    const found = slug ? cardsRef.current.find((e) => e.slug === slug) : undefined;
+    if (found) setCard(found);
   }, []);
 
   const moveReticle = useCallback((x: number, y: number) => {
@@ -267,7 +279,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
 
   const next = () => dispatch({ type: 'next' });
   const chapter = data?.chapters[flow.chapter];
-  const items = data ? catchItems(flow.chapter, data.chapters, locale) : [];
+  const cards = data?.events[flow.chapter] ?? [];
   const show3d = flow.mode === '3d' && flow.screen !== 'gate';
 
   return (
@@ -279,7 +291,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
             <div
               className="bg-surface"
               role="application"
-              aria-label={`${copy.title}. ${copy.controls.join(' ')}`}
+              aria-label={`${copy.title}. ${copy.controlsKeys.join(' ')}`}
               onPointerDown={onPointerDown}
               onPointerUp={(e) => endPress(e, false)}
               onPointerCancel={(e) => endPress(e, true)}
@@ -294,25 +306,47 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
 
       {loadError && !data && flow.screen !== 'gate' && flow.screen !== 'intro' && <DataError locale={locale} onRetry={() => setAttempt((n) => n + 1)} />}
       {flow.screen === 'gate' && <Gate locale={locale} fallback={flow.mode === 'fallback'} onStart={() => dispatch({ type: 'start' })} posters={posters} />}
-      {flow.screen === 'intro' && <Intro locale={locale} chapterIndex={flow.chapter} onNext={next} />}
+      {flow.screen === 'intro' && <Intro locale={locale} chapterIndex={flow.chapter} onNext={next} layout={show3d ? 'corner' : undefined} />}
       {flow.screen === 'play' && flow.mode === '3d' && (
         <>
           <Hud locale={locale} {...hud} sight={sight} paused={flow.paused} onPause={() => dispatch({ type: 'togglePause' })} />
-          <div className="bg-cards" aria-live="polite">{card && <CatchCard locale={locale} item={card} />}</div>
-          {flow.paused && <Paused locale={locale} onResume={() => dispatch({ type: 'togglePause' })} />}
+          <div className="bg-cards" aria-live="polite">{card && <CatchCard locale={locale} card={cardView(card, locale)} />}</div>
+          {flow.paused && (
+            <Paused
+              locale={locale}
+              onResume={() => dispatch({ type: 'togglePause' })}
+              settings={settings}
+              onSettings={setSettings}
+              onUseStill={() => dispatch({ type: 'useFallback' })}
+            />
+          )}
         </>
       )}
       {flow.screen === 'play' && flow.mode === 'fallback' && data && (
         <FallbackPlay
           locale={locale}
-          items={items}
+          chapterIndex={flow.chapter}
+          cards={cards}
+          prologue={data.prologue}
           taken={taken}
           onTake={() => setTaken((n) => n + 1)}
           onDone={() => dispatch({ type: 'playResult', result: 'won', score: 0 })}
         />
       )}
+      {flow.screen === 'recorded' && data && (
+        <Recorded locale={locale} chapterIndex={flow.chapter} cards={cards} prologue={data.prologue} whole={whole} onNext={next} />
+      )}
       {flow.screen === 'sanjaya' && chapter && <SanjayaReport locale={locale} chapterIndex={flow.chapter} chapter={chapter} onNext={next} />}
-      {flow.screen === 'lost' && <Lost locale={locale} onRetry={() => dispatch({ type: 'retry' })} />}
+      {flow.screen === 'lost' && (
+        <FailCard
+          locale={locale}
+          reason={failReason}
+          fails={flow.fails}
+          assist={settings.assist}
+          onRetry={() => dispatch({ type: 'retry' })}
+          onSkip={() => { setWhole(false); dispatch({ type: 'skip' }); }}
+        />
+      )}
       {flow.screen === 'finale' && data && <Finale locale={locale} totals={data.totals} onAgain={() => { writeSaved(storage(), { best: flow.best, chapter: 0 }); dispatch({ type: 'restart' }); }} />}
     </div>
   );
