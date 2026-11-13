@@ -3,9 +3,19 @@
 // reports the guard holding the chariot, steps the lakon rules, moves the camera and gives the hints, in that order.
 // Pure: no three.js, no DOM, no clock, no randomness; GameState holds no closures. `clock` counts real seconds, each
 // frame capped at DRIVE.maxDt as the drive is; the world runs at half speed while sight is on. Units are metres.
+// The engine imports nothing from the bot: the assist blends in pure pursuit along the same route the bot follows.
 import { groundHeight, type Pose } from '../bowobharata/stage-math';
-import { angleDiff, dist, polylineDist, yawOf, type XZ } from './geom';
-import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState, type Guard } from './drive';
+import { angleDiff, clamp, dist, forward, polylineDist, yawOf, type XZ } from './geom';
+import {
+  NO_INPUT,
+  REST_SPEED,
+  initChariot,
+  speedOf,
+  stepChariot,
+  type ChariotInput,
+  type ChariotState,
+  type Guard,
+} from './drive';
 import { GAME_WARRIORS, PLAY, ZONES, softWallAccel, staticColliders, type Collider, type Zone } from './world';
 import { figureGuard, hullMid, resolveContacts } from './collide';
 import {
@@ -21,11 +31,12 @@ import {
   type ChaseOpts,
   type Shot,
 } from './chase';
-import { buildNav, routeTo, type NavGrid } from './route';
+import { buildNav, projectOnPath, pursuit, routeTo, turnsAhead, type NavGrid } from './route';
 import { objectivePoints, reachCircles, type MissionDef } from './missions';
 import { initSight, stepSight, worldScale, type Sight } from './sight';
 import {
   autoRecord,
+  drivable,
   openTargets,
   restore,
   startRun,
@@ -38,7 +49,6 @@ import {
   type RunState,
 } from './mission-run';
 import { CHASE, DRIVE, MISSION_TIMING } from './tuning';
-import { assistSteer, autoSteer, drivable, lookahead, pointAt, projectOnPath, turnsAhead } from './autopilot';
 
 export interface FrameInput {
   drive: ChariotInput;
@@ -63,7 +73,7 @@ export interface World {
 export type ShotKind = 'intro' | 'outro' | 'fail';
 
 export interface GameState {
-  /** Real seconds since the chapter started. */
+  /** Real seconds since the chapter started, each frame capped at DRIVE.maxDt (a longer frame slows the world). */
   clock: number;
   car: ChariotState;
   cam: ChaseCam;
@@ -75,6 +85,8 @@ export interface GameState {
   /** The route to the first open target (by id), kept until the target changes or the car strays far from it. */
   route: { target: string; points: XZ[] } | null;
   hintsShown: HintKey[];
+  /** Hints whose moment came while another was still within HINT_MIN; they fire in order, cleared at 'done'. */
+  hintQueue: HintKey[];
   /** When the last hint, held and wall events fired (clock seconds; −Infinity before the first). */
   hintAt: number;
   heldAt: number;
@@ -87,16 +99,16 @@ export interface GameState {
 export const HELD_MIN = 0.05;
 /** Real seconds from one held event to the next, and from one wall event to the next. */
 export const EVENT_GAP = 6;
+/** Real seconds a hint stays on the HUD before another may replace it. */
+export const HINT_MIN = 1.5;
 /** The outro's opening slow motion, for the scene's time scale. */
 const OUTRO_SLOW = { seconds: 1.2, scale: 0.35 } as const;
 /** Parva 8's dawn: the mix it starts from. */
 const DAWN_FROM = 0.6;
 /** A cached route is replaced when the car is farther than this (m) from it. */
 const REROUTE_OFF = 20;
-/** At or below this forward speed (m/s) the chariot counts as at rest. */
-const REST = 0.05;
-/** The aspect for camera state that does not depend on the screen (the settled boom and FOV before the aspect). */
-const ANY_ASPECT = 16 / 9;
+/** The aspect where no screen is known: the bot's input, and camera state that does not depend on the screen. */
+export const DEFAULT_ASPECT = 16 / 9;
 const DEG = Math.PI / 180;
 
 export function createWorld(o: { mobile: boolean; warriors?: number }): World {
@@ -148,13 +160,14 @@ export function startChapter(
   return {
     clock: 0,
     car,
-    cam: initChase(car, chaseOpts(w, ANY_ASPECT, car)),
+    cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)),
     run,
     sight: initSight(),
     decoys,
     shot: null,
     route: routeFor(run, car, null, w),
     hintsShown: [],
+    hintQueue: [],
     hintAt: -Infinity,
     heldAt: -Infinity,
     wallAt: -Infinity,
@@ -170,14 +183,34 @@ function frameSeconds(realDt: number): number {
 /** The brake until the chariot is at rest, then nothing: a brake held at rest would start the reverse. */
 function holdStill(car: ChariotState): ChariotInput {
   const v = speedOf(car);
-  if (v > REST) return { ...NO_INPUT, brake: 1 };
-  if (v < -REST) return { ...NO_INPUT, throttle: Math.min(1, -v) };
+  if (v > REST_SPEED) return { ...NO_INPUT, brake: 1 };
+  if (v < -REST_SPEED) return { ...NO_INPUT, throttle: Math.min(1, -v) };
   return NO_INPUT;
 }
 
-/** The player's input, with the bot's steer blended in when the assist is on. */
+/**
+ * The path the bot follows from here: the cached route when it leads to the first open target, else the straight line
+ * to that target; null with none open.
+ */
+export function routeAhead(s: GameState): readonly XZ[] | null {
+  const target = openTargets(s.run)[0];
+  if (!target) return null;
+  const r = s.route;
+  return r && r.target === target.id && r.points.length > 1 ? r.points : [{ x: s.car.x, z: s.car.z }, target.at];
+}
+
+/** The player's steer with the bot's added in, less as the player steers harder: none at full lock. */
+export function assistSteer(player: number, auto: number): number {
+  const p = clamp(Number.isFinite(player) ? player : 0, -1, 1);
+  const a = clamp(Number.isFinite(auto) ? auto : 0, -1, 1);
+  return clamp(p + 0.7 * a * (1 - Math.abs(p)), -1, 1);
+}
+
+/** The player's input, with the bot's steer (pure pursuit along routeAhead) blended in when the assist is on. */
 function assisted(s: GameState, i: FrameInput): ChariotInput {
-  return i.assist ? { ...i.drive, steer: assistSteer(i.drive.steer, autoSteer(s)) } : i.drive;
+  if (!i.assist) return i.drive;
+  const path = routeAhead(s);
+  return { ...i.drive, steer: assistSteer(i.drive.steer, path ? pursuit(s.car, path).steer : 0) };
 }
 
 /** The soft wall's pull toward the centre, then a hard stop at PLAY.r: back onto the edge, the outward speed removed. */
@@ -243,10 +276,9 @@ function stepCamera(s: GameState, before: GameState['shot'], dt: number, aspect:
 const HINT = {
   /** steer: the next target's bearing off the heading. */
   steerOff: 25,
-  /** rewrites and sight: a copy this near, within `cone` of the heading. */
+  /** rewrites and sight: a copy this near, in front of the hull's middle. */
   copyNear: 30,
   copyClose: 15,
-  cone: 30,
   /** slow and stop: this near the open reach circle's edge, above these speeds. */
   slowNear: 25,
   slowSpeed: 8,
@@ -263,12 +295,12 @@ const HINT = {
 
 const pace = (car: ChariotState) => Math.hypot(car.vx, car.vz);
 
-/** Whether p lies within `range` m of the hull's middle and within HINT.cone of the heading. */
+/** Whether p lies within `range` m of the hull's middle, in front of it (bearing within 90° of the heading). */
 function ahead(car: ChariotState, p: XZ, range: number): boolean {
   const m = hullMid(car);
-  const d = dist(m, p);
-  if (d > range) return false;
-  return d < 1e-6 || Math.abs(angleDiff(yawOf({ x: p.x - m.x, z: p.z - m.z }), car.yaw)) <= HINT.cone * DEG;
+  if (dist(m, p) > range) return false;
+  const f = forward(car.yaw);
+  return (p.x - m.x) * f.x + (p.z - m.z) * f.z >= 0;
 }
 
 /** The open reach circle of the active step, if any. */
@@ -318,14 +350,11 @@ function sharpTurnAhead(s: GameState): boolean {
   if (!pts || pts.length < 2) return false;
   const reach = openReach(s.run);
   const outside = (p: XZ) => !reach || dist(p, reach.at) > reach.r;
-  const { along } = projectOnPath(pts, s.car);
-  const look = pointAt(pts, along + lookahead(Math.max(0, speedOf(s.car))));
-  if (dist(s.car, look) > 1e-6 && outside(look)) {
-    if (Math.abs(angleDiff(yawOf({ x: look.x - s.car.x, z: look.z - s.car.z }), s.car.yaw)) > HINT.turn * DEG) return true;
-  }
+  const p = pursuit(s.car, pts);
+  if (Math.abs(p.alpha) > HINT.turn * DEG && outside(p.look)) return true;
   const sharp = (t: { ahead: number; turn: number; at: XZ }) =>
     t.ahead <= HINT.turnWithin && Math.abs(t.turn) > HINT.turn * DEG && outside(t.at);
-  return turnsAhead(pts, along).some(sharp);
+  return turnsAhead(pts, p.along).some(sharp);
 }
 
 /** The prologue's lessons come only in an active lakon that teaches; the surge and the drift from chapter 1 on. */
@@ -342,14 +371,26 @@ const HINT_RULES: Readonly<Record<HintKey, (s: GameState) => boolean>> = {
   surge: (s) => fromChapterOne(s) && straightAhead(s) >= HINT.straight,
   drift: (s) => fromChapterOne(s) && pace(s.car) > HINT.turnSpeed && sharpTurnAhead(s),
 };
-/** The order hints are checked in; at most one fires per frame. */
+/** The order hints whose moments come in the same frame are queued in. */
 const HINT_ORDER: readonly HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop', 'surge', 'drift'];
 
-/** Step 10: the first hint not yet shown this session whose moment has come. */
+/**
+ * Step 10. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
+ * first hint fires once the hint on the HUD has stayed HINT_MIN, even if its own moment has passed (each is a lesson).
+ * At most one fires per frame. The queue is dropped when the lakon ends.
+ */
 function stepHints(s: GameState): { state: GameState; event: GameEvent | null } {
-  const key = HINT_ORDER.find((k) => !s.hintsShown.includes(k) && HINT_RULES[k](s));
-  if (!key) return { state: s, event: null };
-  return { state: { ...s, hintsShown: [...s.hintsShown, key], hintAt: s.clock }, event: { type: 'hint', key } };
+  if (s.run.phase === 'done') return { state: s.hintQueue.length > 0 ? { ...s, hintQueue: [] } : s, event: null };
+  const due = HINT_ORDER.filter((k) => !s.hintsShown.includes(k) && !s.hintQueue.includes(k) && HINT_RULES[k](s));
+  const queue = due.length > 0 ? [...s.hintQueue, ...due] : s.hintQueue;
+  if (queue.length === 0 || s.clock - s.hintAt < HINT_MIN) {
+    return { state: queue === s.hintQueue ? s : { ...s, hintQueue: queue }, event: null };
+  }
+  const [key, ...rest] = queue;
+  return {
+    state: { ...s, hintsShown: [...s.hintsShown, key], hintQueue: rest, hintAt: s.clock },
+    event: { type: 'hint', key },
+  };
 }
 
 /**
@@ -429,7 +470,7 @@ export function retryFromCheckpoint(s: GameState, w: World): GameState {
   return {
     ...s,
     car,
-    cam: initChase(car, chaseOpts(w, ANY_ASPECT, car)),
+    cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)),
     run: back.run,
     shot: null,
     route: routeFor(back.run, car, null, w),
@@ -447,7 +488,7 @@ export function teleportToMarker(s: GameState, w: World): GameState {
   if (s.run.phase !== 'roam' || !s.run.def.marker) return s;
   const { x, z, yaw } = s.run.def.start;
   const car = initChariot(x, z, yaw);
-  return { ...s, car, cam: initChase(car, chaseOpts(w, ANY_ASPECT, car)), route: routeFor(s.run, car, null, w) };
+  return { ...s, car, cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)), route: routeFor(s.run, car, null, w) };
 }
 
 /** What the camera shows: the shot playing, else the chase view (its shake runs on the clock). */

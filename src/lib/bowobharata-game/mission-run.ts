@@ -109,6 +109,11 @@ export function startRun(def: MissionDef): RunState {
   };
 }
 
+/** Whether the chariot is the player's to drive: roaming, or in the active part of a lakon. */
+export function drivable(run: RunState): boolean {
+  return run.phase === 'roam' || run.phase === 'active';
+}
+
 export function totalReal(def: MissionDef): number {
   return realTargets(def).length;
 }

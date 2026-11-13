@@ -17,9 +17,13 @@ export interface HudSnapshot {
   done: number;
   total: number;
   lap: number | null;
-  /** Whole seconds left (rounded up, never below 0), or null with no timer. */
+  /**
+   * Whole seconds left on the lakon or its leg, rounded up (ceil(timeLeft(run) − 1e-9)) and never below 0, from the
+   * intro on; null in roam and when the lakon has no timer.
+   */
   timer: number | null;
   speedKmh: number;
+  /** The ring fills, in hundredths. */
   surge: { ready: boolean; frac: number };
   sight: { on: boolean; charge: number };
   hint: HintKey | null;
@@ -27,8 +31,9 @@ export interface HudSnapshot {
 
 /** Seconds a hint stays on the HUD. */
 export const HINT_SECONDS = 3.5;
-/** Ring fills closer than this count as the same. */
-const RING_STEP = 0.01;
+
+/** A ring's fill in hundredths, so equal snapshots compare equal however the fill crept. */
+const fill = (x: number) => Math.round(clamp(x, 0, 1) * 100) / 100;
 
 function objectiveOf(s: GameState): ObjectiveKey {
   const { run } = s;
@@ -70,13 +75,13 @@ export function hudOf(s: GameState, w: World): HudSnapshot {
     lap: null,
     timer: timerOf(run),
     speedKmh: Math.round(Math.hypot(car.vx, car.vz) * 3.6),
-    surge: { ready: car.cooldown <= 0, frac: clamp(1 - car.cooldown / DRIVE.boostCooldown, 0, 1) },
-    sight: { on: sight.on, charge: sight.charge },
+    surge: { ready: car.cooldown <= 0, frac: fill(1 - car.cooldown / DRIVE.boostCooldown) },
+    sight: { on: sight.on, charge: fill(sight.charge) },
     hint: shown.length > 0 && s.clock - s.hintAt < HINT_SECONDS ? shown[shown.length - 1] : null,
   };
 }
 
-/** Whether the two snapshots look the same: equal fields, ring fills within RING_STEP. */
+/** Whether the two snapshots are the same, field for field (the fills are already in hundredths). */
 export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
   return (
     a.phase === b.phase &&
@@ -89,9 +94,9 @@ export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
     a.timer === b.timer &&
     a.speedKmh === b.speedKmh &&
     a.surge.ready === b.surge.ready &&
-    Math.abs(a.surge.frac - b.surge.frac) < RING_STEP &&
+    a.surge.frac === b.surge.frac &&
     a.sight.on === b.sight.on &&
-    Math.abs(a.sight.charge - b.sight.charge) < RING_STEP &&
+    a.sight.charge === b.sight.charge &&
     a.hint === b.hint
   );
 }

@@ -66,7 +66,7 @@ export const NO_INPUT: Readonly<ChariotInput> = Object.freeze({
 
 const CLEAR: DriveEnv = { cloud: false };
 /** At or below this forward speed a held brake stops the chariot dead, and holding it counts toward reversing. */
-const REST_SPEED = 0.05;
+export const REST_SPEED = 0.05;
 /** Seconds: a surge the guard cancels this soon after it starts gets its cooldown back. */
 const SURGE_REFUND = 0.2;
 /** A pedal or steer reading that is not a finite number counts as 0. */

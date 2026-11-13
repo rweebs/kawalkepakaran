@@ -8,6 +8,7 @@ import { timeLeft, type GameEvent, type HintKey } from '../src/lib/bowobharata-g
 import { ANCHORS, PLAY, RECORD_CIRCLE, TOWER_EXIT } from '../src/lib/bowobharata-game/world';
 import { GUARD, MISSION_TIMING } from '../src/lib/bowobharata-game/tuning';
 import {
+  HINT_MIN,
   advance,
   createWorld,
   mixOf,
@@ -21,8 +22,8 @@ import {
   type GameState,
   type World,
 } from '../src/lib/bowobharata-game/engine';
-import { assistSteer, autopilot, type AutoOpts } from '../src/lib/bowobharata-game/autopilot';
-import { hudOf, sameHud } from '../src/lib/bowobharata-game/hud';
+import { assistSteer, autopilot, createBot, type AutoOpts } from '../src/lib/bowobharata-game/autopilot';
+import { HINT_SECONDS, hudOf, sameHud } from '../src/lib/bowobharata-game/hud';
 
 const DT = 1 / 30;
 const SEEDS = [1, 2, 3];
@@ -67,16 +68,16 @@ interface BotRun {
   leastFigureGap: number;
 }
 
-/** The autopilot from def.start until `done` or `limit` seconds of world time. One options object per run. */
+/** A bot from def.start until `done` or `limit` seconds of world time: one bot per run. */
 function runBot(ch: number, seed: number, w: World, opts: Partial<AutoOpts> | undefined, limit: number): BotRun {
   const def = defOf(ch);
   let s = startChapter(def, def.start, seed, w);
-  const o = opts && { ...opts };
+  const bot = createBot(opts);
   const events: GameEvent[] = [];
   let time = 0;
   let leastFigureGap = Infinity;
   while (time < limit + 1) {
-    const r = advance(s, autopilot(s, w, o), DT, w);
+    const r = advance(s, bot(s, w), DT, w);
     s = r.state;
     time += DT;
     events.push(...r.events);
@@ -104,19 +105,15 @@ describe('F3: standing still', () => {
       const def = defOf(ch);
       let s = startChapter(def, def.start, seed, desktop);
       let time = 0;
-      let fails = 0;
+      let early = 0;
       while (time < 0.8 + 50) {
         const r = advance(s, input({}, { skip: time >= 0.8 }), DT, desktop);
         time += DT;
-        for (const e of r.events) {
-          if (e.type !== 'failed') continue;
-          fails++;
-          expect(r.state.run.t).toBeGreaterThanOrEqual(MISSION_TIMING.grace);
-        }
+        if (r.events.some((e) => e.type === 'failed') && r.state.run.t < MISSION_TIMING.grace) early++;
         s = r.state;
       }
       expect(s.run.t).toBeGreaterThan(MISSION_TIMING.grace);
-      expect(fails).toBe(0);
+      expect(early).toBe(0);
     }
   });
 });
@@ -140,23 +137,33 @@ describe('every lakon can be won', () => {
     expect(phone.mobile).toBe(true);
     const soft = defOf(ch).softTime;
     const limit = soft === null ? 240 : 0.6 * soft;
-    expectWon(runBot(ch, 1, phone, undefined, limit), limit);
+    for (const seed of SEEDS) expectWon(runBot(ch, seed, phone, undefined, limit), limit);
   }, BOT_TIMEOUT);
 });
 
 describe('hints', () => {
-  it('the prologue teaches ride, steer, rewrites, sight, slow and stop, in that order, once each', () => {
+  /**
+   * The brief's prologue: the bot's steering throughout; after the 8th record the throttle and brake are scripted so the
+   * car comes within 25 m of the tower's centre above 8 m/s, enters the reach circle at 5–7 m/s, then stops. It runs on
+   * HINT_SECONDS past the outro's start so the last hint's time on the HUD is complete.
+   */
+  function scriptedPrologue(seed: number) {
     const w = desktop;
-    let s = startChapter(defOf(0), defOf(0).start, 1, w);
+    const def = defOf(0);
+    let s = startChapter(def, def.start, seed, w);
+    const bot = createBot();
+    const copy = def.scripted.decoys[0];
     const log: GameEvent[] = [];
-    const tower = ANCHORS.tower;
+    const fired: { key: HintKey; clock: number; copy: number }[] = [];
+    const shown: { clock: number; hint: HintKey | null }[] = [];
     let fastNear = false;
     let entry: number | null = null;
-    for (let k = 0; k < 240 / DT && !log.some((e) => e.type === 'outroStart'); k++) {
-      const auto = autopilot(s, w);
+    let end = Infinity;
+    for (let k = 0; k < 240 / DT && s.clock < end; k++) {
+      const auto = bot(s, w);
       let drive = auto.drive;
       if (s.run.recorded.length === 8 && s.run.phase === 'active') {
-        const d = dist(hullMid(s.car), tower);
+        const d = dist(hullMid(s.car), ANCHORS.tower);
         const v = Math.hypot(s.car.vx, s.car.vz);
         if (d > 22) drive = { ...drive, throttle: 1, brake: 0 };
         else if (d > RECORD_CIRCLE) drive = { ...drive, throttle: v < 5.5 ? 1 : 0, brake: v > 6.5 ? 0.5 : 0 };
@@ -165,17 +172,74 @@ describe('hints', () => {
         if (entry === null && d <= RECORD_CIRCLE) entry = v;
       }
       s = step(s, { ...auto, drive }, w, log);
+      for (const e of log.splice(0)) {
+        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, copy: dist(hullMid(s.car), copy) });
+        if (e.type === 'outroStart') end = s.clock + HINT_SECONDS;
+      }
+      shown.push({ clock: s.clock, hint: hudOf(s, w).hint });
     }
+    return { s, fired, shown, fastNear, entry };
+  }
+
+  it.each(SEEDS)('the prologue teaches ride, steer, rewrites, sight, slow and stop, in order, once each (seed %i)', (seed) => {
+    const { s, fired, shown, fastNear, entry } = scriptedPrologue(seed);
     expect(fastNear).toBe(true);
     expect(entry).not.toBeNull();
     expect(entry!).toBeGreaterThanOrEqual(5);
     expect(entry!).toBeLessThanOrEqual(7);
-    expect(hintKeys(log)).toEqual(['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop']);
-    expect(s.hintsShown).toEqual(['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop']);
+    const order: HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop'];
+    expect(fired.map((f) => f.key)).toEqual(order);
+    expect(s.hintsShown).toEqual(order);
+    // Each stays on the HUD until the next replaces it, which is never sooner than HINT_MIN; the last for HINT_SECONDS.
+    fired.forEach((f, k) => {
+      const until = Math.min(fired[k + 1]?.clock ?? Infinity, f.clock + HINT_SECONDS);
+      expect(until - f.clock).toBeGreaterThanOrEqual(HINT_MIN - 1e-9);
+      const on = shown.filter((v) => v.clock >= f.clock && v.clock < until - 1e-9);
+      expect(on.length).toBeGreaterThan(0);
+      for (const v of on) expect(v.hint, `${f.key} at ${v.clock.toFixed(2)}`).toBe(f.key);
+    });
+    // The copy counts as ahead in the whole front half-plane, so rewrites comes near 30 m out.
+    const rewrites = fired.find((f) => f.key === 'rewrites')!;
+    expect(rewrites.copy).toBeGreaterThan(28);
+    expect(rewrites.copy).toBeLessThanOrEqual(30);
   }, BOT_TIMEOUT);
 
-  it('a fresh parva 1 fires no ride or steer hint, nor any other prologue lesson', () => {
-    const r = runBot(1, 1, desktop, undefined, 120);
+  it('a hint due within HINT_MIN of the last waits in the queue, then fires even after its moment', () => {
+    let s = toActive(0);
+    expect(s.hintsShown).toEqual(['ride']);
+    const ride = s.hintAt;
+    const yaw = s.car.yaw;
+    // Turned 60° off L1 for a frame: steer comes due while ride is still within HINT_MIN, so it waits.
+    s = step({ ...s, car: { ...s.car, yaw: yaw + Math.PI / 3 } }, IDLE);
+    expect(s.hintQueue).toEqual(['steer']);
+    expect(hudOf(s, desktop).hint).toBe('ride');
+    // Back on line: steer's own moment has passed, but it is a lesson and still fires once ride has had HINT_MIN.
+    s = { ...s, car: { ...s.car, yaw } };
+    const log: GameEvent[] = [];
+    while (hintKeys(log).length === 0 && s.clock - ride < 3) {
+      expect(hudOf(s, desktop).hint).toBe('ride');
+      s = step(s, IDLE, desktop, log);
+    }
+    expect(hintKeys(log)).toEqual(['steer']);
+    expect(s.hintAt - ride).toBeGreaterThanOrEqual(HINT_MIN - 1e-9);
+    expect(s.hintAt - ride).toBeLessThan(HINT_MIN + DT + 1e-9);
+    expect(s.hintQueue).toEqual([]);
+    expect(hudOf(s, desktop).hint).toBe('steer');
+  });
+
+  it('the hint queue is dropped when the lakon ends', () => {
+    let s = skipToRecord(toActive(0)).state;
+    s = { ...s, run: { ...s.run, phaseT: MISSION_TIMING.outroSeconds - DT / 2 }, hintAt: s.clock, hintQueue: ['steer'] };
+    const log: GameEvent[] = [];
+    s = step(s, IDLE, desktop, log);
+    expect(s.run.phase).toBe('done');
+    expect(s.hintQueue).toEqual([]);
+    for (let k = 0; k < 3 / DT; k++) s = step(s, IDLE, desktop, log);
+    expect(hintKeys(log)).toEqual([]);
+  });
+
+  it.each(SEEDS)('a fresh parva 1 fires no ride or steer hint, nor any other prologue lesson (seed %i)', (seed) => {
+    const r = runBot(1, seed, desktop, undefined, 120);
     expect(r.done).toBe(true);
     const keys = hintKeys(r.events);
     const lessons: HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop'];
@@ -429,6 +493,24 @@ describe('shots and the camera', () => {
     expect(Math.hypot(s.car.vx, s.car.vz)).toBeLessThan(1e-6);
   }, BOT_TIMEOUT);
 
+  it('after a fail the input is ignored: full throttle and steer bring the chariot to rest, and it stays put', () => {
+    let s = toActive(1);
+    for (let k = 0; k < 90; k++) s = step(s, autopilot(s, desktop));
+    expect(Math.hypot(s.car.vx, s.car.vz)).toBeGreaterThan(5);
+    s = step({ ...s, run: { ...s.run, t: 121 } }, IDLE);
+    expect(s.run.phase).toBe('failed');
+    const wild = input({ throttle: 1, steer: 1, boost: true, drift: true }, { sight: true, assist: true });
+    for (let k = 0; k < 1 / DT; k++) s = step(s, wild);
+    expect(Math.hypot(s.car.vx, s.car.vz)).toBeLessThan(1e-6);
+    const rest = { x: s.car.x, z: s.car.z, yaw: s.car.yaw };
+    for (let k = 0; k < 1 / DT; k++) {
+      s = step(s, wild);
+      expect({ x: s.car.x, z: s.car.z, yaw: s.car.yaw }).toEqual(rest);
+      expect(s.sight.on).toBe(false);
+    }
+    expect(s.run.phase).toBe('failed');
+  });
+
   it('the fail shot starts from the live view', () => {
     let s = toActive(1);
     for (let k = 0; k < 60; k++) s = step(s, autopilot(s, desktop));
@@ -439,6 +521,24 @@ describe('shots and the camera', () => {
     let later = failed;
     for (let k = 0; k < 2 / DT; k++) later = step(later, IDLE);
     expect(viewOf(later, desktop, ASPECT).pose.pos.y).toBeGreaterThan(viewOf(failed, desktop, ASPECT).pose.pos.y + 3);
+  });
+
+  it('a soft contact (a post at about 3.5 m/s) is resolved with no bump and no shake', () => {
+    let s = toActive(1);
+    const post = { x: 32, z: -20 };
+    // Facing east, the front hull circle 0.2 m short of the post's west side, at 3.5 m/s.
+    s = { ...s, car: { ...initChariot(post.x - 0.5 - 1.45 - 0.2 - 3.6, post.z, 0), vx: 3.5, vz: 0 } };
+    const posts = desktop.colliders.filter((c) => c.id.startsWith('post-'));
+    const log: GameEvent[] = [];
+    let touched = false;
+    for (let k = 0; k < 15; k++) {
+      s = step(s, input({ throttle: 0.2 }), desktop, log);
+      if (s.car.holdOff > 0) touched = true;
+      expect(hullClearance(s.car.x, s.car.z, s.car.yaw, posts)).toBeGreaterThanOrEqual(-1e-9);
+      expect(s.cam.shake).toBe(0);
+    }
+    expect(touched).toBe(true);
+    expect(types(log)).not.toContain('bump');
   });
 
   it('a hard contact with the tower shakes the camera and gives a bump; open ground gives none', () => {
@@ -590,7 +690,18 @@ describe('HUD snapshot', () => {
     expect(h.surge.ready).toBe(false);
     expect(h.surge.frac).toBeLessThan(0.05);
     expect(h.sight.on).toBe(true);
-    expect(h.sight.charge).toBeLessThan(1);
+    expect(h.sight.charge).toBe(0.99);
+    // In hundredths, so a ring refilling a little each frame still changes the snapshot, frame by frame.
+    let prev = h;
+    let changes = 0;
+    for (let k = 0; k < 1 / DT; k++) {
+      s = step(s, IDLE);
+      const next = hudOf(s, desktop);
+      for (const f of [next.surge.frac, next.sight.charge]) expect(Math.round(f * 100)).toBeCloseTo(f * 100, 9);
+      if (!sameHud(prev, next)) changes++;
+      prev = next;
+    }
+    expect(changes).toBeGreaterThanOrEqual(10);
   });
 
   it('sameHud is true for equal snapshots and false when the speed differs', () => {
@@ -603,6 +714,8 @@ describe('HUD snapshot', () => {
     expect(sameHud(a, { ...a, timer: 90 })).toBe(false);
     expect(sameHud(a, { ...a, hint: 'surge' })).toBe(false);
     expect(sameHud(a, { ...a, objective: 'tower' })).toBe(false);
+    expect(sameHud(a, { ...a, surge: { ...a.surge, frac: 0.42 } })).toBe(false);
+    expect(sameHud(a, { ...a, sight: { ...a.sight, charge: 0.98 } })).toBe(false);
   });
 });
 
@@ -667,33 +780,92 @@ describe('roam, the marker and the assist', () => {
     expect(types(log)).not.toContain('bump');
   });
 
-  it('reaction delays the bot through a queue kept with its options object', () => {
+  it('createBot delays the decisions by its reaction, from a queue in its closure', () => {
     const w = desktop;
-    const o = { reaction: 0.4 };
+    const bot = createBot({ reaction: 0.4 });
     let s = toActive(1);
     const now: FrameInput[] = [];
     const late: FrameInput[] = [];
     for (let k = 0; k < 60; k++) {
       now.push(autopilot(s, w));
-      late.push(autopilot(s, w, o));
+      late.push(bot(s, w));
       s = step(s, late[k]);
     }
     const lag = Math.round(0.4 / DT);
     expect(now[0].drive.throttle).toBeGreaterThan(0);
     for (let k = 0; k < lag; k++) expect(late[k].drive).toEqual(NO_INPUT);
     for (let k = lag; k < 60; k++) expect(late[k]).toEqual(now[k - lag]);
-    // A new run (its clock behind the queue's) starts the queue over: its own first decision comes after the lag.
+    expect(hasFunction(s)).toBe(false);
+    // Reused after its run (the clock going back), the bot starts its queue over: the new run's first decision comes
+    // after the lag, not the old run's.
     let t = toActive(1);
     const now2: FrameInput[] = [];
     const late2: FrameInput[] = [];
     for (let k = 0; k <= lag; k++) {
       now2.push(autopilot(t, w));
-      late2.push(autopilot(t, w, o));
+      late2.push(bot(t, w));
       t = step(t, late2[k]);
     }
     expect(late2[0].drive).toEqual(NO_INPUT);
     expect(late2[lag]).toEqual(now2[0]);
   });
+
+  it('autopilot() is pure: the same state gives the same input, whatever ran before', () => {
+    const w = desktop;
+    const s = toActive(1);
+    const first = autopilot(s, w, { speedCap: 0.6 });
+    let other = toActive(3);
+    const bot = createBot({ speedCap: 0.6, reaction: 0.4 });
+    for (let k = 0; k < 90; k++) {
+      autopilot(other, w, { speedCap: 0.6 });
+      other = step(other, bot(other, w));
+    }
+    expect(autopilot(s, w, { speedCap: 0.6 })).toEqual(first);
+    expect(autopilot(structuredClone(s), w, { speedCap: 0.6 })).toEqual(first);
+    expect(autopilot(s, w)).toEqual(createBot()(s, w));
+    // The reaction delay needs a queue, so only createBot takes it: autopilot() rejects it, even through a variable.
+    const firstTime: Partial<AutoOpts> = { speedCap: 0.6, reaction: 0.4 };
+    // @ts-expect-error reaction is createBot's option
+    autopilot(s, w, { reaction: 0.4 });
+    // @ts-expect-error reaction is createBot's option
+    autopilot(s, w, firstTime);
+  });
+
+  it('two bots built from one options object, stepped in lock step on separate runs, each finish their lakon', () => {
+    const o: Partial<AutoOpts> = { speedCap: 0.6, reaction: 0.4 };
+    const runs = [
+      { s: startChapter(defOf(1), defOf(1).start, 1, desktop), bot: createBot(o), done: false },
+      { s: startChapter(defOf(1), TOWER_EXIT, 1, desktop), bot: createBot(o), done: false },
+      { s: startChapter(defOf(3), defOf(3).start, 1, desktop), bot: createBot(o), done: false },
+    ];
+    for (let k = 0; k < 160 / DT && runs.some((r) => !r.done); k++) {
+      for (const r of runs) {
+        if (r.done) continue;
+        const out = advance(r.s, r.bot(r.s, desktop), DT, desktop);
+        r.s = out.state;
+        r.done = out.events.some((e) => e.type === 'done');
+      }
+    }
+    expect(runs.map((r) => r.done)).toEqual([true, true, true]);
+    expect(runs.map((r) => r.s.run.recorded)).toEqual([['A', 'B'], ['A', 'B'], ['A', 'B', 'C', 'D']]);
+    // Each matches the same bot run on its own.
+    expect(runs[0].s).toEqual(runBot(1, 1, desktop, o, 120).state);
+    expect(runs[2].s).toEqual(runBot(3, 1, desktop, o, 150).state);
+  }, BOT_TIMEOUT);
+
+  it('a fresh options literal for each run works', () => {
+    for (const ch of [1, 5]) {
+      let s = startChapter(defOf(ch), defOf(ch).start, 1, desktop);
+      const bot = createBot({ speedCap: 0.6, reaction: 0.4 });
+      let done = false;
+      for (let k = 0; k < 120 / DT && !done; k++) {
+        const out = advance(s, bot(s, desktop), DT, desktop);
+        s = out.state;
+        done = out.events.some((e) => e.type === 'done');
+      }
+      expect(done).toBe(true);
+    }
+  }, BOT_TIMEOUT);
 
   it('assistSteer blends the autopilot into the player steer', () => {
     expect(assistSteer(0, 1)).toBeCloseTo(0.7, 12);

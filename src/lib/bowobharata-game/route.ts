@@ -1,6 +1,8 @@
 // A nav grid over the play disc and A* routes on it, string-pulled. Routes keep `clear` m from every collider,
 // so the chariot (hull radius 1.45 m) can follow them. Pure and deterministic: ties break by insertion order.
-import { dist, type XZ } from './geom';
+// Also the geometry of following a route: projection, points along it, its corners, and pure pursuit.
+import { angleDiff, clamp, dist, yawOf, type XZ } from './geom';
+import { speedOf, turnRadius, type ChariotState } from './drive';
 import { PLAY, clearance, type Collider } from './world';
 
 export interface NavGrid {
@@ -201,4 +203,82 @@ export function pathLength(p: readonly XZ[]): number {
   let s = 0;
   for (let k = 1; k < p.length; k++) s += dist(p[k - 1], p[k]);
   return s;
+}
+
+/** Pure pursuit's lookahead (m) at forward speed v. */
+export function lookahead(v: number): number {
+  return clamp(4 + 0.5 * v, 5, 14);
+}
+
+/** The arc length along the polyline at its point nearest to p, and the distance from p to it. */
+export function projectOnPath(path: readonly XZ[], p: XZ): { along: number; off: number } {
+  if (path.length === 1) return { along: 0, off: dist(p, path[0]) };
+  let best = { along: 0, off: Infinity };
+  let start = 0;
+  for (let k = 1; k < path.length; k++) {
+    const a = path[k - 1];
+    const dx = path[k].x - a.x;
+    const dz = path[k].z - a.z;
+    const len = Math.hypot(dx, dz);
+    const t = len > 0 ? clamp(((p.x - a.x) * dx + (p.z - a.z) * dz) / (len * len), 0, 1) : 0;
+    const off = Math.hypot(p.x - (a.x + t * dx), p.z - (a.z + t * dz));
+    if (off < best.off) best = { along: start + t * len, off };
+    start += len;
+  }
+  return best;
+}
+
+/** The point at arc length `along` on the polyline, held at its ends. */
+export function pointAt(path: readonly XZ[], along: number): XZ {
+  let left = Math.max(0, along);
+  for (let k = 1; k < path.length; k++) {
+    const len = dist(path[k - 1], path[k]);
+    if (left <= len && len > 0) {
+      const t = left / len;
+      return { x: path[k - 1].x + (path[k].x - path[k - 1].x) * t, z: path[k - 1].z + (path[k].z - path[k - 1].z) * t };
+    }
+    left -= len;
+  }
+  return path[path.length - 1];
+}
+
+/** The polyline's corners after arc length `along`: each one's distance ahead, its signed turn (radians) and place. */
+export function turnsAhead(path: readonly XZ[], along: number): { ahead: number; turn: number; at: XZ }[] {
+  // A point within a millimetre of the last one kept adds no direction of its own.
+  const pts: XZ[] = [];
+  for (const p of path) if (pts.length === 0 || dist(p, pts[pts.length - 1]) > 1e-3) pts.push(p);
+  const corners: { ahead: number; turn: number; at: XZ }[] = [];
+  let at = 0;
+  for (let k = 1; k + 1 < pts.length; k++) {
+    at += dist(pts[k - 1], pts[k]);
+    if (at <= along) continue;
+    const into = yawOf({ x: pts[k].x - pts[k - 1].x, z: pts[k].z - pts[k - 1].z });
+    const onward = yawOf({ x: pts[k + 1].x - pts[k].x, z: pts[k + 1].z - pts[k].z });
+    corners.push({ ahead: at - along, turn: angleDiff(onward, into), at: pts[k] });
+  }
+  return corners;
+}
+
+export interface Pursuit {
+  /** Arc length along the path at the point nearest the chariot's origin. */
+  along: number;
+  /** The point lookahead(v) m further along the path. */
+  look: XZ;
+  /** Its bearing off the heading, radians, positive to the left. */
+  alpha: number;
+  /** The steer for the arc through it, as a share of the tightest turn at this speed; full lock once it is behind. */
+  steer: number;
+}
+
+/** Pure pursuit along `path` for the chariot: the lookahead point, its bearing and the steer toward it. */
+export function pursuit(car: ChariotState, path: readonly XZ[]): Pursuit {
+  const v = Math.max(0, speedOf(car));
+  const { along } = projectOnPath(path, car);
+  const look = pointAt(path, along + lookahead(v));
+  const reach = dist(car, look);
+  if (reach < 1e-6) return { along, look, alpha: 0, steer: 0 };
+  const alpha = angleDiff(yawOf({ x: look.x - car.x, z: look.z - car.z }), car.yaw);
+  if (Math.abs(alpha) >= Math.PI / 2) return { along, look, alpha, steer: alpha > 0 ? -1 : 1 };
+  const curvature = (2 * Math.sin(alpha)) / Math.max(1, reach);
+  return { along, look, alpha, steer: clamp(-curvature * turnRadius(v), -1, 1) };
 }

@@ -1,25 +1,29 @@
-// The bot driver and the steering assist. The bot runs pure pursuit along the engine's cached route toward the first
-// open target, at a speed that drops for sharp turns and for the circles where the chariot must stop. It is a pure
-// function of the state, except for the reaction delay: that queue lives with the options object it is given.
-// Units are metres and seconds; steer +1 turns right, so yaw decreases.
+// The bot driver. It runs pure pursuit along the engine's route toward the first open target (routeAhead), at a speed
+// that drops for sharp turns and for the circles where the chariot must stop. autopilot() is the bot's decision for
+// this frame, a pure function of its arguments. createBot() adds the reaction delay: its queue lives in the closure it
+// returns, one bot per run, never in GameState. Units are metres and seconds; steer +1 turns right, so yaw decreases.
 import { angleDiff, clamp, dist, yawOf, type XZ } from './geom';
-import { NO_INPUT, speedOf, turnRadius, type ChariotInput } from './drive';
+import { NO_INPUT, REST_SPEED, speedOf, type ChariotInput } from './drive';
 import { hullMid } from './collide';
-import { openTargets, type RunState } from './mission-run';
-import type { MissionDef } from './missions';
-import { pathLength } from './route';
+import { drivable, openTargets, type RunState } from './mission-run';
+import { pathLength, pursuit, turnsAhead, type Pursuit } from './route';
 import { DRIVE, MISSION_TIMING } from './tuning';
-import type { FrameInput, GameState, World } from './engine';
+import { DEFAULT_ASPECT, routeAhead, type FrameInput, type GameState, type World } from './engine';
+
+/** The steering assist blends this bot's steer into the player's. The engine applies it, so it lives there. */
+export { assistSteer } from './engine';
 
 export interface AutoOpts {
   /** The share of the top speed (17 m/s) the bot drives at most. */
   speedCap: number;
-  /** Real seconds between a decision and the input that carries it out. */
+  /** Real seconds between a decision and the input that carries it out: only createBot can add it. */
   reaction: number;
 }
 
+/** autopilot's options: every AutoOpts field but `reaction`, which would need a queue (see createBot). */
+export type DecisionOpts = Partial<Omit<AutoOpts, 'reaction'>> & { reaction?: never };
+
 const DEFAULT_OPTS: AutoOpts = { speedCap: 1, reaction: 0 };
-const ASPECT = 16 / 9;
 /** A path turning more than this (radians) is taken at TURN_SPEED. */
 const TURN_SHARP = (50 * Math.PI) / 180;
 const TURN_SPEED = 8;
@@ -40,99 +44,8 @@ const CIRCLE_SPEED = 3;
 const STOP_IN = 1;
 /** The deceleration (m/s²) the bot plans with: well under the brake's 15, so it reaches each limit in time. */
 const PLAN_DECEL = 6;
-/** At or below this forward speed (m/s) the chariot counts as at rest: a brake held longer would start the reverse. */
-const REST = 0.05;
 
 type Target = ReturnType<typeof openTargets>[number];
-
-/** Pure pursuit's lookahead (m) at forward speed v. */
-export function lookahead(v: number): number {
-  return clamp(4 + 0.5 * v, 5, 14);
-}
-
-/** The arc length along the polyline at its point nearest to p, and the distance from p to it. */
-export function projectOnPath(path: readonly XZ[], p: XZ): { along: number; off: number } {
-  if (path.length === 1) return { along: 0, off: dist(p, path[0]) };
-  let best = { along: 0, off: Infinity };
-  let start = 0;
-  for (let k = 1; k < path.length; k++) {
-    const a = path[k - 1];
-    const dx = path[k].x - a.x;
-    const dz = path[k].z - a.z;
-    const len = Math.hypot(dx, dz);
-    const t = len > 0 ? clamp(((p.x - a.x) * dx + (p.z - a.z) * dz) / (len * len), 0, 1) : 0;
-    const off = Math.hypot(p.x - (a.x + t * dx), p.z - (a.z + t * dz));
-    if (off < best.off) best = { along: start + t * len, off };
-    start += len;
-  }
-  return best;
-}
-
-/** The point at arc length `along` on the polyline, held at its ends. */
-export function pointAt(path: readonly XZ[], along: number): XZ {
-  let left = Math.max(0, along);
-  for (let k = 1; k < path.length; k++) {
-    const len = dist(path[k - 1], path[k]);
-    if (left <= len && len > 0) {
-      const t = left / len;
-      return { x: path[k - 1].x + (path[k].x - path[k - 1].x) * t, z: path[k - 1].z + (path[k].z - path[k - 1].z) * t };
-    }
-    left -= len;
-  }
-  return path[path.length - 1];
-}
-
-/** The polyline's corners after arc length `along`: each one's distance ahead, its signed turn (radians) and place. */
-export function turnsAhead(path: readonly XZ[], along: number): { ahead: number; turn: number; at: XZ }[] {
-  // A point within a millimetre of the last one kept adds no direction of its own.
-  const pts: XZ[] = [];
-  for (const p of path) if (pts.length === 0 || dist(p, pts[pts.length - 1]) > 1e-3) pts.push(p);
-  const corners: { ahead: number; turn: number; at: XZ }[] = [];
-  let at = 0;
-  for (let k = 1; k + 1 < pts.length; k++) {
-    at += dist(pts[k - 1], pts[k]);
-    if (at <= along) continue;
-    const into = yawOf({ x: pts[k].x - pts[k - 1].x, z: pts[k].z - pts[k - 1].z });
-    const onward = yawOf({ x: pts[k + 1].x - pts[k].x, z: pts[k + 1].z - pts[k].z });
-    corners.push({ ahead: at - along, turn: angleDiff(onward, into), at: pts[k] });
-  }
-  return corners;
-}
-
-/** Whether the chariot is under the player's control: roaming, or in the active part of a lakon. */
-export function drivable(run: RunState): boolean {
-  return run.phase === 'roam' || run.phase === 'active';
-}
-
-/** The path the bot follows: the engine's cached route when it leads to `target`, else the straight line to it. */
-function pathTo(s: GameState, target: Target): readonly XZ[] {
-  const r = s.route;
-  return r && r.target === target.id && r.points.length > 1 ? r.points : [{ x: s.car.x, z: s.car.z }, target.at];
-}
-
-interface Pursuit {
-  path: readonly XZ[];
-  along: number;
-  look: XZ;
-  /** The bearing of the lookahead point off the heading, radians, positive to the left. */
-  alpha: number;
-}
-
-function pursue(s: GameState, target: Target): Pursuit {
-  const path = pathTo(s, target);
-  const { along } = projectOnPath(path, s.car);
-  const look = pointAt(path, along + lookahead(Math.max(0, speedOf(s.car))));
-  const near = dist(s.car, look) < 1e-6;
-  const alpha = near ? 0 : angleDiff(yawOf({ x: look.x - s.car.x, z: look.z - s.car.z }), s.car.yaw);
-  return { path, along, look, alpha };
-}
-
-/** Pure pursuit: the arc through the lookahead point, as a share of the tightest turn at this speed. */
-function steerFor(s: GameState, p: Pursuit): number {
-  if (Math.abs(p.alpha) >= Math.PI / 2) return p.alpha > 0 ? -1 : 1;
-  const curvature = (2 * Math.sin(p.alpha)) / Math.max(1, dist(s.car, p.look));
-  return clamp(-curvature * turnRadius(Math.max(0, speedOf(s.car))), -1, 1);
-}
 
 /** The circle where the chariot must stop for this target: the marker's in roam, the reach circle in a lakon. */
 function stopCircle(run: RunState, target: Target): { at: XZ; r: number } | null {
@@ -158,24 +71,24 @@ function afterTarget(run: RunState, target: Target): XZ | null {
  * The speed to arrive at a record with: the path ahead does not end there, it turns toward what comes next. A pickup
  * is taken MISSION_TIMING.pickupR m short, by the hull's middle 1.6 m ahead of the origin, so the turn starts early.
  */
-function arrivalLimit(s: GameState, p: Pursuit, target: Target): number {
+function arrivalLimit(run: RunState, path: readonly XZ[], p: Pursuit, target: Target): number {
   if (target.kind !== 'pickup') return Infinity;
-  const next = afterTarget(s.run, target);
-  const n = p.path.length;
+  const next = afterTarget(run, target);
+  const n = path.length;
   if (!next || n < 2) return Infinity;
-  const into = yawOf({ x: p.path[n - 1].x - p.path[n - 2].x, z: p.path[n - 1].z - p.path[n - 2].z });
+  const into = yawOf({ x: path[n - 1].x - path[n - 2].x, z: path[n - 1].z - path[n - 2].z });
   const turn = Math.abs(angleDiff(yawOf({ x: next.x - target.at.x, z: next.z - target.at.z }), into));
-  const ahead = pathLength(p.path) - p.along - (MISSION_TIMING.pickupR + 1.6);
+  const ahead = pathLength(path) - p.along - (MISSION_TIMING.pickupR + 1.6);
   if (turn > TURN_BACK) return easeTo(TURN_BACK_SPEED, ahead);
   return turn > TURN_SHARP ? easeTo(TURN_SPEED, ahead) : Infinity;
 }
 
-function targetSpeed(s: GameState, o: AutoOpts, p: Pursuit, target: Target): number {
+function targetSpeed(s: GameState, speedCap: number, path: readonly XZ[], p: Pursuit, target: Target): number {
   const off = Math.abs(p.alpha);
   if (off > TURN_BACK || (off > PIVOT_UNTIL && Math.abs(speedOf(s.car)) < PIVOT_FROM)) return 0;
-  let v = Math.min(o.speedCap * DRIVE.topSpeed, arrivalLimit(s, p, target));
+  let v = Math.min(speedCap * DRIVE.topSpeed, arrivalLimit(s.run, path, p, target));
   if (off > TURN_SHARP) v = Math.min(v, TURN_SPEED);
-  for (const t of turnsAhead(p.path, p.along)) {
+  for (const t of turnsAhead(path, p.along)) {
     if (Math.abs(t.turn) > TURN_SHARP) v = Math.min(v, easeTo(TURN_SPEED, t.ahead));
   }
   const circle = stopCircle(s.run, target);
@@ -189,60 +102,42 @@ function targetSpeed(s: GameState, o: AutoOpts, p: Pursuit, target: Target): num
 
 /** Throttle up to the target speed, brake well above it, coast in between; at a target of 0, stop and stay stopped. */
 function pedals(v: number, target: number): Pick<ChariotInput, 'throttle' | 'brake'> {
-  if (target <= 0) return { throttle: 0, brake: v > REST ? 1 : 0 };
+  if (target <= 0) return { throttle: 0, brake: v > REST_SPEED ? 1 : 0 };
   if (v < target) return { throttle: clamp((target - v) / 2, 0, 1), brake: 0 };
   if (v > target + 0.5) return { throttle: 0, brake: clamp((v - target) / 3, 0.15, 1) };
   return { throttle: 0, brake: 0 };
 }
 
-function decide(s: GameState, o: AutoOpts): FrameInput {
-  const base = { sight: false, skip: s.run.phase === 'intro', assist: false, aspect: ASPECT };
+/**
+ * The bot's decision for this frame, with no reaction delay: a pure function of its arguments, so the same state gives
+ * the same input whatever came before. This bot reads only the state; the world is for the options of Tasks 29 and 31.
+ */
+export function autopilot(s: GameState, w: World, o?: DecisionOpts): FrameInput {
+  const speedCap = o?.speedCap ?? DEFAULT_OPTS.speedCap;
+  const base = { sight: false, skip: s.run.phase === 'intro', assist: false, aspect: DEFAULT_ASPECT };
   const target = drivable(s.run) ? openTargets(s.run)[0] : undefined;
-  if (!target) return { ...base, drive: NO_INPUT };
-  const p = pursue(s, target);
-  const pedal = pedals(speedOf(s.car), targetSpeed(s, o, p, target));
-  const drive: ChariotInput = { ...NO_INPUT, ...pedal, steer: steerFor(s, p) };
-  return { ...base, drive };
+  const path = target ? routeAhead(s) : null;
+  if (!target || !path) return { ...base, drive: NO_INPUT };
+  const p = pursuit(s.car, path);
+  const pedal = pedals(speedOf(s.car), targetSpeed(s, speedCap, path, p, target));
+  return { ...base, drive: { ...NO_INPUT, ...pedal, steer: p.steer } };
 }
-
-/** The steer the bot would give now, with no delay: what the assist blends in. 0 with nothing to steer for. */
-export function autoSteer(s: GameState): number {
-  const target = drivable(s.run) ? openTargets(s.run)[0] : undefined;
-  return target ? steerFor(s, pursue(s, target)) : 0;
-}
-
-/** The player's steer with the bot's added in, less as the player steers harder: none at full lock. */
-export function assistSteer(player: number, auto: number): number {
-  const p = clamp(Number.isFinite(player) ? player : 0, -1, 1);
-  const a = clamp(Number.isFinite(auto) ? auto : 0, -1, 1);
-  return clamp(p + 0.7 * a * (1 - Math.abs(p)), -1, 1);
-}
-
-interface Delay {
-  def: MissionDef;
-  clock: number;
-  queue: { at: number; input: FrameInput }[];
-}
-const delays = new WeakMap<object, Delay>();
 
 /**
- * The bot's input for this frame. With `reaction` > 0 it gives the decision it made `reaction` real seconds ago (no
- * input before its first one is due), through a queue kept with the options object: pass the same object every frame
- * of a run. The queue starts over when the lakon changes or the clock goes back. This bot reads only the state; the
- * world is for the options of Tasks 29 and 31.
+ * One bot for one run. It gives autopilot's decisions `reaction` real seconds after making them (no input before the
+ * first one is due), through a queue held in the closure it returns. The options are read once, here; a fresh bot
+ * starts with an empty queue. Should one be reused after its run (the clock going back), its queue starts over.
  */
-export function autopilot(s: GameState, w: World, o?: Partial<AutoOpts>): FrameInput {
-  const opts: AutoOpts = { ...DEFAULT_OPTS, ...o };
-  const now = decide(s, opts);
-  if (!o || !(opts.reaction > 0)) return now;
-  let d = delays.get(o);
-  if (!d || d.def !== s.run.def || s.clock < d.clock) {
-    d = { def: s.run.def, clock: s.clock, queue: [] };
-    delays.set(o, d);
-  }
-  d.clock = s.clock;
-  d.queue.push({ at: s.clock, input: now });
-  const due = s.clock - opts.reaction + 1e-9;
-  while (d.queue.length > 1 && d.queue[1].at <= due) d.queue.shift();
-  return d.queue[0].at <= due ? d.queue[0].input : { ...now, drive: NO_INPUT, skip: false };
+export function createBot(o?: Partial<AutoOpts>): (s: GameState, w: World) => FrameInput {
+  const { reaction, ...decision } = { ...DEFAULT_OPTS, ...o };
+  if (!(reaction > 0)) return (s, w) => autopilot(s, w, decision);
+  let queue: { at: number; input: FrameInput }[] = [];
+  return (s, w) => {
+    const now = autopilot(s, w, decision);
+    if (queue.length > 0 && s.clock < queue[queue.length - 1].at) queue = [];
+    queue.push({ at: s.clock, input: now });
+    const due = s.clock - reaction + 1e-9;
+    while (queue.length > 1 && queue[1].at <= due) queue.shift();
+    return queue[0].at <= due ? queue[0].input : { ...now, drive: NO_INPUT, skip: false };
+  };
 }
