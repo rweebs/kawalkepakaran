@@ -158,54 +158,82 @@ export function stepChase(cam: ChaseCam, car: ChariotState, dt: number, o: Chase
 /** A stretch of the line o + d·t, from t = enter to t = leave. */
 type Span = readonly [enter: number, leave: number];
 
-/** Where the line o + d·t (|d| = 1) runs inside the circle, or null when it misses. */
-function circleSpan(o: XZ, d: XZ, cx: number, cz: number, r: number): Span | null {
-  const ox = o.x - cx;
-  const oz = o.z - cz;
-  const b = ox * d.x + oz * d.z;
-  const disc = b * b - (ox * ox + oz * oz - r * r);
-  if (disc < 0) return null;
+/**
+ * The stretch the span helpers below found last. They write it here rather than return a pair, so that the orbit, which
+ * reads hundreds of sight lines when it starts on a new centre and a few every frame, allocates nothing for them.
+ */
+const span = { enter: 0, leave: 0 };
+
+/** Whether the line (ox, oz) + (dx, dz)·t (|d| = 1) runs inside the circle; if so, where is left in `span`. */
+function discSpan(ox: number, oz: number, dx: number, dz: number, cx: number, cz: number, r: number): boolean {
+  const px = ox - cx;
+  const pz = oz - cz;
+  const b = px * dx + pz * dz;
+  const disc = b * b - (px * px + pz * pz - r * r);
+  if (disc < 0) return false;
   const s = Math.sqrt(disc);
-  return [-b - s, -b + s];
+  span.enter = -b - s;
+  span.leave = -b + s;
+  return true;
 }
 
-/** Where the line o + d·t runs inside the box [x0, x1] × [z0, z1] (a slab test), or null when it misses. */
-function boxSpan(o: XZ, d: XZ, x0: number, x1: number, z0: number, z1: number): Span | null {
+/** Whether the line runs inside the box [x0, x1] × [z0, z1] (a slab test); if so, where is left in `span`. */
+function slabSpan(ox: number, oz: number, dx: number, dz: number, x0: number, x1: number, z0: number, z1: number): boolean {
   let enter = -Infinity;
   let leave = Infinity;
-  for (const [p, dp, lo, hi] of [
-    [o.x, d.x, x0, x1],
-    [o.z, d.z, z0, z1],
-  ]) {
-    if (dp === 0) {
-      if (p < lo || p > hi) return null;
-      continue;
-    }
-    const t1 = (lo - p) / dp;
-    const t2 = (hi - p) / dp;
+  if (dx === 0) {
+    if (ox < x0 || ox > x1) return false;
+  } else {
+    const t1 = (x0 - ox) / dx;
+    const t2 = (x1 - ox) / dx;
     enter = Math.max(enter, Math.min(t1, t2));
     leave = Math.min(leave, Math.max(t1, t2));
   }
-  return enter <= leave ? [enter, leave] : null;
+  if (dz === 0) {
+    if (oz < z0 || oz > z1) return false;
+  } else {
+    const t1 = (z0 - oz) / dz;
+    const t2 = (z1 - oz) / dz;
+    enter = Math.max(enter, Math.min(t1, t2));
+    leave = Math.min(leave, Math.max(t1, t2));
+  }
+  if (!(enter <= leave)) return false;
+  span.enter = enter;
+  span.leave = leave;
+  return true;
 }
 
 /**
- * Where the line o + d·t (|d| = 1) passes within m of the collider, that is where distToCollider < m (with m = 0,
- * where it runs inside it), or null. A box grown by m has rounded corners but stays convex, so its span runs from the
- * first entry to the last exit over two grown slabs and four corner discs.
+ * Whether the line (ox, oz) + (dx, dz)·t (|d| = 1) passes within m of the collider, that is where distToCollider < m
+ * (with m = 0, where it runs inside it); if so, where is left in `span`. A box grown by m has rounded corners but stays
+ * convex, so its stretch runs from the first entry to the last exit over two grown slabs and four corner discs.
  */
-function nearSpan(o: XZ, d: XZ, c: Collider, m: number): Span | null {
-  if (c.kind === 'circle') return circleSpan(o, d, c.x, c.z, c.r + m);
-  const parts = [boxSpan(o, d, c.minX - m, c.maxX + m, c.minZ, c.maxZ), boxSpan(o, d, c.minX, c.maxX, c.minZ - m, c.maxZ + m)];
-  if (m > 0) for (const x of [c.minX, c.maxX]) for (const z of [c.minZ, c.maxZ]) parts.push(circleSpan(o, d, x, z, m));
+function nearInto(ox: number, oz: number, dx: number, dz: number, c: Collider, m: number): boolean {
+  if (c.kind === 'circle') return discSpan(ox, oz, dx, dz, c.x, c.z, c.r + m);
   let enter = Infinity;
   let leave = -Infinity;
-  for (const p of parts) {
-    if (!p) continue;
-    enter = Math.min(enter, p[0]);
-    leave = Math.max(leave, p[1]);
+  // Parts 0 and 1 are the slabs grown along x and along z; 2 to 5 the corner discs, with no margin none.
+  for (let k = 0; k < (m > 0 ? 6 : 2); k++) {
+    const hit =
+      k === 0
+        ? slabSpan(ox, oz, dx, dz, c.minX - m, c.maxX + m, c.minZ, c.maxZ)
+        : k === 1
+          ? slabSpan(ox, oz, dx, dz, c.minX, c.maxX, c.minZ - m, c.maxZ + m)
+          : discSpan(ox, oz, dx, dz, k < 4 ? c.minX : c.maxX, k % 2 === 0 ? c.minZ : c.maxZ, m);
+    if (hit) {
+      enter = Math.min(enter, span.enter);
+      leave = Math.max(leave, span.leave);
+    }
   }
-  return enter <= leave ? [enter, leave] : null;
+  if (!(enter <= leave)) return false;
+  span.enter = enter;
+  span.leave = leave;
+  return true;
+}
+
+/** nearInto's stretch as a pair, or null: for the boom, which keeps one per collider while it steps in. */
+function nearSpan(o: XZ, d: XZ, c: Collider, m: number): Span | null {
+  return nearInto(o.x, o.z, d.x, d.z, c, m) ? [span.enter, span.leave] : null;
 }
 
 /**
@@ -447,19 +475,54 @@ export function shotAt(shots: readonly Shot[], t: number): { pose: Pose; fov: nu
   return { ...within(shots[shots.length - 1], 1), done: true };
 }
 
+/** No tall colliders: the finale's orbit and orbitView's default, one frozen list so that no frame makes a new one. */
+export const NO_TALL: readonly Collider[] = Object.freeze([]);
+
 /**
- * How far from `at` along −forward(yaw), up to `dist`, the line stays boomMargin clear of every tall collider: a camera
- * there has nothing tall between it and `at`. 0 when `at` itself is that close to one the line runs by.
+ * How far from (ax, az) along −forward(yaw), up to `dist`, the line stays boomMargin clear of every tall collider: a
+ * camera there has nothing tall between it and that point. 0 when the point itself is that close to one the line runs by.
  */
-function clearSight(at: XZ, yaw: number, dist: number, tall: readonly Collider[]): number {
-  const f = forward(yaw);
-  const back = { x: -f.x, z: -f.z };
+function clearSight(ax: number, az: number, yaw: number, dist: number, tall: readonly Collider[]): number {
+  // −forward(yaw), with forward(yaw) = (cos yaw, −sin yaw).
+  const dx = -Math.cos(yaw);
+  const dz = Math.sin(yaw);
   let run = dist;
-  for (const c of tall) {
-    const s = nearSpan(at, back, c, CHASE.boomMargin);
-    if (s && s[1] > 0) run = Math.min(run, Math.max(0, s[0]));
+  for (let i = 0; i < tall.length; i++) {
+    if (nearInto(ax, az, dx, dz, tall[i], CHASE.boomMargin) && span.leave > 0) run = Math.min(run, Math.max(0, span.enter));
   }
   return run;
+}
+
+/**
+ * What an orbit round one centre reads from the field, worked out once: the tall colliders within its reach, and how far
+ * the sight line at each grid angle k·grid (k from 0 to a full turn) falls short of the full radius.
+ */
+interface OrbitProfile {
+  x: number;
+  z: number;
+  tall: readonly Collider[];
+  near: readonly Collider[];
+  shortfall: Float64Array;
+}
+
+/** The last centre's profile. An orbit keeps its centre and its tall list for every frame, so all but its first reuse it. */
+let lastProfile: OrbitProfile | null = null;
+
+/** The profile for `at` and `tall`: the last one while they stay the same (the same list, not just the same colliders). */
+function profileOf(at: XZ, tall: readonly Collider[]): OrbitProfile {
+  const p = lastProfile;
+  if (p && p.x === at.x && p.z === at.z && p.tall === tall) return p;
+  lastProfile = buildProfile(at, tall);
+  return lastProfile;
+}
+
+/** A new centre's profile: the one place the orbit allocates, once per centre (720 sight lines with something near). */
+function buildProfile(at: XZ, tall: readonly Collider[]): OrbitProfile {
+  const { radius, grid } = SHOTS.orbit;
+  const near = tall.filter((c) => distToCollider(at, c) < radius + CHASE.boomMargin);
+  const shortfall = new Float64Array(near.length > 0 ? Math.round((2 * Math.PI) / grid) : 0);
+  for (let k = 0; k < shortfall.length; k++) shortfall[k] = radius - clearSight(at.x, at.z, k * grid, radius, near);
+  return { x: at.x, z: at.z, tall, near, shortfall };
 }
 
 /**
@@ -467,19 +530,22 @@ function clearSight(at: XZ, yaw: number, dist: number, tall: readonly Collider[]
  * itself and at the fixed grid angles within `ease` of it, each weighed by 1 − smoothstep(0, ease, the angle between).
  * The term at yaw keeps the camera's sight line to `at` boomMargin clear of everything tall, so it never stands in a tall
  * thing or behind one; the weighed terms bring it in ahead of a tall thing and let it out after, with no snap and no kink
- * (fixed angles, so no term jumps as the orbit turns). With nothing tall within reach it is the full radius.
+ * (fixed angles, so no term jumps as the orbit turns). The grid's shortfalls come from the centre's profile, so a frame
+ * reads one sight line and cached numbers and allocates nothing. With nothing tall within reach it is the full radius.
  */
 function orbitRadius(at: XZ, yaw: number, tall: readonly Collider[]): number {
   const { radius, ease, grid } = SHOTS.orbit;
-  const near = tall.filter((c) => distToCollider(at, c) < radius + CHASE.boomMargin);
-  if (near.length === 0) return radius;
-  let short = radius - clearSight(at, yaw, radius, near);
+  if (tall.length === 0) return radius;
+  const { near, shortfall } = profileOf(at, tall);
+  const n = shortfall.length;
+  if (n === 0) return radius;
+  let most = radius - clearSight(at.x, at.z, yaw, radius, near);
   for (let k = Math.ceil((yaw - ease) / grid); k * grid < yaw + ease; k++) {
     const weight = 1 - smoothstep(0, ease, Math.abs(yaw - k * grid));
-    // A shortfall is at most the radius, so a weight that cannot beat the one in hand skips the sight line.
-    if (weight * radius > short) short = Math.max(short, weight * (radius - clearSight(at, k * grid, radius, near)));
+    // A shortfall is at most the radius, so a weight that cannot beat the one in hand is skipped.
+    if (weight * radius > most) most = Math.max(most, weight * shortfall[((k % n) + n) % n]);
   }
-  return Math.max(CHASE.boomMin, radius - short);
+  return Math.max(CHASE.boomMin, radius - most);
 }
 
 /**
@@ -488,7 +554,12 @@ function orbitRadius(at: XZ, yaw: number, tall: readonly Collider[]): number {
  * or before the camera (orbitRadius), and away from them it is the same orbit. The finale circles the tower itself and
  * passes none.
  */
-export function orbitView(at: XZ, t: number, ground: Ground, tall: readonly Collider[] = []): { pose: Pose; fov: number } {
+export function orbitView(
+  at: XZ,
+  t: number,
+  ground: Ground,
+  tall: readonly Collider[] = NO_TALL,
+): { pose: Pose; fov: number } {
   const { up, rate, look } = SHOTS.orbit;
   const yaw = rate * t;
   const pos = behind(at, yaw, orbitRadius(at, yaw, tall), up, ground);

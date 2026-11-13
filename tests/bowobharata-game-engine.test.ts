@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { NO_INPUT, REST_SPEED, initChariot, type ChariotInput, type Guard } from '../src/lib/bowobharata-game/drive';
+import { NO_INPUT, REST_SPEED, initChariot, speedOf, type ChariotInput, type Guard } from '../src/lib/bowobharata-game/drive';
 import { hullClearance, hullMid } from '../src/lib/bowobharata-game/collide';
 import { chaseView } from '../src/lib/bowobharata-game/chase';
-import { dist, forward, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
+import { clamp, dist, forward, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
 import { missionFor, type MissionDef } from '../src/lib/bowobharata-game/missions';
 import { timeLeft, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { ANCHORS, PLAY, RECORD_CIRCLE, TOWER_EXIT } from '../src/lib/bowobharata-game/world';
@@ -841,7 +841,7 @@ describe('the edge brakes like the guard', () => {
     expect(end.car.held).toBe(0);
   });
 
-  it('at 25 m/s with Laju held: Laju is cancelled as the braking starts and never starts again against the edge', () => {
+  it('at 25 m/s with Laju held: Laju is cancelled as the braking starts, and its cooldown stands', () => {
     const { frames, log, end } = ride(outward(Math.PI / 2, 25), () => ({ throttle: 1, boost: true }), 5);
     const { onset } = expectBraked(frames, log);
     for (let k = 1; k < frames.length; k++) expect((frames[k - 1].speed - frames[k].speed) / FRAME).toBeLessThanOrEqual(A + 1);
@@ -849,6 +849,7 @@ describe('the edge brakes like the guard', () => {
     expect(frames[onset].r).toBeLessThan(139);
     expect(frames[onset - 1].boostT).toBeGreaterThan(0);
     expect(frames[onset - 1].speed).toBeGreaterThan(24.9);
+    // The cooldown alone keeps it off for the rest of this run; the run along the edge, below, shows the edge doing so.
     for (const f of frames.slice(onset)) expect(f.boostT).toBe(0);
     // It ran 0.7 s before the edge cancelled it, so its cooldown stands.
     expect(end.car.cooldown).toBeGreaterThan(0);
@@ -863,6 +864,81 @@ describe('the edge brakes like the guard', () => {
     expect(after).toHaveLength(2 / FRAME);
     for (const f of after) expect(Math.abs(f.along)).toBeGreaterThan(0.15);
     expect(after.reduce((m, f) => m + Math.abs(f.along) * FRAME, 0)).toBeGreaterThan(0.3);
+  });
+
+  it('Laju held 9 s while it runs on along the edge: one surge, which the edge cancels, and none while the edge brakes', () => {
+    // On the edge due north of the centre, heading 0.2 rad out from the edge line (east), the reins holding that angle.
+    const ALONG = 0.2;
+    const alongEdge = (s: GameState): Partial<ChariotInput> => {
+      const dx = s.car.x - PLAY.cx;
+      const dz = s.car.z - PLAY.cz;
+      const r = Math.hypot(dx, dz);
+      const want = yawOf({
+        x: Math.cos(ALONG) * (-dz / r) + Math.sin(ALONG) * (dx / r),
+        z: Math.cos(ALONG) * (dx / r) + Math.sin(ALONG) * (dz / r),
+      });
+      return { throttle: 1, boost: true, steer: clamp(4 * angleDiff(s.car.yaw, want), -1, 1) };
+    };
+    // From 0.5 m inside the edge it brakes within 0.2 s of the surge's start, so the surge is refunded at once. From 3 m
+    // inside the surge runs 0.57 s and keeps its cooldown, which runs out at 7 s.
+    for (const [inside, refunded, readyFor] of [
+      [0.5, true, 500],
+      [3, false, 100],
+    ] as const) {
+      const from = startChapter(defOf(1), { x: PLAY.cx, z: PLAY.cz - (PLAY.r - inside), yaw: ALONG }, 1, desktop);
+      const f = forward(ALONG);
+      let s: GameState = { ...from, car: { ...from.car, vx: 17 * f.x, vz: 17 * f.z } };
+      let starts = 0;
+      let surgingBraked = 0;
+      let ready = 0;
+      let cancelledAt: number | null = null;
+      for (let k = 0; k < 9 / FRAME; k++) {
+        const prev = s.car;
+        s = advance(s, input(alongEdge(s)), FRAME, desktop).state;
+        const c = s.car;
+        if (c.cooldown > prev.cooldown) starts++;
+        if (cancelledAt === null && prev.boostT > 0 && c.boostT === 0) cancelledAt = c.cooldown;
+        if (c.edgeCut > 0 && c.boostT > 0) surgingBraked++;
+        // Every other thing a surge needs holds: its cooldown run out and the chariot moving on at over 1 m/s.
+        if (c.edgeCut > 0 && c.cooldown === 0 && speedOf(c) > 1) ready++;
+      }
+      const where = `${inside} m inside`;
+      expect(starts, where).toBe(1);
+      expect(surgingBraked, where).toBe(0);
+      expect(cancelledAt, where).not.toBeNull();
+      if (refunded) expect(cancelledAt, where).toBe(0);
+      else expect(cancelledAt, where).toBeGreaterThan(6);
+      // So for frames on end only the edge braking keeps a new surge from starting.
+      expect(ready, where).toBeGreaterThan(readyFor);
+      expect(measure(s).r, where).toBeGreaterThan(PLAY.r - 0.05);
+    }
+  });
+
+  it('with uneven frames (1/50, 1/70, 1/90 and 1/45 s in turn) it brakes at most 17 m/s² a frame and stays inside 160 m', () => {
+    // Uneven frames take different substeps, and the soft wall's push at each frame's end no longer evens out: about
+    // 16.4 m/s² here, against 14.2 at an even 1/60 s (the guard reads 16.9 head-on).
+    const DTS = [1 / 50, 1 / 70, 1 / 90, 1 / 45];
+    for (const [yaw, speed, drive] of [
+      [Math.PI / 2, 17, { throttle: 1 }],
+      [Math.PI / 2, 25, { throttle: 1, boost: true }],
+      [Math.PI / 4, 17, { throttle: 1 }],
+    ] as const) {
+      let s = outward(yaw, speed);
+      let prev = measure(s);
+      let worst = 0;
+      for (let k = 0; k < 400; k++) {
+        const dt = DTS[k % DTS.length];
+        s = advance(s, input(drive), dt, desktop).state;
+        const now = measure(s);
+        expect(now.r).toBeLessThanOrEqual(PLAY.r + 1e-9);
+        worst = Math.max(worst, (prev.out - now.out) / dt);
+        prev = now;
+      }
+      expect(worst).toBeLessThanOrEqual(17);
+      expect(worst).toBeGreaterThan(14);
+      expect(prev.out).toBeLessThanOrEqual(REST_SPEED);
+      expect(prev.r).toBeGreaterThan(PLAY.r - 0.05);
+    }
   });
 
   it('with 0.05 s frames too, it brakes at most a + 1 a frame and stays inside 160 m', () => {

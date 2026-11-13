@@ -6,7 +6,7 @@
 // only feeds it), and nothing here draws text: names, titles and facts belong to the island's still screens.
 import type { KurukshetraScene } from '../../bowobharata/KurukshetraScene';
 import type { XZ } from '../geom';
-import { fovForAspect, orbitView } from '../chase';
+import { NO_TALL, fovForAspect, orbitView } from '../chase';
 import {
   DEFAULT_ASPECT,
   advance,
@@ -151,7 +151,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
    */
   function circle(real: number): void {
     circled += real;
-    const view = orbitView(around, circled, world.ground, mode === 'orbit' ? world.tall : []);
+    const view = orbitView(around, circled, world.ground, mode === 'orbit' ? world.tall : NO_TALL);
     game.setPose(view.pose);
     setFov(fovForAspect(view.fov, aspectNow()));
   }

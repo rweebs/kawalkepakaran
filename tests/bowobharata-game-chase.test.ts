@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { groundHeight, PAVILION, type Pose } from '../src/lib/bowobharata/stage-math';
 import { mulberry32 } from '../src/lib/sky/rng';
 import type { Vec3 } from '../src/lib/sky/states';
-import { angleDiff, dist, forward, rightOf, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
+import { angleDiff, dist, forward, rightOf, segPointDist, smoothstep, type XZ } from '../src/lib/bowobharata-game/geom';
 import {
   NO_INPUT,
   initChariot,
@@ -17,6 +18,7 @@ import { figureGuard, hullClearance, resolveContacts } from '../src/lib/bowobhar
 import { CHASE } from '../src/lib/bowobharata-game/tuning';
 import {
   CHARIOT_SILHOUETTE,
+  NO_TALL,
   boomLength,
   bump,
   chaseView,
@@ -1041,5 +1043,114 @@ describe('the chapter intro’s orbit round the chariot keeps tall things out of
     for (const at of [SPAWN, { x: PLAY.cx, z: PLAY.cz }, { x: 60, z: -100 }]) {
       for (let k = 0; k <= turn(4); k++) expect(orbitView(at, k / 4, groundHeight, TALL)).toEqual(orbitView(at, k / 4, groundHeight));
     }
+  });
+
+  /**
+   * The radius as a99e0f8 worked it out, from scratch on every frame: the reference the cached profile must keep. Its
+   * span helpers are that commit's circleSpan, boxSpan and nearSpan; its clearSight and loop are that commit's too.
+   */
+  function legacyRadius(at: XZ, yaw: number, tall: readonly Collider[]): number {
+    const radius = 14;
+    const ease = Math.PI / 3;
+    const grid = Math.PI / 360;
+    type Pair = [number, number];
+    const circleSpan = (o: XZ, d: XZ, cx: number, cz: number, r: number): Pair | null => {
+      const ox = o.x - cx;
+      const oz = o.z - cz;
+      const b = ox * d.x + oz * d.z;
+      const disc = b * b - (ox * ox + oz * oz - r * r);
+      if (disc < 0) return null;
+      const s = Math.sqrt(disc);
+      return [-b - s, -b + s];
+    };
+    const boxSpan = (o: XZ, d: XZ, x0: number, x1: number, z0: number, z1: number): Pair | null => {
+      let enter = -Infinity;
+      let leave = Infinity;
+      for (const [p, dp, lo, hi] of [
+        [o.x, d.x, x0, x1],
+        [o.z, d.z, z0, z1],
+      ]) {
+        if (dp === 0) {
+          if (p < lo || p > hi) return null;
+          continue;
+        }
+        const t1 = (lo - p) / dp;
+        const t2 = (hi - p) / dp;
+        enter = Math.max(enter, Math.min(t1, t2));
+        leave = Math.min(leave, Math.max(t1, t2));
+      }
+      return enter <= leave ? [enter, leave] : null;
+    };
+    const nearSpan = (o: XZ, d: XZ, c: Collider, m: number): Pair | null => {
+      if (c.kind === 'circle') return circleSpan(o, d, c.x, c.z, c.r + m);
+      const parts = [boxSpan(o, d, c.minX - m, c.maxX + m, c.minZ, c.maxZ), boxSpan(o, d, c.minX, c.maxX, c.minZ - m, c.maxZ + m)];
+      if (m > 0) for (const x of [c.minX, c.maxX]) for (const z of [c.minZ, c.maxZ]) parts.push(circleSpan(o, d, x, z, m));
+      let enter = Infinity;
+      let leave = -Infinity;
+      for (const p of parts) {
+        if (!p) continue;
+        enter = Math.min(enter, p[0]);
+        leave = Math.max(leave, p[1]);
+      }
+      return enter <= leave ? [enter, leave] : null;
+    };
+    const clearSight = (a: number, near: readonly Collider[]): number => {
+      const f = forward(a);
+      const back = { x: -f.x, z: -f.z };
+      let run = radius;
+      for (const c of near) {
+        const s = nearSpan(at, back, c, CHASE.boomMargin);
+        if (s && s[1] > 0) run = Math.min(run, Math.max(0, s[0]));
+      }
+      return run;
+    };
+    const near = tall.filter((c) => distToCollider(at, c) < radius + CHASE.boomMargin);
+    if (near.length === 0) return radius;
+    let short = radius - clearSight(yaw, near);
+    for (let k = Math.ceil((yaw - ease) / grid); k * grid < yaw + ease; k++) {
+      const weight = 1 - smoothstep(0, ease, Math.abs(yaw - k * grid));
+      if (weight * radius > short) short = Math.max(short, weight * (radius - clearSight(k * grid, near)));
+    }
+    return Math.max(CHASE.boomMin, radius - short);
+  }
+
+  it('reuses each centre’s sight lines and gives the orbit it gave before: a full turn at 60 fps by the tower and the gate, to 1e-9', () => {
+    for (const at of [TOWER_EXIT, { x: 105, z: -20 }, ANCHORS.groveNW]) {
+      let worst = 0;
+      let least = Infinity;
+      for (let k = 0; k <= turn(60); k++) {
+        const t = k / 60;
+        const yaw = 0.08 * t;
+        const r = legacyRadius(at, yaw, TALL);
+        const { pos } = orbitView(at, t, groundHeight, TALL).pose;
+        worst = Math.max(worst, Math.abs(pos.x - (at.x - Math.cos(yaw) * r)), Math.abs(pos.z - (at.z + Math.sin(yaw) * r)));
+        least = Math.min(least, r);
+      }
+      expect(worst, `(${at.x}, ${at.z})`).toBeLessThanOrEqual(1e-9);
+      // Each of them does pass something tall.
+      expect(least, `(${at.x}, ${at.z})`).toBeLessThan(10);
+    }
+  }, 30_000);
+
+  it('works each frame from those cached numbers: the per-frame orbit code has no filter, map, array literal or allocating helper', () => {
+    const src = readFileSync(new URL('../src/lib/bowobharata-game/chase.ts', import.meta.url), 'utf8');
+    /** The source of a top-level function, from its `function` line to its closing brace, without comments. */
+    const body = (name: string) => {
+      const start = src.search(new RegExp(`^(export )?function ${name}\\(`, 'm'));
+      expect(start, name).toBeGreaterThanOrEqual(0);
+      return src.slice(start, src.indexOf('\n}\n', start) + 2).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    };
+    for (const name of ['orbitView', 'orbitRadius', 'profileOf', 'clearSight', 'nearInto', 'discSpan', 'slabSpan']) {
+      const code = body(name);
+      expect(code, name).not.toMatch(/\.(filter|map|flatMap|reduce|slice|concat|forEach)\(/);
+      expect(code, name).not.toMatch(/(^|[=(,:?]|\breturn)\s*\[/m);
+      expect(code, name).not.toMatch(/\.\.\.|\bnew\s|\bfor\s*\(\s*const\s+\w+\s+of\b/);
+      expect(code, name).not.toMatch(/\b(forward|nearSpan|circleSpan|boxSpan)\(/);
+    }
+    // The finale passes one shared, frozen empty list, not a new one each frame.
+    expect(NO_TALL).toEqual([]);
+    expect(Object.isFrozen(NO_TALL)).toBe(true);
+    const runtime = readFileSync(new URL('../src/lib/bowobharata-game/world/runtime.ts', import.meta.url), 'utf8');
+    expect(runtime).toContain("orbitView(around, circled, world.ground, mode === 'orbit' ? world.tall : NO_TALL)");
   });
 });
