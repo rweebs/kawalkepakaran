@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { createContext } from '../src/lib/bowobharata/scene/effects';
+import { FX_LAYER, createContext } from '../src/lib/bowobharata/scene/effects';
 import { createDetail } from '../src/lib/bowobharata/scene/materials';
 import { gameQuality, qualityFor } from '../src/lib/bowobharata/scene/quality';
 import { FIELD } from '../src/lib/bowobharata/scene/dressing-layout';
@@ -10,13 +10,16 @@ import { PAVILION, groundHeight } from '../src/lib/bowobharata/stage-math';
 import type { ChariotMotion, ChariotRig } from '../src/lib/bowobharata/scene/chariot';
 import { angleDiff, forward, rightOf, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
-import { ANCHORS, POSTS, ROCKS, TENTS, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
+import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
 import { createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
-import { missionFor } from '../src/lib/bowobharata-game/missions';
+import { missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
+import type { Phase } from '../src/lib/bowobharata-game/mission-run';
+import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
 import type { SceneGame } from '../src/lib/bowobharata-game/world/types';
 import { CLEAR, createLandmarks } from '../src/lib/bowobharata-game/world/landmarks3d';
 import { DUST, TUFTS, cellTuft, createGround, inField, ringCells } from '../src/lib/bowobharata-game/world/ground3d';
 import { bindChariot } from '../src/lib/bowobharata-game/world/chariot-bind';
+import { SHIMMER, createPickups, shimmerAt } from '../src/lib/bowobharata-game/world/pickups3d';
 import * as shapes from '../src/lib/bowobharata-game/world/shapes';
 import * as arrows from '../src/lib/bowobharata-game/arrows3d';
 
@@ -598,6 +601,700 @@ function walk(dir: string): string[] {
 }
 const read = (f: string) => readFileSync(f, 'utf8');
 
+describe('pickups', () => {
+  type Run = GameState['run'];
+  /** Whether o is drawn: it and every parent visible. */
+  function shown(o: THREE.Object3D): boolean {
+    for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return false;
+    return true;
+  }
+  /** The instances the named mesh draws: none while it or a parent is hidden. */
+  function drawn(root: THREE.Object3D, name: string): number {
+    const m = named<THREE.InstancedMesh>(root, name);
+    return shown(m) ? m.count : 0;
+  }
+  const shownNamed = (root: THREE.Object3D, name: string) => allNamed(root, name).filter(shown);
+  /** The instances of a mesh standing at p on the ground plane. */
+  const instancesAt = (mesh: THREE.InstancedMesh, p: XZ) =>
+    Array.from({ length: mesh.count }, (_, k) => k).filter((k) => flatDist(placeOf(mesh, k), p) <= F32);
+  function matrixAt(mesh: THREE.InstancedMesh, k: number): THREE.Matrix4 {
+    const m = new THREE.Matrix4();
+    mesh.getMatrixAt(k, m);
+    return m;
+  }
+  /** Height over the ground right under v. */
+  const height = (v: THREE.Vector3) => v.y - groundHeight(v.x, v.z);
+  /** Whether the matrix stands upright with its face (+z) turned toward `cam` across the ground. */
+  function facesCamera(m: THREE.Matrix4, cam: THREE.Vector3): void {
+    const x = new THREE.Vector3();
+    const y = new THREE.Vector3();
+    const z = new THREE.Vector3();
+    m.extractBasis(x, y, z);
+    const p = new THREE.Vector3().setFromMatrixPosition(m);
+    expect(y.clone().normalize().angleTo(new THREE.Vector3(0, 1, 0))).toBeLessThan(1e-6);
+    expect(Math.abs(angleDiff(Math.atan2(z.x, z.z), Math.atan2(cam.x - p.x, cam.z - p.z)))).toBeLessThan(1e-5);
+  }
+
+  const itemsOf = (steps: readonly StepDef[]) => steps.flatMap((s) => (s.kind === 'collect' ? s.items : []));
+  const at = (s: GameState, run: Partial<Run>, extra: Partial<GameState> = {}): GameState => ({ ...s, ...extra, run: { ...s.run, ...run } });
+  const sighted = (s: GameState): GameState => ({ ...s, sight: { ...s.sight, on: true } });
+  /** The prologue, active, with `recorded` recorded. */
+  const prologue = (recorded: string[]) => at(BASE, { phase: 'active', recorded });
+  const ITEMS = itemsOf(PROLOGUE.steps);
+  /** Parva 1: two lontar, A at (52, 44) and B at (62, −50); in roam at its marker (20, 62) until the lakon starts. */
+  const P1 = missionFor(1, ['a', 'b']);
+  const P1_ROAM = startChapter(P1, P1.start, 1, WORLD);
+  const P1_ITEMS = itemsOf(P1.steps);
+  const parva1 = (c: ChariotState, recorded: string[], phase: Phase = 'active') => at(P1_ROAM, { phase, recorded }, { car: c });
+
+  it('shimmers the copies at 1.2 Hz, under 2 Hz: shimmerAt(0) is 0.75 and shimmerAt(1/4.8) is 0.87', () => {
+    expect(SHIMMER).toEqual({ hz: 1.2, base: 0.75, amp: 0.12 });
+    expect(SHIMMER.hz).toBeLessThanOrEqual(2);
+    expect(shimmerAt(0)).toBe(0.75);
+    expect(Math.abs(shimmerAt(1 / 4.8) - 0.87)).toBeLessThanOrEqual(1e-6);
+    // base + amp·sin(2π·hz·t): the trough half a cycle after the crest, and the base again a whole cycle on.
+    expect(shimmerAt(1 / 4.8 + 1 / 2.4)).toBeCloseTo(0.63, 9);
+    expect(shimmerAt(1 / 1.2)).toBeCloseTo(0.75, 9);
+  });
+
+  it('after sync, the decoys’ opacity equals shimmerAt(time): grey frayed copies, #d6d9de lit #9aa0aa × 0.6', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const decoys = named<THREE.InstancedMesh>(game.root, 'decoys');
+    const mat = decoys.material as THREE.MeshStandardMaterial;
+    expect(mat.color.getHexString()).toBe('d6d9de');
+    expect(mat.emissive.getHexString()).toBe('9aa0aa');
+    expect(mat.emissiveIntensity).toBe(0.6);
+    expect(mat.transparent).toBe(true);
+    let prev = NaN;
+    for (let k = 0; k < 150; k++) {
+      const t = 4.2 + k / 60;
+      layer.sync(BASE, t);
+      expect(mat.opacity).toBe(shimmerAt(t));
+      // Never steeper than the 1.2 Hz shimmer itself: 2π·1.2·0.12 a second.
+      if (k > 0) expect(Math.abs(mat.opacity - prev)).toBeLessThanOrEqual((2 * Math.PI * 1.2 * 0.12) / 60 + 1e-12);
+      prev = mat.opacity;
+    }
+    // The prologue's one copy, the Mata lesson on the L7→L8 line, standing in the ground there.
+    expect(decoys.count).toBe(1);
+    const spot = PROLOGUE.scripted.decoys[0];
+    expect(flatDist(placeOf(decoys, 0), spot)).toBeLessThanOrEqual(F32);
+    expect(Math.abs(over(placeOf(decoys, 0), spot))).toBeLessThanOrEqual(F32);
+  });
+
+  it('prologue start: 8 record-arrows, 8 record-beams and 1 tower-beam', () => {
+    const { game } = fakeGame();
+    createPickups(game).sync(BASE, 0);
+    expect(drawn(game.root, 'record-arrows')).toBe(8);
+    expect(drawn(game.root, 'record-beams')).toBe(8);
+    expect(shownNamed(game.root, 'tower-beam')).toHaveLength(1);
+    // Shaft and tip, a halo for each, and no lontar: the prologue's records are arrows.
+    expect(drawn(game.root, 'record-arrow-tips')).toBe(8);
+    expect(shownNamed(game.root, 'record-halo')).toHaveLength(8);
+    expect(drawn(game.root, 'lontar')).toBe(0);
+    expect(drawn(game.root, 'lontar-posts')).toBe(0);
+  });
+
+  it('stands each prologue arrow at its record, 2.2 times its size, leaning 25° off the vertical, its tip in the ground', () => {
+    const { game } = fakeGame();
+    createPickups(game).sync(BASE, 0);
+    const shafts = named<THREE.InstancedMesh>(game.root, 'record-arrows');
+    const tips = named<THREE.InstancedMesh>(game.root, 'record-arrow-tips');
+    const beams = named<THREE.InstancedMesh>(game.root, 'record-beams');
+    for (const item of ITEMS) {
+      const [k] = instancesAt(shafts, item.at);
+      expect(k, item.id).toBeDefined();
+      const p = new THREE.Vector3();
+      const q = new THREE.Quaternion();
+      const size = new THREE.Vector3();
+      matrixAt(shafts, k).decompose(p, q, size);
+      expect(Math.abs(over(p, item.at))).toBeLessThanOrEqual(F32);
+      for (const c of [size.x, size.y, size.z]) expect(c).toBeCloseTo(2.2, 5);
+      // The shapes point their tip along +y: here down into the ground, 25° off the vertical.
+      const tip = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+      expect(Math.acos(-tip.y)).toBeCloseTo((25 * Math.PI) / 180, 5);
+      // The tip goes with its shaft and is partly in the ground; the shaft stands more than 2 m out of it.
+      expect(matrixAt(tips, k).equals(matrixAt(shafts, k))).toBe(true);
+      const tipHeights = vertices(tips, k).map(height);
+      expect(Math.min(...tipHeights)).toBeLessThan(0);
+      expect(Math.max(...tipHeights)).toBeGreaterThan(0);
+      expect(Math.max(...vertices(shafts, k).map(height))).toBeGreaterThan(2);
+      // Its gold beam stands over it, from under the ground to 20 m up.
+      const [b] = instancesAt(beams, item.at);
+      expect(b, item.id).toBeDefined();
+      const beamHeights = vertices(beams, b).map((v) => over(v, item.at));
+      expect(Math.min(...beamHeights)).toBeLessThan(0);
+      expect(Math.max(...beamHeights)).toBeGreaterThanOrEqual(19.5);
+    }
+    // A light material, lit from within, so the arrows read at dusk (F2); the tips glow brighter.
+    const mat = shafts.material as THREE.MeshStandardMaterial;
+    expect(mat.color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).l).toBeGreaterThanOrEqual(0.7);
+    expect(mat.emissiveIntensity * mat.emissive.getHSL({ h: 0, s: 0, l: 0 }).l).toBeGreaterThan(0);
+    const tipMat = tips.material as THREE.MeshStandardMaterial;
+    expect(tipMat.emissiveIntensity).toBeGreaterThan(mat.emissiveIntensity);
+  });
+
+  it('after 3 records and 0.5 s: 5 record-arrows and 5 record-beams', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const three = prologue(['L1', 'L2', 'L3']);
+    layer.sync(BASE, 10);
+    layer.sync(three, 10);
+    layer.sync(three, 10.5);
+    expect(drawn(game.root, 'record-arrows')).toBe(5);
+    expect(drawn(game.root, 'record-beams')).toBe(5);
+    expect(shownNamed(game.root, 'record-halo')).toHaveLength(5);
+    // The five still standing are the open records, where they stood.
+    const shafts = named<THREE.InstancedMesh>(game.root, 'record-arrows');
+    for (const item of ITEMS.slice(3)) expect(instancesAt(shafts, item.at), item.id).toHaveLength(1);
+  });
+
+  it('keeps each recorded arrow where it stands as it fades out, no faster than 2 Hz allows, and hides it within 0.5 s', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const shafts = named<THREE.InstancedMesh>(game.root, 'record-arrows');
+    const fade = shafts.geometry.getAttribute('aFade');
+    layer.sync(BASE, 3);
+    const pose = new Map(ITEMS.map((item) => [item.id, matrixAt(shafts, instancesAt(shafts, item.at)[0])]));
+    const recorded = ['L2', 'L5', 'L7'];
+    const last = new Map(recorded.map((id) => [id, 1]));
+    const gone = new Map<string, number>();
+    const beams = named<THREE.InstancedMesh>(game.root, 'record-beams');
+    const full = new THREE.Color();
+    beams.getColorAt(0, full);
+    const glow = new Map(recorded.map((id) => [id, { beam: 1, halo: 1 }]));
+    const dt = 1 / 60;
+    for (let k = 0; k <= 36; k++) {
+      layer.sync(prologue(recorded), 3 + k * dt);
+      // Its beam and its halo fade with it, no faster.
+      for (const id of recorded) {
+        const spot = ITEMS.find((it) => it.id === id)!.at;
+        const [b] = instancesAt(beams, spot);
+        const halo = shownNamed(game.root, 'record-halo').find((h) => flatDist(h.position, spot) <= 1e-9) as THREE.Sprite | undefined;
+        if (b === undefined || !halo) continue;
+        const c = new THREE.Color();
+        beams.getColorAt(b, c);
+        const beamK = c.r / full.r;
+        const haloK = (halo.material as THREE.SpriteMaterial).opacity / 0.55;
+        const g = glow.get(id)!;
+        expect(beamK).toBeLessThanOrEqual(g.beam + 1e-6);
+        expect(g.beam - beamK).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        expect(haloK).toBeLessThanOrEqual(g.halo + 1e-9);
+        expect(g.halo - haloK).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        glow.set(id, { beam: beamK, halo: haloK });
+      }
+      // Every arrow drawn stands exactly as it stood: none moves, toward the chariot or anywhere else.
+      for (let i = 0; i < shafts.count; i++) {
+        const item = ITEMS.find((it) => flatDist(placeOf(shafts, i), it.at) <= F32);
+        expect(item, `instance ${i}, frame ${k}`).toBeDefined();
+        expect(matrixAt(shafts, i).equals(pose.get(item!.id)!)).toBe(true);
+        if (!recorded.includes(item!.id)) expect(fade.getX(i)).toBe(1);
+      }
+      for (const id of recorded) {
+        const here = instancesAt(shafts, ITEMS.find((it) => it.id === id)!.at);
+        if (here.length === 0) {
+          if (!gone.has(id)) gone.set(id, k * dt);
+          continue;
+        }
+        expect(gone.has(id), `${id} came back`).toBe(false);
+        const f = fade.getX(here[0]);
+        // Fading, at most a full swing in a quarter second (a half cycle at 2 Hz).
+        expect(f).toBeLessThanOrEqual(last.get(id)!);
+        expect(last.get(id)! - f).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        last.set(id, f);
+      }
+    }
+    for (const id of recorded) {
+      expect(gone.get(id), id).toBeGreaterThanOrEqual(0.25);
+      expect(gone.get(id), id).toBeLessThanOrEqual(0.5);
+      // Faded well down before it went.
+      expect(glow.get(id)!.beam, id).toBeLessThan(0.1);
+      expect(glow.get(id)!.halo, id).toBeLessThan(0.1);
+    }
+  });
+
+  it('shows no stamps without sight; with sight, a lotus over each of the 5 open records and a broken ring over the copy, facing the camera', () => {
+    const { game } = fakeGame();
+    game.camera.position.set(-20, 30, 60);
+    game.camera.lookAt(-50, 0, 40);
+    const layer = createPickups(game);
+    const three = prologue(['L1', 'L2', 'L3']);
+    layer.sync(BASE, 0);
+    layer.sync(three, 0);
+    layer.sync(three, 0.5);
+    expect(drawn(game.root, 'stamp-lotus')).toBe(0);
+    expect(drawn(game.root, 'stamp-ring')).toBe(0);
+    layer.sync(sighted(three), 0.6);
+    expect(drawn(game.root, 'stamp-lotus')).toBe(5);
+    expect(drawn(game.root, 'stamp-ring')).toBe(1);
+    const lotus = named<THREE.InstancedMesh>(game.root, 'stamp-lotus');
+    for (let k = 0; k < 5; k++) {
+      const p = new THREE.Vector3();
+      const q = new THREE.Quaternion();
+      matrixAt(lotus, k).decompose(p, q, new THREE.Vector3());
+      // Over an open record's arrow, turned to the camera.
+      expect(ITEMS.slice(3).some((it) => flatDist(p, it.at) <= 1.5)).toBe(true);
+      expect(height(p)).toBeGreaterThan(2.5);
+      // Read back from float32 instance storage: within 0.06°.
+      expect(q.angleTo(game.camera.quaternion)).toBeLessThan(1e-3);
+    }
+    const ring = named<THREE.InstancedMesh>(game.root, 'stamp-ring');
+    expect(flatDist(placeOf(ring, 0), PROLOGUE.scripted.decoys[0])).toBeLessThanOrEqual(1.5);
+    layer.sync(three, 0.7);
+    expect(drawn(game.root, 'stamp-lotus')).toBe(0);
+    expect(drawn(game.root, 'stamp-ring')).toBe(0);
+  });
+
+  it('roam: the marker ring and marker-beam stand at the lakon’s marker; its records and copies wait for the lakon', () => {
+    const { game } = fakeGame();
+    expect(P1_ROAM.run.phase).toBe('roam');
+    createPickups(game).sync(P1_ROAM, 0);
+    const ring = named(game.root, 'marker-ring');
+    const beam = named(game.root, 'marker-beam');
+    expect(shown(ring)).toBe(true);
+    expect(shown(beam)).toBe(true);
+    expect(flatDist(placeOf(ring), P1.marker!)).toBeLessThanOrEqual(1e-9);
+    expect(flatDist(placeOf(beam), P1.marker!)).toBeLessThanOrEqual(1e-9);
+    for (const n of ['lontar', 'lontar-posts', 'record-arrows', 'record-beams', 'decoys']) expect(drawn(game.root, n), n).toBe(0);
+    expect(shown(named(game.root, 'tower-beam'))).toBe(true);
+    expect(shown(named(game.root, 'record-circle'))).toBe(true);
+  });
+
+  it('during the prologue’s intro the marker ring lies at SPAWN under the chariot, with no beam; it goes once the lakon is active', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    expect(BASE.run.phase).toBe('intro');
+    layer.sync(BASE, 0);
+    const ring = named(game.root, 'marker-ring');
+    expect(shown(ring)).toBe(true);
+    expect(shown(named(game.root, 'marker-beam'))).toBe(false);
+    expect(flatDist(placeOf(ring), SPAWN)).toBeLessThanOrEqual(1e-9);
+    expect(flatDist(BASE.car, SPAWN)).toBe(0);
+    layer.sync(prologue([]), 0.1);
+    expect(shown(ring)).toBe(false);
+    // A parva's intro keeps it at its marker, where the chariot stopped to start the lakon.
+    layer.sync(at(P1_ROAM, { phase: 'intro' }), 0.2);
+    expect(shown(ring)).toBe(true);
+    expect(shown(named(game.root, 'marker-beam'))).toBe(false);
+    expect(flatDist(placeOf(ring), P1.marker!)).toBeLessThanOrEqual(1e-9);
+  });
+
+  it('setFinale(true) lights 24 lamps in a ring of r 6 round the tower and hides the records, copies, record beams and markers, with no sync; setFinale(false) undoes it', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    layer.sync(BASE, 0);
+    const lamps = named<THREE.InstancedMesh>(game.root, 'lamps');
+    expect(shown(lamps)).toBe(false);
+    layer.setFinale(true);
+    expect(drawn(game.root, 'lamps')).toBe(24);
+    expect(drawn(game.root, 'lamp-flames')).toBe(24);
+    expect(shownNamed(game.root, 'lamp-halo')).toHaveLength(24);
+    for (let k = 0; k < 24; k++) {
+      const p = placeOf(lamps, k);
+      expect(flatDist(p, ANCHORS.tower)).toBeCloseTo(6, 4);
+      expect(Math.abs(height(p))).toBeLessThanOrEqual(F32);
+    }
+    // Lit: the flames do not wait on the light of the scene.
+    expect((named<THREE.Mesh>(game.root, 'lamp-flames').material as THREE.MeshBasicMaterial).toneMapped).toBe(false);
+    for (const n of ['record-arrows', 'record-arrow-tips', 'record-beams', 'decoys', 'lontar', 'lontar-posts', 'stamp-lotus', 'stamp-ring']) {
+      expect(drawn(game.root, n), n).toBe(0);
+    }
+    for (const n of ['marker-ring', 'marker-beam']) expect(shown(named(game.root, n)), n).toBe(false);
+    expect(shownNamed(game.root, 'record-halo')).toHaveLength(0);
+    expect(shown(named(game.root, 'tower-beam'))).toBe(true);
+    expect(shown(named(game.root, 'record-circle'))).toBe(true);
+    layer.setFinale(false);
+    expect(shown(lamps)).toBe(false);
+    expect(shownNamed(game.root, 'lamp-halo')).toHaveLength(0);
+    expect(drawn(game.root, 'record-arrows')).toBe(8);
+    expect(drawn(game.root, 'record-beams')).toBe(8);
+    expect(shown(named(game.root, 'marker-ring'))).toBe(true);
+  });
+
+  it('draws a parva’s records as lontar, a box 0.9 × 0.12 × 0.25 on a 1.1 m post, each under a gold beam', () => {
+    const { game } = fakeGame();
+    createPickups(game).sync(at(P1_ROAM, { phase: 'intro' }), 0);
+    expect(drawn(game.root, 'lontar')).toBe(2);
+    expect(drawn(game.root, 'lontar-posts')).toBe(2);
+    expect(drawn(game.root, 'record-beams')).toBe(2);
+    expect(drawn(game.root, 'record-arrows')).toBe(0);
+    const boxes = named<THREE.InstancedMesh>(game.root, 'lontar');
+    const posts = named<THREE.InstancedMesh>(game.root, 'lontar-posts');
+    const beams = named<THREE.InstancedMesh>(game.root, 'record-beams');
+    boxes.geometry.computeBoundingBox();
+    const size = boxes.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(size.x).toBeCloseTo(0.9, 6);
+    expect(size.y).toBeCloseTo(0.12, 6);
+    expect(size.z).toBeCloseTo(0.25, 6);
+    for (const item of P1_ITEMS) {
+      const [b] = instancesAt(boxes, item.at);
+      const [p] = instancesAt(posts, item.at);
+      expect(b, item.id).toBeDefined();
+      expect(p, item.id).toBeDefined();
+      const postHeights = vertices(posts, p).map((v) => over(v, item.at));
+      expect(Math.min(...postHeights)).toBeCloseTo(0, 6);
+      expect(Math.max(...postHeights)).toBeCloseTo(1.1, 6);
+      // The box lies on the post's top.
+      expect(Math.min(...vertices(boxes, b).map((v) => over(v, item.at)))).toBeCloseTo(1.1, 6);
+      expect(instancesAt(beams, item.at), item.id).toHaveLength(1);
+    }
+  });
+
+  it('lifts a recorded lontar 2 m and flies it to the prabha in 0.4 s, over the riders’ heads, while its post fades where it stands', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const [A, B] = P1_ITEMS;
+    const yaw = yawOf({ x: A.at.x - P1.marker!.x, z: A.at.z - P1.marker!.z });
+    const f = forward(yaw);
+    // At top speed, the hull's middle (1.6 m ahead of the origin) 3.3 m short of A: recorded on the next frame. Frames of
+    // 1/64 s keep the times exact, so none lands a hair either side of 0.4 s.
+    let c = car(A.at.x - f.x * 4.9, A.at.z - f.z * 4.9, yaw, 17);
+    const dt = 1 / 64;
+    layer.sync(parva1(c, []), 20);
+    const boxes = named<THREE.InstancedMesh>(game.root, 'lontar');
+    const posts = named<THREE.InstancedMesh>(game.root, 'lontar-posts');
+    const postFade = posts.geometry.getAttribute('aFade');
+    const rest = placeOf(boxes, instancesAt(boxes, A.at)[0]);
+    const postPose = matrixAt(posts, instancesAt(posts, A.at)[0]);
+    /** p in the chariot's frame: metres ahead of its origin, to its right, and over the ground under it. */
+    const local = (p: THREE.Vector3) => {
+      const fw = forward(c.yaw);
+      const r = rightOf(c.yaw);
+      return { a: (p.x - c.x) * fw.x + (p.z - c.z) * fw.z, c: (p.x - c.x) * r.x + (p.z - c.z) * r.z, h: p.y - groundHeight(c.x, c.z) };
+    };
+    const flight: { t: number; a: number; c: number; h: number; size: number; world: THREE.Vector3 }[] = [];
+    let postGone = NaN;
+    let postLast = 1;
+    for (let k = 1; k <= 36; k++) {
+      c = { ...c, x: c.x + c.vx * dt, z: c.z + c.vz * dt };
+      layer.sync(parva1(c, ['A']), 20 + k * dt);
+      const t = (k - 1) * dt;
+      // B stands where it stood; any other box is A's, on its way.
+      for (let i = 0; i < boxes.count; i++) {
+        const p = placeOf(boxes, i);
+        if (flatDist(p, B.at) <= F32) continue;
+        const size = new THREE.Vector3();
+        matrixAt(boxes, i).decompose(new THREE.Vector3(), new THREE.Quaternion(), size);
+        flight.push({ t, ...local(p), size: size.x, world: p });
+        // Its halo goes with it.
+        expect(shownNamed(game.root, 'record-halo').some((h) => h.position.distanceTo(p) <= 0.05), `halo at ${t}`).toBe(true);
+      }
+      const here = instancesAt(posts, A.at);
+      if (here.length === 0) {
+        if (Number.isNaN(postGone)) postGone = t;
+      } else {
+        expect(Number.isNaN(postGone), 'the post came back').toBe(true);
+        expect(matrixAt(posts, here[0]).equals(postPose)).toBe(true);
+        expect(postFade.getX(here[0])).toBeLessThanOrEqual(postLast);
+        postLast = postFade.getX(here[0]);
+      }
+    }
+    // It starts where it lay and never sinks below it.
+    expect(flight[0].t).toBe(0);
+    expect(flight[0].world.distanceTo(rest)).toBeLessThanOrEqual(1e-3);
+    for (const s of flight) expect(s.h).toBeGreaterThanOrEqual(flight[0].h - 1e-5);
+    // It rises 2 m off its post before it goes anywhere: the highest it gets within 5 cm of where it lay (across the
+    // ground, in the chariot's frame) is 2 m up, give or take 3 cm; then it flies.
+    const near = flight.filter((s) => Math.hypot(s.a - flight[0].a, s.c - flight[0].c) <= 0.05);
+    expect(near.length).toBeGreaterThan(2);
+    expect(Math.abs(Math.max(...near.map((s) => s.h)) - flight[0].h - 2)).toBeLessThanOrEqual(0.03);
+    expect(near.length).toBeLessThan(flight.length);
+    // Over the riders: never near Krishna's feather, Arjuna's crown or the banner but above them.
+    for (const s of flight) {
+      for (const top of CHARIOT_SILHOUETTE.filter((p) => ['krishna-feather', 'arjuna-crown', 'banner'].includes(p.name))) {
+        if (Math.abs(s.a - top.x) <= 0.5 && Math.abs(s.c) <= 0.6) expect(s.h, `${top.name} at ${s.t}`).toBeGreaterThanOrEqual(top.y + 0.05);
+      }
+    }
+    // It ends at the prabha, small, and is gone in 0.4 s.
+    const end = flight[flight.length - 1];
+    const prabha = CHARIOT_SILHOUETTE.find((p) => p.name === 'prabha')!;
+    expect(end.t).toBeGreaterThanOrEqual(0.35);
+    expect(end.t).toBeLessThan(0.4);
+    expect(Math.hypot(end.a - prabha.x, end.c, end.h - prabha.y)).toBeLessThanOrEqual(0.4);
+    expect(end.size).toBeLessThanOrEqual(0.4);
+    // The post faded where it stood, gone by 0.5 s.
+    expect(postGone).toBeGreaterThanOrEqual(0.25);
+    expect(postGone).toBeLessThanOrEqual(0.5);
+    expect(drawn(game.root, 'lontar')).toBe(1);
+    expect(drawn(game.root, 'record-beams')).toBe(1);
+  });
+
+  it('when the skip records lontar far from the chariot, they rise and fade where they stand instead of crossing the field', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const c = car(ANCHORS.tower.x + 12, ANCHORS.tower.z, 0);
+    layer.sync(parva1(c, []), 5);
+    const boxes = named<THREE.InstancedMesh>(game.root, 'lontar');
+    const turnOf = (k: number) => {
+      const q = new THREE.Quaternion();
+      matrixAt(boxes, k).decompose(new THREE.Vector3(), q, new THREE.Vector3());
+      return q;
+    };
+    const lying = new Map(P1_ITEMS.map((it) => [it.id, turnOf(instancesAt(boxes, it.at)[0])]));
+    for (let k = 0; k <= 32; k++) {
+      layer.sync(parva1(c, ['A', 'B'], 'outro'), 5 + k / 64);
+      for (let i = 0; i < boxes.count; i++) {
+        const p = placeOf(boxes, i);
+        const item = P1_ITEMS.find((it) => flatDist(p, it.at) <= F32);
+        expect(item, `box ${i} at frame ${k}`).toBeDefined();
+        expect(over(p, item!.at)).toBeGreaterThanOrEqual(1.16 - 1e-4);
+        expect(over(p, item!.at)).toBeLessThanOrEqual(1.16 + 2 + 1e-4);
+        // It keeps lying as it lay: no turn toward a chariot far off.
+        expect(turnOf(i).angleTo(lying.get(item!.id)!)).toBeLessThan(1e-3);
+      }
+      if (k / 64 >= 0.4) expect(drawn(game.root, 'lontar'), `frame ${k}`).toBe(0);
+    }
+  });
+
+  it('draws the beams as additive planes with the shaft texture, fog off, upright and turned to the camera: 1.4 × 30, gold, amber and blue-white', () => {
+    const { game } = fakeGame();
+    const cam = game.camera.position.set(40, 25, 90);
+    const layer = createPickups(game);
+    layer.sync(BASE, 0);
+    const beams = named<THREE.InstancedMesh>(game.root, 'record-beams');
+    const marker = named<THREE.Mesh>(game.root, 'marker-beam');
+    const tower = named<THREE.Mesh>(game.root, 'tower-beam');
+    for (const b of [beams, marker, tower]) {
+      const mat = b.material as THREE.MeshBasicMaterial;
+      expect(mat.blending, b.name).toBe(THREE.AdditiveBlending);
+      expect(mat.map, b.name).toBe(game.textures.shaft);
+      expect(mat.fog, b.name).toBe(false);
+      expect(mat.depthWrite, b.name).toBe(false);
+      expect(mat.transparent, b.name).toBe(true);
+    }
+    beams.geometry.computeBoundingBox();
+    const size = beams.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(size.x).toBeCloseTo(1.4, 6);
+    expect(size.y).toBeCloseTo(30, 6);
+    expect(marker.geometry).toBe(beams.geometry);
+    for (let k = 0; k < beams.count; k++) facesCamera(matrixAt(beams, k), cam);
+    tower.updateMatrixWorld();
+    facesCamera(tower.matrixWorld, cam);
+    // The roam marker's beam turns the same way.
+    layer.sync(P1_ROAM, 0.1);
+    marker.updateMatrixWorld();
+    facesCamera(marker.matrixWorld, cam);
+    // Gold over the records, amber at the marker, blue-white at the tower.
+    layer.sync(BASE, 0.2);
+    const hue = (c: THREE.Color) => c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).h;
+    const gold = new THREE.Color();
+    beams.getColorAt(0, gold);
+    expect(hue(gold)).toBeGreaterThanOrEqual(0.1);
+    expect(hue(gold)).toBeLessThanOrEqual(0.17);
+    const amber = (marker.material as THREE.MeshBasicMaterial).color;
+    expect(hue(amber)).toBeGreaterThanOrEqual(0.07);
+    expect(hue(amber)).toBeLessThan(hue(gold));
+    const blue = (tower.material as THREE.MeshBasicMaterial).color;
+    expect(blue.b).toBeGreaterThan(blue.r);
+    expect(blue.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).l).toBeGreaterThan(0.8);
+  });
+
+  it('turns the tower beam to the camera on every frame, synced or not, so it holds through the finale’s orbit', () => {
+    const { game, frames } = fakeGame();
+    const layer = createPickups(game);
+    expect(frames.size).toBe(1);
+    layer.setFinale(true);
+    const tower = named<THREE.Mesh>(game.root, 'tower-beam');
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      game.camera.position.set(ANCHORS.tower.x + 14 * Math.cos(a), 12, ANCHORS.tower.z + 14 * Math.sin(a));
+      for (const frame of frames) frame(k / 2, 1 / 60);
+      tower.updateMatrixWorld();
+      facesCamera(tower.matrixWorld, game.camera.position);
+    }
+  });
+
+  it('puts the halos, beams, rings and stamps on FX_LAYER; the halos are additive glow sprites', () => {
+    const { game } = fakeGame();
+    createPickups(game);
+    const fx = 1 << FX_LAYER;
+    for (const n of ['record-beams', 'marker-beam', 'tower-beam', 'marker-ring', 'record-circle', 'stamp-lotus', 'stamp-ring']) {
+      expect(named(game.root, n).layers.mask, n).toBe(fx);
+    }
+    for (const n of ['marker-ring', 'record-circle']) {
+      const mat = named<THREE.Mesh>(game.root, n).material as THREE.MeshBasicMaterial;
+      expect(mat.blending, n).toBe(THREE.AdditiveBlending);
+      expect(mat.depthWrite, n).toBe(false);
+    }
+    const halos = [...allNamed(game.root, 'record-halo'), ...allNamed(game.root, 'lamp-halo')] as THREE.Sprite[];
+    expect(halos.length).toBeGreaterThanOrEqual(9 + 24);
+    for (const h of halos) {
+      expect(h.isSprite).toBe(true);
+      expect(h.layers.mask).toBe(fx);
+      const mat = h.material as THREE.SpriteMaterial;
+      expect(mat.blending).toBe(THREE.AdditiveBlending);
+      expect(mat.map).toBe(game.textures.glow);
+    }
+  });
+
+  it('lays the record circle, a ring of r 9, round the tower over the ground', () => {
+    const { game } = fakeGame();
+    createPickups(game);
+    const circle = named<THREE.Mesh>(game.root, 'record-circle');
+    const vs = vertices(circle);
+    for (const v of vs) {
+      expect(Math.abs(flatDist(v, ANCHORS.tower) - 9)).toBeLessThanOrEqual(0.25);
+      expect(height(v)).toBeGreaterThan(0.03);
+      expect(height(v)).toBeLessThan(0.35);
+    }
+    // All the way round.
+    const sectors = new Set(vs.map((v) => Math.floor(((Math.atan2(v.z - ANCHORS.tower.z, v.x - ANCHORS.tower.x) + Math.PI) / (2 * Math.PI)) * 36) % 36));
+    expect(sectors.size).toBe(36);
+  });
+
+  it('makes the marker ring a flattened torus of r 5 with 8 petals, laid over the ground at the marker', () => {
+    const { game } = fakeGame();
+    createPickups(game).sync(P1_ROAM, 0);
+    const m = P1.marker!;
+    const vs = vertices(named<THREE.Mesh>(game.root, 'marker-ring'));
+    for (const v of vs) {
+      expect(height(v)).toBeGreaterThan(0.03);
+      expect(height(v)).toBeLessThan(0.35);
+    }
+    const r = vs.map((v) => flatDist(v, m));
+    expect(Math.min(...r)).toBeGreaterThan(4.7);
+    expect(Math.max(...r)).toBeLessThan(6.6);
+    expect(r.filter((d) => Math.abs(d - 5) <= 0.2).length).toBeGreaterThan(100);
+    // The petals reach out past the ring at eight bearings, 45° apart.
+    const sectors = new Set(
+      vs.filter((v) => flatDist(v, m) > 5.6).map((v) => Math.round((Math.atan2(v.z - m.z, v.x - m.x) + 2 * Math.PI) / (Math.PI / 4)) % 8),
+    );
+    expect(sectors.size).toBe(8);
+  });
+
+  it('lays a new lakon’s records out afresh: from the prologue’s arrows to parva 1’s lontar', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    layer.sync(BASE, 0);
+    expect(drawn(game.root, 'record-arrows')).toBe(8);
+    layer.sync(at(P1_ROAM, { phase: 'intro' }), 0.1);
+    expect(drawn(game.root, 'record-arrows')).toBe(0);
+    expect(drawn(game.root, 'lontar')).toBe(2);
+    expect(drawn(game.root, 'record-beams')).toBe(2);
+    expect(drawn(game.root, 'decoys')).toBe(P1.scripted.decoys.length);
+  });
+
+  it('draws every record of every lakon during its intro, each under its beam', () => {
+    const slugs = [0, 2, 2, 4, 9, 1, 2, 2, 2];
+    for (let ch = 0; ch <= 8; ch++) {
+      const def = missionFor(ch, Array.from({ length: slugs[ch] }, (_, k) => `s${k}`));
+      const items = itemsOf(def.steps);
+      const s0 = startChapter(def, def.start, 1, WORLD);
+      const { game } = fakeGame();
+      createPickups(game).sync(at(s0, { phase: 'intro' }), 0);
+      expect(drawn(game.root, ch === 0 ? 'record-arrows' : 'lontar'), `chapter ${ch}`).toBe(items.length);
+      expect(drawn(game.root, 'record-beams'), `chapter ${ch}`).toBe(items.length);
+    }
+  });
+
+  it('keeps the records out while a failed lakon waits for its retry', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    layer.sync(prologue(['L1']), 0);
+    layer.sync(at(BASE, { phase: 'failed', recorded: ['L1'] }), 1);
+    expect(drawn(game.root, 'record-arrows')).toBe(7);
+    expect(drawn(game.root, 'record-beams')).toBe(7);
+  });
+
+  it('fades a filed copy out where it stands over 0.4 s, fades a later copy in, and shows none in roam', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const decoys = named<THREE.InstancedMesh>(game.root, 'decoys');
+    const fade = decoys.geometry.getAttribute('aFade');
+    const s = prologue([]);
+    layer.sync(s, 1);
+    expect(decoys.count).toBe(1);
+    expect(fade.getX(0)).toBe(1);
+    const pose = matrixAt(decoys, 0);
+    const filed: GameState = { ...s, decoys: [{ ...s.decoys[0], state: 'filed' }] };
+    const dt = 1 / 64;
+    let gone = NaN;
+    let last = 1;
+    for (let k = 0; k <= 36; k++) {
+      layer.sync(filed, 1 + k * dt);
+      if (decoys.count === 0) {
+        if (Number.isNaN(gone)) gone = k * dt;
+        continue;
+      }
+      expect(Number.isNaN(gone), 'the copy came back').toBe(true);
+      expect(matrixAt(decoys, 0).equals(pose)).toBe(true);
+      expect(fade.getX(0)).toBeLessThanOrEqual(last);
+      expect(last - fade.getX(0)).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      last = fade.getX(0);
+    }
+    expect(gone).toBeGreaterThanOrEqual(0.25);
+    expect(gone).toBeLessThanOrEqual(0.5);
+    // A copy that appears later (a volley's) fades in rather than popping up.
+    const later: GameState = { ...filed, decoys: [...filed.decoys, { id: 9, at: { x: -40, z: 30 }, born: 5, life: null, state: 'open', mimic: false }] };
+    const level = () => {
+      const [k] = instancesAt(decoys, { x: -40, z: 30 });
+      return k === undefined ? 0 : fade.getX(k);
+    };
+    layer.sync(later, 2);
+    expect(level()).toBe(0);
+    layer.sync(later, 2.2);
+    expect(level()).toBeCloseTo(0.5, 6);
+    layer.sync(later, 2.5);
+    expect(level()).toBe(1);
+    // Before a lakon starts, its copies are not out.
+    layer.sync(P1_ROAM, 3);
+    expect(drawn(game.root, 'decoys')).toBe(0);
+  });
+
+  it('draws the prologue’s start in 15 calls and the finale in 28: an instanced mesh per kind, a sprite per halo', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    layer.sync(BASE, 0);
+    const calls = () => {
+      let n = 0;
+      named(game.root, 'pickups').traverse((o) => {
+        const inst = o as THREE.InstancedMesh;
+        if (((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite) && shown(o) && (!inst.isInstancedMesh || inst.count > 0)) n++;
+      });
+      return n;
+    };
+    // Arrows and tips, 8 halos, the beams, the copy, the marker ring, and the tower's beam and circle.
+    expect(calls()).toBe(15);
+    layer.setFinale(true);
+    // The tower's beam and circle, the lamps, their flames and their 24 halos.
+    expect(calls()).toBe(28);
+  });
+
+  it('dispose removes its group, stops listening and frees its geometries, materials and instanced meshes, not the scene’s textures', () => {
+    const { game, frames } = fakeGame();
+    const layer = createPickups(game);
+    layer.sync(BASE, 0);
+    const group = named(game.root, 'pickups');
+    const owned = new Set<Disposable>();
+    group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) owned.add(m.geometry);
+      if ((m as unknown as THREE.InstancedMesh).isInstancedMesh) owned.add(m as unknown as THREE.InstancedMesh);
+      const mats = m.material ? (Array.isArray(m.material) ? m.material : [m.material]) : [];
+      for (const mat of mats) owned.add(mat);
+    });
+    const freed = new Set<unknown>();
+    for (const r of owned) r.addEventListener('dispose', () => freed.add(r));
+    const shared: unknown[] = [];
+    for (const t of Object.values(game.textures)) t.addEventListener('dispose', () => shared.push(t));
+    layer.dispose();
+    expect(game.root.children).not.toContain(group);
+    expect(frames.size).toBe(0);
+    expect(owned.size).toBeGreaterThan(30);
+    for (const r of owned) expect(freed.has(r), (r as { type?: string }).type).toBe(true);
+    expect(shared).toEqual([]);
+  });
+
+  it('allocates nothing per frame: no new THREE. between function sync( and function dispose(', () => {
+    const src = read('src/lib/bowobharata-game/world/pickups3d.ts');
+    const from = src.indexOf('function sync(');
+    const to = src.indexOf('function dispose(');
+    expect(from).toBeGreaterThan(0);
+    expect(to).toBeGreaterThan(from);
+    expect(src.slice(from, to)).not.toContain('new THREE.');
+  });
+});
+
 describe('world/ framing (source)', () => {
   const WORLD_DIR = 'src/lib/bowobharata-game/world';
   const FILES = walk(WORLD_DIR).filter((f) => /\.tsx?$/.test(f));
@@ -611,7 +1308,7 @@ describe('world/ framing (source)', () => {
   const TEXT = /fillText|strokeText|TextGeometry|FontLoader|CSS2DRenderer|CSS3DRenderer/;
 
   it('covers every file of the layers', () => {
-    for (const f of ['types.ts', 'shapes.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
+    for (const f of ['types.ts', 'shapes.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
   });
 
   it('the matcher catches each specifier with its closing quote, and lets the allowed ones through', () => {
