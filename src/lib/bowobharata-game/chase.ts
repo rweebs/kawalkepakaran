@@ -23,6 +23,11 @@ export interface ChaseCam {
   shake: number;
   /** The boom's length once tall things have shortened it: at most dist. */
   boom: number;
+  /**
+   * The look's yaw, eased toward lookDir's direction at CHASE.lookRate: a contact that knocks the velocity aside for a
+   * few frames (a scrape along a tent or a tree) does not swing the view with it.
+   */
+  look: number;
 }
 
 export interface ChaseOpts {
@@ -120,7 +125,7 @@ const lerpVec = (a: Vec3, b: Vec3, k: number): Vec3 => ({ x: lerp(a.x, b.x, k), 
 export function initChase(car: ChariotState, o: ChaseOpts): ChaseCam {
   const boostK = o.boosting ? 1 : 0;
   const aim = settled(car, boostK);
-  return { ...aim, boostK, shake: 0, boom: boomLength(car, aim.yaw, aim.dist, o.tall) };
+  return { ...aim, boostK, shake: 0, boom: boomLength(car, aim.yaw, aim.dist, o.tall), look: yawOf(lookDir(car)) };
 }
 
 // Readings behind the pinned numbers: Laju's weight ramps linearly before the easing, so this frame's targets carry it;
@@ -142,6 +147,7 @@ export function stepChase(cam: ChaseCam, car: ChariotState, dt: number, o: Chase
     shake: cam.shake * Math.exp(-CHASE.shakeDecay * h),
     // Snaps in to what the tall things allow; eases back out.
     boom: Math.min(boomLength(car, yaw, dist, o.tall), dist - shortfall),
+    look: angleDiff(cam.look + angleDiff(yawOf(lookDir(car)), cam.look) * (1 - Math.exp(-CHASE.lookRate * h)), 0),
   };
 }
 
@@ -250,12 +256,12 @@ function shakeAt(t: number, amp: number): Vec3 {
 
 /**
  * The chase view: the camera `boom` m behind along −forward(yaw) at `height` over the chariot's ground, looking ahead
- * along lookDir. The shake (driven by `t`, in seconds) moves pos and look together, and the ground lift comes after
- * it, so even a shaking camera clears the ground by groundClear.
+ * along cam.look (lookDir eased at CHASE.lookRate). The shake (driven by `t`, in seconds) moves pos and look together,
+ * and the ground lift comes after it, so even a shaking camera clears the ground by groundClear.
  */
 export function chaseView(cam: ChaseCam, car: ChariotState, o: ChaseOpts, t = 0): { pose: Pose; fov: number } {
   const f = forward(cam.yaw);
-  const ahead = lookDir(car);
+  const ahead = forward(cam.look);
   const reach = Math.min(CHASE.lookAheadMax, CHASE.lookAhead + CHASE.lookAheadPerMs * groundSpeed(car));
   const base = o.ground(car.x, car.z);
   const n = shakeAt(t, cam.shake);

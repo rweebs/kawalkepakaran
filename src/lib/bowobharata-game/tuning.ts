@@ -42,7 +42,7 @@ export const CHASE = {
   distance: 9.5, distanceAtTop: 11, boostExtra: 1.5,
   height: 7.0, heightAtTop: 6.8, boostLift: 0.6,
   lookAhead: 8, lookAheadPerMs: 0.2, lookAheadMax: 12, lookHeight: 0.8, slipFollow: 0.5,
-  yawRate: 4.5, distRate: 3, heightRate: 8, fovRate: 6, boomOutRate: 3,
+  yawRate: 4.5, lookRate: 12, distRate: 3, heightRate: 8, fovRate: 6, boomOutRate: 3,
   fov: 55, fovAtTop: 61, fovBoost: 8, fovMax: 72, hfovMin: 45, fovCap: 90,
   boostIn: 0.15, boostOut: 0.5, groundClear: 1.4, boomMin: 0.5, boomMargin: 0.5,
   shakeBump: 0.18, shakeDecay: 6, shakeMinImpact: 6,

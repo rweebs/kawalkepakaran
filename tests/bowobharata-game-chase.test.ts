@@ -138,13 +138,41 @@ function inPlay(rnd: () => number, margin = 1): XZ {
   return { x: PLAY.cx + r * Math.cos(a), z: PLAY.cz + r * Math.sin(a) };
 }
 
+describe('a contact does not swing the view', () => {
+  it('scraping a camp tent at 8 m/s turns the view under 5° a frame (3.8°; 17.2° with an instant look), while the velocity itself flicks over 10°', () => {
+    // The slice check's scrape: due west at 8 m/s, the hull overlapping the tent at 60° (−94, 0.39), r 2.2, by 0.6 m.
+    let car: ChariotState = { ...initChariot(-80, 3.44, Math.PI), vx: -8, vz: 0 };
+    let cam = initChase(car, OPTS);
+    let prev = viewDir(cam, car);
+    let worst = 0;
+    let flick = 0;
+    let hit = false;
+    for (let k = 0; k < 150; k++) {
+      const throttle = Math.min(1, Math.max(0, (8 - speedOf(car)) * 2));
+      const out = resolveContacts(stepChariot(car, { ...NO_INPUT, throttle }, DT), COLS);
+      if (out.contact) hit = true;
+      if (Math.hypot(car.vx, car.vz) > 1 && Math.hypot(out.car.vx, out.car.vz) > 1) {
+        flick = Math.max(flick, Math.abs(angleDiff(Math.atan2(-out.car.vz, out.car.vx), Math.atan2(-car.vz, car.vx))) / DEG);
+      }
+      car = out.car;
+      cam = stepChase(cam, car, DT, OPTS);
+      const dir = viewDir(cam, car);
+      worst = Math.max(worst, degreesBetween(prev, dir));
+      prev = dir;
+    }
+    expect(hit).toBe(true);
+    expect(flick).toBeGreaterThan(10);
+    expect(worst).toBeLessThan(5);
+  });
+});
+
 describe('chase tuning', () => {
   it('holds the CHASE values', () => {
     expect(CHASE).toEqual({
       distance: 9.5, distanceAtTop: 11, boostExtra: 1.5,
       height: 7, heightAtTop: 6.8, boostLift: 0.6,
       lookAhead: 8, lookAheadPerMs: 0.2, lookAheadMax: 12, lookHeight: 0.8, slipFollow: 0.5,
-      yawRate: 4.5, distRate: 3, heightRate: 8, fovRate: 6, boomOutRate: 3,
+      yawRate: 4.5, lookRate: 12, distRate: 3, heightRate: 8, fovRate: 6, boomOutRate: 3,
       fov: 55, fovAtTop: 61, fovBoost: 8, fovMax: 72, hfovMin: 45, fovCap: 90,
       boostIn: 0.15, boostOut: 0.5, groundClear: 1.4, boomMin: 0.5, boomMargin: 0.5,
       shakeBump: 0.18, shakeDecay: 6, shakeMinImpact: 6,
