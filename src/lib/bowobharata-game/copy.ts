@@ -1,7 +1,11 @@
 // Every player-facing string of the BOWOBHARATA game, in Indonesian and English. Same voice and limits as the page
 // (src/lib/bowobharata.ts): allegory and the author's opinion, no new facts, no verdict on anyone. The arrows and the
 // Kurawa army are the campaign; Sanjaya only reports what the dossier alleges, always under the allegation line.
+// One calm narrator: the player drives, records and delivers, and never strikes, chases or catches anyone. The word
+// lists that hold this voice, and keep the reference games' names out, live in tests/bowobharata-game-copy.test.ts.
 import type { Locale } from '../../i18n';
+import type { HintKey } from './mission-run';
+import type { MissionType } from './missions';
 import type { Totals } from './record';
 
 export interface GameCopy {
@@ -48,6 +52,51 @@ export interface GameCopy {
   /** Button labels: start a chapter's play, go on, resume after a pause, take an event into the record (no-animation
    * version), and start over from the gate. */
   actions: { play: string; next: string; resume: string; take: string; again: string };
+  /** What the Kurawa ranks and the rewritten copies stand for; shown on the gate and the pause panel. */
+  armyNote: string;
+  /** Who the Pelapor is; shown beside armyNote. */
+  pelaporNote: string;
+  /** The frame line in the HUD's objective panel, shown throughout play. */
+  hudFrame: string;
+  /** Label of the full-screen button. */
+  fullscreen: string;
+  /** The chip that names a lakon's type on its card. */
+  types: Record<MissionType, string>;
+  /** The kicker over a lakon card; `label` names the chapter, e.g. "Parva 1". */
+  lakonKicker: (o: { label: string }) => string;
+  /** The objective line of the HUD, by objective. */
+  objectives: {
+    roam: string;
+    prologue: (o: { done: number; total: number }) => string;
+    collect: (o: { done: number; total: number }) => string;
+    tower: string;
+    stop: string;
+  };
+  /** The speed unit, then the names of Krishna's sight (Mata), the surge (Laju) and the clamour (Riuh). */
+  ride: { speedUnit: string; sight: string; surge: string; riuh: string };
+  /** Toasts while driving: counts, dates and channels only, never a name or an event title. */
+  toasts: {
+    recorded: (o: { n: number; total: number; date: string; channel: string }) => string;
+    /** The prologue's records show a count only. */
+    recordedPrologue: (o: { n: number; total: number }) => string;
+    filed: string; rewrite: string; ranks: string; checkpoint: string; wall: string;
+  };
+  /** The muted hint line of the objective panel, once per hint, for the keyboard and for touch. */
+  hints: Record<HintKey, { keys: string; touch: string }>;
+  /** The soft-fail card: its title, the reason (time, muddied), retry, the skip offered after two fails and its note,
+   * and the line that points to steering assist. */
+  fail: { title: string; time: string; muddied: string; retry: string; skip: string; skipNote: string; assist: string };
+  /** The Tercatat screen: its title, the prologue's count line, the heading of the framed prologue dates, and the note
+   * shown when the skip filled part of the record in. */
+  recordedScreen: { title: string; prologue: (o: { n: number }) => string; dates: string; skipped: string };
+  /** The pause panel: the two toggles, retry, the way to the lotus marker, and the version without animation. */
+  settings: { title: string; assist: string; easy: string; retry: string; toMarker: string; still: string };
+  /** The prompt offered to a device that stays slow. */
+  slow: { message: string; useStill: string; keepPlaying: string };
+  /** The controls as two titled lists: keyboard, and touch. */
+  controlsKeys: string[];
+  controlsTouch: string[];
+  controlsTitle: { keys: string; touch: string };
 }
 
 export const GAME_COPY: Record<Locale, GameCopy> = {
@@ -74,27 +123,26 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     nameOnly: 'muncul lagi',
     fields: { dugaan: 'Dugaan', pasal: 'Pasal yang dikutip', laporan: 'Nomor laporan', rows: 'Peristiwa yang tercatat' },
     krishnaLine: {
-      prologue: 'Anak panah sudah dilepas sebelum perang dimulai. Tangkap, jangan membalas.',
-      'dadu-di-hastinapura': 'Di sini saya baru bertanya dan menulis. Tangkap yang asli, biarkan tulisan ulang lewat.',
-      'duta-perdamaian': 'Krishna datang sebagai duta, bukan sebagai prajurit. Yang datang cukup ditangkap dan dicatat.',
-      'sekutu-dan-perbandingan': 'Kedua pihak menimbang kekuatan. Pegang yang bisa diperiksa, lepaskan yang sekadar riuh.',
-      'perang-narasi': 'Ini bagian terpanjang. Anak panahnya rapat dan cepat; pakai penglihatan Krishna untuk melihat mana yang asli.',
-      'senjata-data': 'Krishna tidak mengangkat senjata. Senjatanya di sini data yang bisa diuji ulang siapa saja.',
-      'somasi-kedua': 'Peringatan kedua. Simpan semuanya di satu tempat supaya dokumentasinya utuh.',
-      'kurukshetra-digital': 'Medan perang pindah ke linimasa dan kolom komentar. Tetap tangkap satu per satu.',
-      'dharma-menemukan-jalannya': 'Akhirnya bukan kemenangan yang dirayakan. Yang tersisa adalah dokumentasi, terbuka untuk dikoreksi.',
-      finale: 'Lihat seluruh catatannya. Semua yang tertangkap kini tercatat, lengkap dengan sumbernya.',
+      prologue: 'Anak panah sudah tertancap sebelum perang dimulai. Catat satu per satu; jangan membalas.',
+      'dadu-di-hastinapura': 'Di sini baru ada yang ditanyakan dan yang ditulis. Catat keduanya dan bawa ke Sanjaya.',
+      'duta-perdamaian': 'Krishna datang sebagai duta, bukan prajurit. Antar suratnya, lalu bawa catatannya ke Sanjaya.',
+      'sekutu-dan-perbandingan': 'Kedua pihak menimbang kekuatan. Catat yang bisa diperiksa; biarkan tulisan ulang lewat.',
+      'perang-narasi': 'Ini bagian terpanjang, termasuk tulisan yang menurut penulisnya sendiri bisa dikritik. Catat semuanya apa adanya.',
+      'senjata-data': 'Krishna tidak mengangkat senjata. Di sini senjatanya data yang bisa diuji ulang siapa saja; catat hasilnya.',
+      'somasi-kedua': 'Peringatan kedua. Simpan semuanya di satu tempat supaya catatannya utuh.',
+      'kurukshetra-digital': 'Medan pindah ke linimasa dan kolom komentar, termasuk balasan yang diulang-ulang. Catat itu juga.',
+      'dharma-menemukan-jalannya': 'Akhirnya bukan kemenangan yang dirayakan. Yang tersisa adalah catatan, terbuka untuk dikoreksi.',
+      finale: 'Lihat seluruh catatannya. Setiap catatan tersimpan bersama sumbernya.',
     },
-    hud: { caught: 'Tertangkap', missed: 'Terlewat', decoys: 'Umpan tertangkap', sight: 'Penglihatan Krishna', pause: 'Jeda' },
-    catchSource: 'Lihat peristiwa dan sumbernya',
-    lost: 'Terlalu banyak anak panah asli yang lewat, atau terlalu banyak umpan yang tertangkap. Catatan parva ini belum utuh.',
-    retry: 'Ulangi parva ini',
+    hud: { caught: 'Tercatat', missed: 'Terlewat', decoys: 'Tulisan ulang', sight: 'Penglihatan Krishna', pause: 'Jeda' },
+    catchSource: 'Lihat di linimasa, lengkap dengan sumbernya',
+    lost: 'Terlalu banyak anak panah asli yang terlewat, atau terlalu banyak tulisan ulang yang ikut tercatat. Catatan parva ini belum utuh.',
+    retry: 'Coba parva ini lagi',
     controls: [
-      'Ketuk atau klik anak panah untuk menangkapnya.',
-      'Anak panah yang ditulis ulang adalah umpan. Biarkan lewat.',
-      'Papan ketik: tombol panah menggerakkan bidikan, Spasi menangkap.',
-      'Tahan K untuk penglihatan Krishna: waktu melambat dan cap tiap anak panah terlihat.',
-      'Esc untuk jeda.',
+      'Papan ketik: W atau ↑ maju, S atau ↓ rem, A dan D atau ← dan → berbelok.',
+      'Spasi menarik tali kekang, Shift memberi Laju, dan K yang ditahan membuka Mata.',
+      'Enter atau E melewati pembuka lakon; Esc atau P untuk jeda.',
+      'Layar sentuh: geser jari di sisi kiri untuk mengarahkan; tombol Rem, Laju, dan Mata ada di sisi kanan.',
     ],
     fallbackNote: 'Versi tanpa animasi: parva, peristiwa, dan laporan Sanjaya yang sama, ditampilkan langkah demi langkah.',
     finaleTotals: (t) => [
@@ -105,6 +153,94 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     ],
     finaleClose: 'Semua ini diarahkan kepada satu orang: Rahmat Wibowo.',
     actions: { play: 'Mulai', next: 'Lanjut', resume: 'Lanjutkan', take: 'Masukkan ke catatan', again: 'Main lagi dari awal' },
+    armyNote: 'Pasukan Kurawa di sini adalah kiasan untuk riuh unggahan, repost, dan komentar yang dicatat Pelapor. Salinan tulisan ulang di medan hanyalah perangkat permainan, bukan halaman tertentu. Tidak ada prajurit yang mewakili orang tertentu, dan tidak ada yang bisa terluka.',
+    pelaporNote: 'Pelapor dalam berkas ini adalah Rahmat Wibowo, penulis kiasan ini.',
+    hudFrame: 'Kiasan · pendapat penulis',
+    fullscreen: 'Layar penuh',
+    types: { himpun: 'Himpun', antar: 'Antar', lintasan: 'Lintasan', uji: 'Uji ulang' },
+    lakonKicker: ({ label }) => `Lakon · ${label}`,
+    objectives: {
+      roam: 'Arahkan kereta ke penanda teratai untuk memulai lakon.',
+      prologue: ({ done, total }) => `Catat anak panah yang tertancap: ${done}/${total}`,
+      collect: ({ done, total }) => `Catat lontar di bawah sinar emas: ${done}/${total}`,
+      tower: 'Bawa catatannya ke menara Sanjaya.',
+      stop: 'Berhenti sejenak di dalam lingkaran.',
+    },
+    ride: { speedUnit: 'km/jam', sight: 'Mata', surge: 'Laju', riuh: 'Riuh' },
+    toasts: {
+      recorded: ({ n, total, date, channel }) => `Tercatat ${n}/${total} · ${date} · ${channel}`,
+      recordedPrologue: ({ n, total }) => `Tercatat ${n}/${total}`,
+      filed: 'Tulisan ulang disisihkan dari catatan.',
+      rewrite: 'Tulisan ulang ikut masuk ke catatan.',
+      ranks: 'Barisan tidak bisa diterobos. Kereta berhenti.',
+      checkpoint: 'Titik simpan tercapai.',
+      wall: 'Ini batas medan. Kereta kembali ke arah tengah.',
+    },
+    hints: {
+      ride: { keys: 'W atau ↑ menjalankan kereta.', touch: 'Geser jari di sisi kiri layar untuk mengarahkan kereta.' },
+      steer: { keys: 'A dan D, atau ← dan →, membelokkan kereta.', touch: 'Makin jauh jari digeser, makin tajam kereta berbelok.' },
+      slow: { keys: 'Kurangi kecepatan menjelang lingkaran: S atau ↓ mengerem.', touch: 'Kurangi kecepatan menjelang lingkaran: tahan Rem.' },
+      rewrites: {
+        keys: 'Salinan abu-abu adalah tulisan ulang. Jika dilewati tanpa Mata, salinan itu ikut masuk ke catatan.',
+        touch: 'Salinan abu-abu adalah tulisan ulang. Jika dilewati tanpa Mata, salinan itu ikut masuk ke catatan.',
+      },
+      sight: {
+        keys: 'Mata (tahan K) memperlambat waktu dan menyisihkan tulisan ulang yang dilewati.',
+        touch: 'Selama tombol Mata ditahan, waktu melambat dan tulisan ulang yang dilewati disisihkan.',
+      },
+      stop: { keys: 'S atau ↓ mengerem sampai kereta diam.', touch: 'Tahan Rem sampai kereta diam.' },
+      surge: { keys: 'Shift memberi Laju, tambahan kecepatan sesaat di jalan lurus.', touch: 'Tombol Laju memberi tambahan kecepatan sesaat di jalan lurus.' },
+      drift: {
+        keys: 'Spasi menarik tali kekang: kereta menikung lebih tajam dan Laju terisi lebih cepat.',
+        touch: 'Rem saat berbelok tajam menarik tali kekang: kereta menikung lebih tajam dan Laju terisi lebih cepat.',
+      },
+    },
+    fail: {
+      title: 'Catatan belum utuh',
+      time: 'Waktu lakon ini habis sebelum catatannya lengkap.',
+      muddied: 'Terlalu banyak tulisan ulang ikut masuk ke catatan.',
+      retry: 'Ulangi dari titik simpan',
+      skip: 'Lanjutkan cerita',
+      skipNote: 'Sisa catatan lakon ini dilengkapi otomatis, lalu cerita berlanjut.',
+      assist: 'Bantuan kemudi bisa dinyalakan di panel jeda.',
+    },
+    recordedScreen: {
+      title: 'Tercatat',
+      prologue: ({ n }) => `${n} anak panah tercatat. Semuanya bertanggal sebelum parva pertama.`,
+      dates: 'Tanggal dalam berkas Pelapor',
+      skipped: 'Sebagian catatan ini dilengkapi otomatis.',
+    },
+    settings: {
+      title: 'Pengaturan',
+      assist: 'Bantuan kemudi',
+      easy: 'Kontrol mudah',
+      retry: 'Ulangi dari titik simpan',
+      toMarker: 'Langsung ke penanda teratai',
+      still: 'Versi tanpa animasi',
+    },
+    slow: {
+      message: 'Adegan 3D berjalan lambat di perangkat ini. Versi tanpa animasi memuat cerita dan catatan yang sama.',
+      useStill: 'Pakai versi tanpa animasi',
+      keepPlaying: 'Tetap bermain',
+    },
+    controlsKeys: [
+      'W atau ↑: maju. S atau ↓: rem.',
+      'A dan D, atau ← dan →: berbelok.',
+      'Spasi: tarik tali kekang untuk menikung tajam.',
+      'Shift: Laju, tambahan kecepatan sesaat.',
+      'Tahan K: Mata. Waktu melambat; catatan asli bertanda teratai, tulisan ulang bertanda cincin retak.',
+      'Enter atau E: lewati pembuka lakon.',
+      'Esc atau P: jeda.',
+    ],
+    controlsTouch: [
+      'Geser jari di sisi kiri layar untuk mengarahkan kereta.',
+      'Dengan kontrol mudah, kereta berjalan sendiri.',
+      'Rem: memperlambat. Rem saat berbelok tajam: tarik tali kekang.',
+      'Laju: tambahan kecepatan sesaat.',
+      'Tahan Mata: waktu melambat; catatan asli bertanda teratai, tulisan ulang bertanda cincin retak.',
+      'Ketuk layar untuk melewati pembuka lakon.',
+    ],
+    controlsTitle: { keys: 'Papan ketik', touch: 'Layar sentuh' },
   },
   en: {
     title: 'BOWOBHARATA',
@@ -124,41 +260,128 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     prologueTitle: 'Before the War',
     prologueIntro: 'The record does not begin at Hastinapura. Some of it was written before the first parva.',
     sanjayaTitle: "Sanjaya's Report",
-    sanjayaIntro: 'Sanjaya watches the battlefield from afar. He reports what the dossier records for this part: who, the allegation, the articles cited and the report numbers.',
+    sanjayaIntro: 'Sanjaya watches the battlefield from afar and reports what the dossier records for this part: who, the allegation, the articles cited and the report numbers.',
     sanjayaNone: 'No new names entered the record in this parva.',
     nameOnly: 'appears again',
     fields: { dugaan: 'Allegation', pasal: 'Articles cited', laporan: 'Report numbers', rows: 'Recorded events' },
     krishnaLine: {
-      prologue: 'The arrows were loosed before the war began. Catch them; do not strike back.',
-      'dadu-di-hastinapura': 'Here I was only asking and writing. Catch the real ones, let the rewrites pass.',
-      'duta-perdamaian': 'Krishna comes as an envoy, not a warrior. What comes at you only needs to be caught and written down.',
-      'sekutu-dan-perbandingan': 'Both sides weigh their strength. Hold on to what can be checked, let the noise go.',
-      'perang-narasi': "This is the longest part. The arrows come thick and fast; use Krishna's sight to see which ones are real.",
-      'senjata-data': 'Krishna does not take up arms. Here the weapon is data anyone can test again.',
+      prologue: 'The arrows were in the ground before the war began. Record them one by one; do not strike back.',
+      'dadu-di-hastinapura': 'Here there are only questions and writing. Record both and bring them to Sanjaya.',
+      'duta-perdamaian': 'Krishna comes as an envoy, not a warrior. Deliver the letter, then bring the record to Sanjaya.',
+      'sekutu-dan-perbandingan': 'Both sides weigh their strength. Record what can be checked; let the rewrites pass.',
+      'perang-narasi': 'This is the longest part, including writing its own author says can be criticised. Record all of it as it was.',
+      'senjata-data': 'Krishna does not take up arms. Here the weapon is data that anyone can re-test; record the results.',
       'somasi-kedua': 'A second warning. Keep everything in one place so the record stays whole.',
-      'kurukshetra-digital': 'The battlefield moves to the timeline and the comment sections. Keep catching, one at a time.',
-      'dharma-menemukan-jalannya': 'The end is not a celebrated victory. What remains is documentation, open to correction.',
-      finale: 'Look at the whole record. Everything caught is now on record, with its sources.',
+      'kurukshetra-digital': 'The field moves to the timeline and the comment sections, including the replies sent over and over. Record those too.',
+      'dharma-menemukan-jalannya': 'The end is not a celebrated victory. What remains is the record, open to correction.',
+      finale: 'Look at the whole record. Every entry is kept with its sources.',
     },
-    hud: { caught: 'Caught', missed: 'Missed', decoys: 'Decoys caught', sight: "Krishna's sight", pause: 'Pause' },
-    catchSource: 'See the event and its sources',
-    lost: 'Too many real arrows got past, or too many decoys were caught. The record of this parva is not whole yet.',
-    retry: 'Replay this parva',
+    hud: { caught: 'Recorded', missed: 'Passed', decoys: 'Rewrites', sight: "Krishna's sight", pause: 'Pause' },
+    catchSource: 'See it on the timeline, with its sources',
+    lost: 'Too many real arrows passed by, or too many rewrites went into the record. The record of this parva is not whole yet.',
+    retry: 'Try this parva again',
     controls: [
-      'Tap or click an arrow to catch it.',
-      'Rewritten arrows are decoys. Let them pass.',
-      'Keyboard: the arrow keys move the reticle, Space catches.',
-      "Hold K for Krishna's sight: time slows and each arrow's stamp shows.",
-      'Esc pauses.',
+      'Keyboard: W or ↑ drives, S or ↓ brakes, A and D or ← and → steer.',
+      'Space pulls the reins, Shift gives a Surge, and holding K opens Sight.',
+      "Enter or E skips an episode's opening; Esc or P pauses.",
+      'Touch: slide a finger on the left to steer; the Brake, Surge and Sight buttons sit on the right.',
     ],
     fallbackNote: 'A version without animation: the same parva, events and Sanjaya reports, shown step by step.',
     finaleTotals: (t) => [
       `Sanjaya reported ${t.people} names and ${t.events} events.`,
-      `${t.reportsBy} reports filed by Rahmat Wibowo, ${t.reportsAgainst} filed against him.`,
+      `${t.reportsBy} reports filed by Rahmat Wibowo, ${t.reportsAgainst} filed against Rahmat Wibowo.`,
       `${t.excludedE} other cases that are not defamation against the Pelapor are left out of this game.`,
       'Read the full dossier',
     ],
     finaleClose: 'All of it was aimed at one person: Rahmat Wibowo.',
     actions: { play: 'Begin', next: 'Continue', resume: 'Resume', take: 'Take into the record', again: 'Play again from the start' },
+    armyNote: 'Here the Kurawa army is an allegory for the clamour of posts, reposts and comments that the Pelapor recorded. The rewritten copies on the field are only a game device, not any particular page. No soldier stands for any particular person, and no one can be hurt.',
+    pelaporNote: 'The Pelapor in this file is Rahmat Wibowo, the author of this allegory.',
+    hudFrame: "Allegory · the author's opinion",
+    fullscreen: 'Full screen',
+    types: { himpun: 'Gather', antar: 'Deliver', lintasan: 'Course', uji: 'Re-test' },
+    lakonKicker: ({ label }) => `Episode · ${label}`,
+    objectives: {
+      roam: 'Drive to the lotus marker to begin the episode.',
+      prologue: ({ done, total }) => `Record the arrows in the ground: ${done}/${total}`,
+      collect: ({ done, total }) => `Record the palm leaves under the gold beams: ${done}/${total}`,
+      tower: "Bring the record to Sanjaya's tower.",
+      stop: 'Stop inside the circle for a moment.',
+    },
+    ride: { speedUnit: 'km/h', sight: 'Sight', surge: 'Surge', riuh: 'Clamour' },
+    toasts: {
+      recorded: ({ n, total, date, channel }) => `Recorded ${n}/${total} · ${date} · ${channel}`,
+      recordedPrologue: ({ n, total }) => `Recorded ${n}/${total}`,
+      filed: 'The rewrite is kept out of the record.',
+      rewrite: 'A rewrite went into the record.',
+      ranks: 'The ranks cannot be driven through. The chariot stops.',
+      checkpoint: 'Checkpoint reached.',
+      wall: 'This is the edge of the field. The chariot turns back toward the centre.',
+    },
+    hints: {
+      ride: { keys: 'W or ↑ drives the chariot forward.', touch: 'Slide a finger on the left of the screen to steer the chariot.' },
+      steer: { keys: 'A and D, or ← and →, turn the chariot.', touch: 'The further the finger slides, the sharper the chariot turns.' },
+      slow: { keys: 'Ease off before the circle: S or ↓ brakes.', touch: 'Ease off before the circle: hold Brake.' },
+      rewrites: {
+        keys: 'Grey copies are rewrites. If you ride through one without Sight, it goes into the record.',
+        touch: 'Grey copies are rewrites. If you ride through one without Sight, it goes into the record.',
+      },
+      sight: {
+        keys: 'Sight (hold K) slows time and sets aside any rewrite you ride through.',
+        touch: 'While the Sight button is held, time slows and any rewrite you ride through is set aside.',
+      },
+      stop: { keys: 'S or ↓ brakes until the chariot stands still.', touch: 'Hold Brake until the chariot stands still.' },
+      surge: { keys: 'Shift gives a Surge, a short gain in speed on a straight.', touch: 'The Surge button gives a short gain in speed on a straight.' },
+      drift: {
+        keys: 'Space pulls the reins: the chariot slides through the turn and the Surge refills sooner.',
+        touch: 'Brake in a sharp turn to pull the reins: the chariot slides through and the Surge refills sooner.',
+      },
+    },
+    fail: {
+      title: 'The record is not whole yet',
+      time: 'The time for this episode ran out before the record was complete.',
+      muddied: 'Too many rewrites went into the record.',
+      retry: 'Try again from the checkpoint',
+      skip: 'Continue the story',
+      skipNote: 'The rest of this episode is recorded automatically, and the story goes on.',
+      assist: 'Steering assist can be turned on in the pause panel.',
+    },
+    recordedScreen: {
+      title: 'On record',
+      prologue: ({ n }) => `${n} arrows are on record, each dated before the first parva.`,
+      dates: "Dates in the Pelapor's file",
+      skipped: 'Part of this record was filled in automatically.',
+    },
+    settings: {
+      title: 'Settings',
+      assist: 'Steering assist',
+      easy: 'Easy control',
+      retry: 'Try again from the checkpoint',
+      toMarker: 'Go straight to the lotus marker',
+      still: 'Version without animation',
+    },
+    slow: {
+      message: 'The 3D scene runs slowly on this device. The version without animation has the same story and records.',
+      useStill: 'Use the version without animation',
+      keepPlaying: 'Keep playing',
+    },
+    controlsKeys: [
+      'W or ↑: drive. S or ↓: brake.',
+      'A and D, or ← and →: steer.',
+      'Space: pull the reins to slide through a sharp turn.',
+      'Shift: Surge, a short gain in speed.',
+      'Hold K: Sight. Time slows; real records show a lotus, rewrites a broken ring.',
+      "Enter or E: skip the episode's opening.",
+      'Esc or P: pause.',
+    ],
+    controlsTouch: [
+      'Slide a finger on the left of the screen to steer the chariot.',
+      'With easy control, the chariot moves on its own.',
+      'Brake: slow down. Brake in a sharp turn: pull the reins.',
+      'Surge: a short gain in speed.',
+      'Hold Sight: time slows; real records show a lotus, rewrites a broken ring.',
+      "Tap the screen to skip the episode's opening.",
+    ],
+    controlsTitle: { keys: 'Keyboard', touch: 'Touch screen' },
   },
 };
