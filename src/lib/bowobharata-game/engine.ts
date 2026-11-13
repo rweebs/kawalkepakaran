@@ -1,9 +1,12 @@
 // One frame of the game as plain data. advance() runs Krishna's sight on real time, scales the world's dt, blends the
 // steering assist, drives the chariot (the guard keeps it off the ranks; the field's edge brakes it to rest at 160 m,
-// as the guard does), applies the soft wall, resolves contacts, reports the guard holding the chariot, steps the lakon
-// rules, moves the camera and gives the hints, in that order.
-// Pure: no three.js, no DOM, no clock, no randomness; GameState holds no closures. `clock` counts real seconds, each
-// frame capped at DRIVE.maxDt as the drive is; the world runs at half speed while sight is on. Units are metres.
+// as the guard does; haze slows it), applies the soft wall, resolves contacts, reports the guard holding the chariot,
+// steps the lakon rules, then the clamour and the volleys (copies stay off the route), moves the camera and gives the
+// hints, in that order.
+// Pure: no three.js, no DOM, no clock; GameState holds no closures. The volleys' only randomness is the stored rng
+// state, stepped with nextRand from the chapter's seed. `clock` counts real seconds, each frame capped at DRIVE.maxDt
+// as the drive is; the world runs at half speed while sight is on. The clamour, the volleys, the copies and the haze
+// run on run.t, the lakon's world seconds, which stand still outside its active part. Units are metres.
 // The engine imports nothing from the bot: the assist blends in pure pursuit along the same route the bot follows.
 import { groundHeight, type Pose } from '../bowobharata/stage-math';
 import { angleDiff, clamp, dist, forward, polylineDist, yawOf, type XZ } from './geom';
@@ -17,7 +20,7 @@ import {
   type ChariotState,
   type Guard,
 } from './drive';
-import { GAME_WARRIORS, PLAY, ZONES, softWallAccel, staticColliders, type Collider, type Zone } from './world';
+import { GAME_WARRIORS, PLAY, ZONES, softWallAccel, staticColliders, zonesAt, type Collider, type Zone } from './world';
 import { fieldEdge, figureGuard, hullMid, resolveContacts } from './collide';
 import {
   bump,
@@ -49,7 +52,9 @@ import {
   type Phase,
   type RunState,
 } from './mission-run';
-import { CHASE, DRIVE, MISSION_TIMING } from './tuning';
+import { initRiuh, kickRiuh, levelEffects, riuhLevel, stepRiuh, type Riuh, type RiuhKick } from './riuh';
+import { inCloud, planVolley, scriptedVolley, stepVolleys, type Cloud, type Volley } from './volley';
+import { CHASE, DRIVE, MISSION_TIMING, VOLLEY } from './tuning';
 
 export interface FrameInput {
   drive: ChariotInput;
@@ -92,8 +97,22 @@ export interface GameState {
   hintAt: number;
   heldAt: number;
   wallAt: number;
-  /** The id the next copy (Decoy) or volley gets. */
+  /** The id the next volley gets (its copy and haze share it); the lakon's own copies and haze are numbered first. */
   nextId: number;
+  /** The clamour, on run.t; it moves only while the lakon is active. */
+  riuh: Riuh;
+  /** Volleys planned and not yet done: warned, in the air, or landed and still standing; stepVolleys drops the rest. */
+  volleys: Volley[];
+  /** Haze: the lakon's own (no life) and what volleys leave from level 3 (VOLLEY.cloudLife s), on run.t. */
+  clouds: Cloud[];
+  /** The run.t at which the next volley is planned; null while none is due (before 20 s, at level 0, after a retry). */
+  nextVolley: number | null;
+  /** The volleys' rng state, stepped with nextRand; it starts at the chapter's seed. */
+  rng: number;
+  /** The clamour's whole level as last reported: a `level` event fires when riuhLevel(riuh.value) differs from it. */
+  level: number;
+  /** Whether the lakon's scripted volley (scripted.volleyNear) has been planned: it comes once. */
+  scriptedPlanned: boolean;
 }
 
 /** A held event needs the guard to change the velocity by more than this (m/s) in one call: braking, not grazing. */
@@ -145,9 +164,35 @@ function routeFor(run: RunState, car: ChariotState, cached: GameState['route'], 
   return { target: target.id, points };
 }
 
+/** The prologue's scripted copy, the Mata lesson: it lies on the path on purpose, so the route never retires it. */
+const isLesson = (def: MissionDef, d: Decoy) => def.chapter === 0 && d.life === null;
+
 /**
- * A chapter's lakon from `from`: in roam when it has a marker, else straight into its intro. The scripted copies are
- * laid out. `seed` is kept for the volleys' randomness (Task 29); nothing in this engine is random yet.
+ * Lures stay off the route: every open copy within VOLLEY.routeClear m of it is retired ('gone', no event), except the
+ * prologue's lesson. Copies come out with the lakon, so in roam (with the marker's route) nothing is retired.
+ */
+function offRoute(decoys: Decoy[], run: RunState, route: GameState['route']): Decoy[] {
+  if (!route || run.phase === 'roam') return decoys;
+  const near = (d: Decoy) =>
+    d.state === 'open' && !isLesson(run.def, d) && polylineDist(d.at, route.points) < VOLLEY.routeClear;
+  return decoys.some(near) ? decoys.map((d) => (near(d) ? { ...d, state: 'gone' as const } : d)) : decoys;
+}
+
+/** The most volley copies open at once: VOLLEY.maxDecoys, VOLLEY.maxDecoysMobile on phones. */
+const copyCap = (w: World) => (w.mobile ? VOLLEY.maxDecoysMobile : VOLLEY.maxDecoys);
+
+/** Beyond the cap the oldest open volley copies (by landing, then id) are retired; the lakon's own never count. */
+function capCopies(decoys: Decoy[], cap: number): Decoy[] {
+  const open = decoys.filter((d) => d.life !== null && d.state === 'open');
+  if (open.length <= cap) return decoys;
+  open.sort((a, b) => a.born - b.born || a.id - b.id);
+  const retired = new Set(open.slice(0, open.length - cap).map((d) => d.id));
+  return decoys.map((d) => (retired.has(d.id) ? { ...d, state: 'gone' as const } : d));
+}
+
+/**
+ * A chapter's lakon from `from`: in roam when it has a marker, else straight into its intro. The scripted copies and
+ * haze are laid out, and the clamour starts at the lakon's start value. `seed` starts the volleys' rng.
  */
 export function startChapter(
   def: MissionDef,
@@ -160,21 +205,33 @@ export function startChapter(
   const decoys = def.scripted.decoys.map(
     (at, k): Decoy => ({ id: k + 1, at: { x: at.x, z: at.z }, born: 0, life: null, state: 'open', mimic: false }),
   );
+  const clouds = def.scripted.clouds.map(
+    (at, k): Cloud => ({ id: decoys.length + k + 1, at: { x: at.x, z: at.z }, r: VOLLEY.cloudR, born: 0, life: null }),
+  );
+  const route = routeFor(run, car, null, w);
+  const riuh = initRiuh({ start: def.riuh.start, frozen: def.riuh.frozen, t: 0 });
   return {
     clock: 0,
     car,
     cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)),
     run,
     sight: initSight(),
-    decoys,
+    decoys: offRoute(decoys, run, route),
     shot: null,
-    route: routeFor(run, car, null, w),
+    route,
     hintsShown: [],
     hintQueue: [],
     hintAt: -Infinity,
     heldAt: -Infinity,
     wallAt: -Infinity,
-    nextId: decoys.length + 1,
+    nextId: decoys.length + clouds.length + 1,
+    riuh,
+    volleys: [],
+    clouds,
+    nextVolley: null,
+    rng: seed >>> 0,
+    level: riuhLevel(riuh.value),
+    scriptedPlanned: false,
   };
 }
 
@@ -267,8 +324,88 @@ function areaOf(def: MissionDef): XZ {
   return { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, z: pts.reduce((a, p) => a + p.z, 0) / pts.length };
 }
 
+/** The clamour's kicks in a frame's lakon events, in order: delivering is the close of the reach step at the tower. */
+function kicksOf(def: MissionDef, events: readonly GameEvent[]): RiuhKick[] {
+  const kicks: RiuhKick[] = [];
+  for (const e of events) {
+    if (e.type === 'recorded' || e.type === 'filed' || e.type === 'rewriteTaken') kicks.push(e.type);
+    if (e.type !== 'stepDone') continue;
+    const step = def.steps[e.step];
+    if (step?.kind === 'reach' && step.place === 'tower') kicks.push('delivered');
+  }
+  return kicks;
+}
+
+/** Whether a copy or haze still has life left at run.t `t` (the lakon's own have no end). */
+const alive = (x: { born: number; life: number | null }, t: number) => x.life === null || t < x.born + x.life;
+
 /**
- * Step 9. The chase camera always follows; a phase with a shot plays it. A new outro or fail shot starts from the
+ * Step 9, in a frame that began in the active lakon (run.t moved). The clamour takes its own step to run.t from the
+ * zones the chariot is in, then this frame's kicks; a new whole level gives a `level` event. While the lakon is still
+ * active, volleys are planned: from run.t 20 at level 1 or more, the first after half the level's gap, then one each
+ * gap, each leaving a copy, and haze from level 3; the scripted volley comes the first time the chariot is near its
+ * spot. Every volley is stepped: an absorbed one gives an event and leaves nothing; a landed one leaves its copy
+ * (VOLLEY.decoyLife s) and its haze. Spent copies and haze go, and beyond the cap the oldest volley copy is retired.
+ */
+function stepPressure(
+  s: GameState,
+  ran: readonly GameEvent[],
+  dt: number,
+  w: World,
+): { state: GameState; events: GameEvent[] } {
+  const { run, car } = s;
+  const { def, t } = run;
+  const events: GameEvent[] = [];
+  let riuh = stepRiuh(s.riuh, { t, ...zonesAt(car) }, dt);
+  for (const k of kicksOf(def, ran)) riuh = kickRiuh(riuh, k, t);
+  const level = riuhLevel(riuh.value);
+  if (level !== s.level) events.push({ type: 'level', level });
+
+  const on = run.phase === 'active';
+  let { nextVolley, rng, nextId, scriptedPlanned } = s;
+  const planned: Volley[] = [];
+  const every = on && def.riuh.volleys && t >= MISSION_TIMING.firstVolley ? levelEffects(level).volleyEvery : null;
+  if (every === null) nextVolley = null;
+  else if (nextVolley === null) nextVolley = t + 0.5 * every;
+  else if (t >= nextVolley) {
+    const route = s.route?.points ?? null;
+    const plan = planVolley(car, t, rng, w, { decoy: true, cloud: level >= 3, id: nextId, route });
+    rng = plan.rng;
+    if (plan.volley) {
+      planned.push(plan.volley);
+      nextId++;
+    }
+    nextVolley = t + every;
+  }
+  const near = def.scripted.volleyNear;
+  if (on && near && !scriptedPlanned && dist(car, near.near) <= near.r) {
+    planned.push(scriptedVolley(near.at, t, nextId++, w));
+    scriptedPlanned = true;
+  }
+  for (const v of planned) events.push({ type: 'volley', id: v.id });
+
+  const out = stepVolleys(planned.length > 0 ? [...s.volleys, ...planned] : s.volleys, car, t);
+  events.push(...out.absorbed.map((): GameEvent => ({ type: 'absorbed' })));
+  // What a landed volley leaves shares its id, lies at its landing and dates from it.
+  const left = (v: Volley) => ({ id: v.id, at: { x: v.to.x, z: v.to.z }, born: v.t0 + v.flight });
+  const copies = out.landed.flatMap((v): Decoy[] =>
+    v.decoy ? [{ ...left(v), life: VOLLEY.decoyLife, state: 'open', mimic: false }] : [],
+  );
+  const hazes = out.landed.flatMap((v): Cloud[] =>
+    v.cloud ? [{ ...left(v), r: VOLLEY.cloudR, life: VOLLEY.cloudLife }] : [],
+  );
+  const kept = s.decoys.every((d) => alive(d, t)) ? s.decoys : s.decoys.filter((d) => alive(d, t));
+  const decoys = copies.length > 0 ? capCopies(offRoute([...kept, ...copies], run, s.route), copyCap(w)) : kept;
+  const live = s.clouds.every((c) => alive(c, t)) ? s.clouds : s.clouds.filter((c) => alive(c, t));
+  const clouds = hazes.length > 0 ? [...live, ...hazes] : live;
+  return {
+    state: { ...s, riuh, level, nextVolley, rng, nextId, scriptedPlanned, volleys: out.volleys, decoys, clouds },
+    events,
+  };
+}
+
+/**
+ * Step 10. The chase camera always follows; a phase with a shot plays it. A new outro or fail shot starts from the
  * live view (what this frame shows without it), so its first frame does not jump; the intro cuts in.
  */
 function stepCamera(s: GameState, before: GameState['shot'], dt: number, aspect: number, w: World): GameState {
@@ -390,7 +527,7 @@ const HINT_RULES: Readonly<Record<HintKey, (s: GameState) => boolean>> = {
 const HINT_ORDER: readonly HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop', 'surge', 'drift'];
 
 /**
- * Step 10. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
+ * Step 11. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
  * first hint fires once the hint on the HUD has stayed HINT_MIN, even if its own moment has passed (each is a lesson).
  * At most one fires per frame. The queue is dropped when the lakon ends.
  */
@@ -425,9 +562,11 @@ export function advance(
   // 1–2. Sight runs on real time; the world's dt follows it.
   const sight = stepSight(s.sight, driving && input.sight, real);
   const dt = worldDtOf(realDt, sight);
-  // 3–4. The assist, then the drive with the guard at the ranks and the brake at the field's edge.
+  // 3–4. The assist, then the drive with the guard at the ranks, the brake at the field's edge, and haze once the
+  // lakon is out (its haze comes with it, as its copies do).
   const drive = driving ? assisted(s, input) : holdStill(s.car);
-  const driven = stepChariot(s.car, drive, dt, { cloud: false, guard: w.guard, edge: EDGE });
+  const cloud = s.run.phase === 'active' && inCloud(s.car, s.clouds, s.run.t);
+  const driven = stepChariot(s.car, drive, dt, { cloud, guard: w.guard, edge: EDGE });
   // 5. The soft wall.
   const walled = softWall(driven, dt);
   let { wallAt, heldAt } = s;
@@ -448,7 +587,7 @@ export function advance(
     events.push({ type: 'held' });
     heldAt = clock;
   }
-  // 8. The lakon's rules, then the route to whatever is open now.
+  // 8. The lakon's rules (checkpoints and the calm bonus see the live clamour), then the route to whatever is open now.
   const ran = stepRun(s.run, {
     car,
     mid: hullMid(car),
@@ -456,7 +595,7 @@ export function advance(
     dt,
     sight: sight.on,
     skip: input.skip,
-    riuh: 0,
+    riuh: s.riuh.value,
     decoys: s.decoys,
   });
   events.push(...ran.events);
@@ -472,23 +611,39 @@ export function advance(
     heldAt,
     wallAt,
   };
-  // 9–10. The camera, then the hints.
-  const hinted = stepHints(stepCamera(moved, s.shot, dt, input.aspect, w));
+  // 9. The clamour and the volleys, in a frame that began in the active lakon; then no lure is left on the route.
+  const pressed = s.run.phase === 'active' ? stepPressure(moved, ran.events, dt, w) : { state: moved, events: [] };
+  events.push(...pressed.events);
+  const p = pressed.state;
+  const decoys = offRoute(p.decoys, p.run, p.route);
+  const cleared = decoys === p.decoys ? p : { ...p, decoys };
+  // 10–11. The camera, then the hints.
+  const hinted = stepHints(stepCamera(cleared, s.shot, dt, input.aspect, w));
   if (hinted.event) events.push(hinted.event);
   return { state: hinted.state, events };
 }
 
-/** Back to the last checkpoint, active, at rest: what was recorded and scored stays; at least 60 s are left. */
+/**
+ * Back to the last checkpoint, active, at rest: what was recorded and scored stays; at least 60 s are left. The clamour
+ * starts again from the checkpoint's, at most 1, at the restored run.t (its rise counts from there); the volleys are
+ * called off, and the copies and haze they left go. The lakon's own copies and haze stay as they are.
+ */
 export function retryFromCheckpoint(s: GameState, w: World): GameState {
   const back = restore(s.run);
   const car = initChariot(back.car.x, back.car.z, back.car.yaw);
+  const route = routeFor(back.run, car, null, w);
   return {
     ...s,
     car,
     cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)),
     run: back.run,
     shot: null,
-    route: routeFor(back.run, car, null, w),
+    route,
+    riuh: initRiuh({ start: back.riuh, frozen: back.run.def.riuh.frozen, t: back.run.t }),
+    volleys: [],
+    nextVolley: null,
+    decoys: offRoute(s.decoys.filter((d) => d.life === null), back.run, route),
+    clouds: s.clouds.filter((c) => c.life === null),
   };
 }
 
