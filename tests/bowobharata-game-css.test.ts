@@ -21,6 +21,11 @@ function declared(sel: string, prop: string): string[] {
   return bodies(sel).flatMap((b) => b.split(';').map((d) => d.trim()).filter((d) => d.startsWith(`${prop}:`)).map((d) => d.slice(prop.length + 1).trim()));
 }
 
+/** Every time value in a declaration value, in seconds. */
+function durations(v: string): number[] {
+  return [...v.matchAll(/(\d*\.?\d+)(ms|s)\b/g)].map((t) => (t[2] === 'ms' ? Number(t[1]) / 1000 : Number(t[1])));
+}
+
 describe('bowobharata-game.css stage and HUD', () => {
   it('fixes the stage height', () => {
     const s = ".bg-game[data-mode='3d']:not([data-screen='gate'])";
@@ -45,7 +50,9 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(has('.bg-hud button', 'pointer-events: auto')).toBe(true);
     expect(declared('.bg-hud', 'background').filter((v) => v !== 'none' && v !== 'transparent')).toEqual([]);
     for (const p of ['margin', 'padding', 'border-radius', 'display', 'flex']) expect(declared('.bg-hud', p)).toEqual([]);
-    expect(bodies('.bg-screen, .bg-hud, .bg-cards').length).toBe(0);
+    expect(declared('.bg-hud', 'position')).toEqual(['absolute']);
+    const hudRelative = rules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes('.bg-hud') && /(^|;\s*)position:\s*relative/.test(r.body));
+    expect(hudRelative).toEqual([]);
     expect(css).not.toMatch(/\.bg-hud\s*\{[^}]*margin/);
     expect(has('.bg-objective', 'top: 0.75rem') && has('.bg-objective', 'left: 0.75rem')).toBe(true);
     expect(has('.bg-objective', 'max-width: min(22rem, 46%)')).toBe(true);
@@ -72,7 +79,16 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(css).toContain('8%');
     expect(has('.bg-mission', 'position: absolute')).toBe(true);
     expect(has('.bg-mission', 'left: 0.75rem')).toBe(true);
-    expect(declared(".bg-stage[data-cine='on'] .bg-wipe", 'clip-path').length).toBeGreaterThan(0);
+    expect(declared('.bg-wipe', 'pointer-events')).toEqual(['none']);
+    const inV = declared(".bg-stage[data-wipe='in'] .bg-wipe", 'clip-path');
+    const outV = declared(".bg-stage[data-wipe='out'] .bg-wipe", 'clip-path');
+    expect(inV).toHaveLength(1);
+    expect(outV).toHaveLength(1);
+    expect(inV[0]).not.toEqual(outV[0]);
+    const tr = declared('.bg-wipe', 'transition').filter((v) => v !== 'none');
+    expect(tr).toHaveLength(1);
+    expect(tr[0]).toMatch(/^clip-path /);
+    expect(durations(tr[0]).every((d) => d >= 0.5)).toBe(true);
   });
 
   it('uses only the site fonts and no @font-face', () => {
@@ -86,12 +102,15 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(m).not.toBeNull();
     expect(m![1]).toContain('.bg-game *');
     expect(m![1]).toContain('animation: none');
-    expect(m![1]).toMatch(/\.bg-wipe[^{]*\{[^}]*clip-path: none/);
+    expect(m![1]).toMatch(/\.bg-wipe[^{]*\{[^}]*display: none[^}]*clip-path: none[^}]*transition: none/);
   });
 
-  it('has no animation shorter than 0.5s', () => {
-    const times = [...css.matchAll(/animation(?:-duration)?:\s*([^;}]+)/g)].flatMap((m) =>
-      [...m[1].matchAll(/(\d*\.?\d+)(ms|s)\b/g)].map((t) => (t[2] === 'ms' ? Number(t[1]) / 1000 : Number(t[1]))));
-    for (const t of times) expect(t).toBeGreaterThanOrEqual(0.5);
+  it('has no animation or transition shorter than 0.5s', () => {
+    const decls = [...css.matchAll(/(animation|animation-duration|transition|transition-duration):\s*([^;}]+)/g)];
+    expect(decls.length).toBeGreaterThan(0);
+    for (const [, , value] of decls) {
+      if (/^(none|0s)(\s*!important)?$/.test(value.trim())) continue;
+      for (const t of durations(value)) expect(t).toBeGreaterThanOrEqual(0.5);
+    }
   });
 });
