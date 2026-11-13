@@ -66,3 +66,23 @@ export const RIUH_LEVELS = [
   { volleyEvery: 4.5,  clouds: true,  radarStatic: 0.3 },
   { volleyEvery: 3.5,  clouds: true,  radarStatic: 0.45 },
 ] as const;
+
+/**
+ * Volleys: `arrows` per volley (`arrowsMobile` on phones), drawn `scale`× on a patch of radius `spread` m, each arcing
+ * `arcHeight` m above its chord. Warned `warn` s, then `flight` s in the air; without sight the telegraph shows
+ * `telegraph` s before landing. Aimed `aheadMin`–`aheadMax` m ahead of the chariot and `sideMin`–`sideMax` m to a side,
+ * from `originBack` m back and `originUp` m up; `retries` aims are tried. The landing centre keeps `figureClear` m plus
+ * the patch from the ranks, `colliderClear` m plus the patch from other colliders and `routeClear` m from the route;
+ * the last `lowTrack` m toward the origin (on flat ground, all the flight below `lowHeight` m) keeps the first two. A
+ * landing within `absorbR` m of the hull is absorbed. Landed arrows stand `stand` s, then sink over `sink` s. Copies
+ * last `decoyLife` s, at most `maxDecoys` (`maxDecoysMobile`); haze lies within `cloudR` m for `cloudLife` s.
+ */
+export const VOLLEY = {
+  arrows: 12, arrowsMobile: 6, spread: 2.5, arcHeight: 6, scale: 2.2,
+  warn: 1.0, flight: 1.6, telegraph: 1.4,
+  aheadMin: 11, aheadMax: 18, sideMin: 5, sideMax: 8,
+  originBack: 45, originUp: 22,
+  figureClear: 3, colliderClear: 1.5, lowHeight: 6, lowTrack: 6.5, routeClear: 5,
+  absorbR: 7, stand: 12, sink: 0.6, retries: 6,
+  decoyLife: 20, maxDecoys: 6, maxDecoysMobile: 4, cloudR: 6, cloudLife: 8,
+} as const;
