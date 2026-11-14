@@ -721,8 +721,16 @@ describe('Recorded: the framed strip and the card summaries', () => {
     const channels = [...new Set(cards.map((e) => e.channel.en))].join(', ');
     expect(recordedHtml('en', 1)).toContain(esc(GAME_COPY.en.report.strip.stat({ n: cards.length, from: 'April 26, 2026', to: 'May 2, 2026', channels })));
     expect(recordedHtml('id', 1)).toContain(`${cards.length} peristiwa · 26 April 2026 sampai 2 Mei 2026 · `);
-    const p = game.prologue;
-    expect(recordedHtml('id', 0)).toContain(esc(GAME_COPY.id.report.strip.statPrologue({ n: p.length, from: p[0].label, to: p[p.length - 1].label })));
+    // The prologue: the earliest and latest ISO dates, formatted in the locale, never the dossier labels.
+    const isos = game.prologue.map((d) => d.iso).sort();
+    expect(isos[0]).toBe('2023');
+    expect(isos.at(-1)).toBe('2023-09-24');
+    const stats = { id: '8 tanggal · 2023 sampai 24 September 2023', en: '8 dates · 2023 to September 24, 2023' };
+    for (const l of LOCALES) {
+      const line = element(recordedHtml(l, 0), 'class="bg-report__stat"');
+      expect(line).toBe(`<p class="bg-report__stat">${stats[l]}</p>`);
+      expect(line.split(l === 'id' ? ' sampai ' : ' to ').length - 1, l).toBe(1);
+    }
   });
 
   it('parva 3: one current mark, the third window, labelled 3', () => {

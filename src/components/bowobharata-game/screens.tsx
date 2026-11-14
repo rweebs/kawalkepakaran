@@ -199,6 +199,15 @@ const longDay = (locale: Locale, iso: string) =>
   new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(`${iso}T00:00:00Z`));
 
+/** A dossier ISO date at its own precision, in the locale and UTC: '2023', 'September 2023' or a whole day as longDay. */
+const isoLabel = (locale: Locale, iso: string) => {
+  const parts = iso.split('-');
+  if (parts.length >= 3) return longDay(locale, iso.slice(0, 10));
+  if (parts.length === 1) return iso;
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'id-ID', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${iso}-01T00:00:00Z`));
+};
+
 /** The parva windows as chart marks, labelled 1 to 8; `current` is the window's index, or -1 for none. */
 const windowMarks = (report: ReportData, current: number): Mark[] =>
   report.windows.map((w, i) => ({ from: w.from, to: w.to, label: String(i + 1), current: i === current }));
@@ -212,7 +221,9 @@ function RecordStrip({ locale, chapterIndex, cards, prologue, report }: {
   const w = report.windows[chapterIndex - 1];
   let stat: string;
   if (isPrologue) {
-    stat = r.strip.statPrologue({ n: prologue.length, from: prologue[0]?.label ?? '', to: prologue[prologue.length - 1]?.label ?? '' });
+    // The earliest and latest ISO dates, not the dossier labels (a label may itself be a range).
+    const isos = prologue.map((d) => d.iso).sort();
+    stat = r.strip.statPrologue({ n: prologue.length, from: isos.length ? isoLabel(locale, isos[0]) : '', to: isos.length ? isoLabel(locale, isos[isos.length - 1]) : '' });
   } else {
     const channels = [...new Set(cards.map((e) => e.channel[locale]))].join(', ');
     stat = r.strip.stat({ n: cards.length, from: w ? longDay(locale, w.from) : '', to: w ? longDay(locale, w.to) : '', channels });
