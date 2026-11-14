@@ -15,11 +15,15 @@ import { createWorld, startChapter, type GameState } from '../src/lib/bowobharat
 import { missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
 import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
 import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
+import { hullCircles } from '../src/lib/bowobharata-game/collide';
+import { VOLLEY } from '../src/lib/bowobharata-game/tuning';
+import { arrowPoint, scriptedVolley, telegraphAt, type Cloud, type Volley } from '../src/lib/bowobharata-game/volley';
 import type { SceneGame } from '../src/lib/bowobharata-game/world/types';
 import { CLEAR, createLandmarks } from '../src/lib/bowobharata-game/world/landmarks3d';
-import { DUST, TUFTS, cellTuft, createGround, inField, ringCells } from '../src/lib/bowobharata-game/world/ground3d';
+import { DUST, TUFTS, cellTuft, createGround, inField, ringCells, tuftFade } from '../src/lib/bowobharata-game/world/ground3d';
 import { bindChariot } from '../src/lib/bowobharata-game/world/chariot-bind';
 import { SHIMMER, createPickups, shimmerAt } from '../src/lib/bowobharata-game/world/pickups3d';
+import { createVolleys } from '../src/lib/bowobharata-game/world/volleys3d';
 import { disposeGroup } from '../src/lib/bowobharata-game/world/dispose';
 import * as shapes from '../src/lib/bowobharata-game/world/shapes';
 import * as arrows from '../src/lib/bowobharata-game/arrows3d';
@@ -395,6 +399,91 @@ describe('ground detail', () => {
     const b = new Set(tuftSpots(tufts(game)).filter((p) => near(p, { x: -52, z: 104 })).map(key));
     expect(a.size).toBeGreaterThan(5);
     expect(b).toEqual(a);
+  });
+
+  it('tuftFade: a tuft is whole within 6 m of the ring’s edge, gone at the edge, and falls smoothly between', () => {
+    expect(TUFTS.fade).toBe(6);
+    for (const r of [TUFTS.desktop.radius, TUFTS.phone.radius]) {
+      expect(tuftFade(0, r)).toBe(1);
+      expect(tuftFade(r - 6, r)).toBe(1);
+      expect(tuftFade(r - 3, r)).toBeCloseTo(0.5, 12);
+      expect(tuftFade(r, r)).toBe(0);
+      expect(tuftFade(r + 5, r)).toBe(0);
+      // It never rises outward, and never falls faster than a smoothstep over the 6 m does at its steepest (1.5 / 6 per m).
+      let last = 1;
+      for (let d = r - 7; d <= r + 1; d += 0.01) {
+        const f = tuftFade(d, r);
+        expect(f).toBeLessThanOrEqual(last + 1e-12);
+        expect(last - f).toBeLessThanOrEqual((1.5 / 6) * 0.01 + 1e-9);
+        last = f;
+      }
+    }
+  });
+
+  it('scales each tuft by tuftFade of its distance from the chariot, so none pops in or out at the edge or as the ring re-centres on a grid line', () => {
+    const dt = 1 / 60;
+    const speed = 14;
+    // The most a tuft's size can change in a frame: the fade's steepest slope, times the largest tuft, times a frame's drive.
+    const step = (1.5 / 6) * 1.3 * speed * dt + 1e-4;
+    for (const mobile of [false, true]) {
+      const { game } = fakeGame();
+      const layer = createGround(game, mobile);
+      const radius = mobile ? TUFTS.phone.radius : TUFTS.desktop.radius;
+      const mesh = tufts(game);
+      // Each drawn tuft, by where it stands, at its size now (tufts turn only about the vertical, so the upright axis's length).
+      const sizes = () => {
+        const out = new Map<string, number>();
+        const m = new THREE.Matrix4();
+        for (let k = 0; k < mesh.count; k++) {
+          mesh.getMatrixAt(k, m);
+          const p = new THREE.Vector3().setFromMatrixPosition(m);
+          out.set(`${p.x.toFixed(3)},${p.z.toFixed(3)}`, new THREE.Vector3().setFromMatrixColumn(m, 1).length());
+        }
+        return out;
+      };
+      // 6 s at 14 m/s, bending gently: across many cells, so the ring re-centres again and again.
+      let s = stateAt(-60, 100, 0.4, speed);
+      let prev = new Map<string, number>();
+      let cell = '';
+      let recentred = 0;
+      for (let k = 0; k < 360; k++) {
+        const yaw = s.car.yaw - 0.2 * dt;
+        const f = forward(yaw);
+        s = { ...s, car: { ...s.car, yaw, x: s.car.x + f.x * speed * dt, z: s.car.z + f.z * speed * dt, vx: f.x * speed, vz: f.z * speed } };
+        layer.sync(s, k * dt);
+        const now = sizes();
+        expect(now.size).toBeGreaterThan(20);
+        for (const [key, size] of now) {
+          const [x, z] = key.split(',').map(Number);
+          const t = cellTuft(Math.floor(x / TUFTS.cell), Math.floor(z / TUFTS.cell));
+          const d = Math.hypot(t.x - s.car.x, t.z - s.car.z);
+          expect(d, key).toBeLessThan(radius);
+          expect(size, key).toBeCloseTo(t.scale * tuftFade(d, radius), 4);
+        }
+        if (k > 0) {
+          for (const key of new Set([...prev.keys(), ...now.keys()])) {
+            expect(Math.abs((now.get(key) ?? 0) - (prev.get(key) ?? 0)), `${key} at frame ${k}`).toBeLessThanOrEqual(step);
+          }
+        }
+        const c = `${Math.floor(s.car.x / TUFTS.cell)},${Math.floor(s.car.z / TUFTS.cell)}`;
+        if (c !== cell) recentred++;
+        cell = c;
+        prev = now;
+      }
+      expect(recentred).toBeGreaterThan(10);
+    }
+  });
+
+  it('fades the tufts each frame without allocating: only a new cell lays the ring out again', () => {
+    const src = read('src/lib/bowobharata-game/world/ground3d.ts');
+    const from = src.indexOf('  function fadeTufts(');
+    expect(from).toBeGreaterThan(0);
+    const body = src.slice(from, src.indexOf('\n  }\n', from));
+    expect(body).not.toMatch(/\bnew\b|=>|\.\.\.|[=(,]\s*[[{]|\.(map|filter|slice|concat|flatMap|forEach)\(/);
+    expect(body).not.toMatch(/\b(ringCells|cellTuft|mulberry32|forward|rightOf|placeTufts)\(/);
+    const sync = src.slice(src.indexOf('    sync(s, time) {'));
+    expect(sync).toContain('placeTufts(s.car);');
+    expect(sync).toContain('fadeTufts(s.car);');
   });
 
   it('keeps the wheel dust to 64 points, raises none at rest, and some behind a chariot at speed', () => {
@@ -1390,6 +1479,53 @@ describe('pickups', () => {
     expect(fade.getX(0)).toBeCloseTo(0.75, 6);
   });
 
+  it('eases a volley’s copy out over the last 0.4 s of its life by run.t, so it never pops when the engine drops it; the lakon’s own stay whole', () => {
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const decoys = named<THREE.InstancedMesh>(game.root, 'decoys');
+    const fade = decoys.geometry.getAttribute('aFade');
+    const s = prologue([]);
+    const lesson = s.decoys[0];
+    expect(lesson.life).toBeNull();
+    const copy: Decoy = { id: 40, at: { x: -40, z: 30 }, born: 10, life: 20, state: 'open', mimic: false };
+    // As the engine keeps a copy: listed while run.t < born + life, then dropped with no 'gone' first.
+    const atRun = (t: number, d: Decoy): GameState => ({ ...s, run: { ...s.run, t }, decoys: t < d.born + d.life! ? [lesson, d] : [lesson] });
+    const level = (p: XZ) => {
+      const [k] = instancesAt(decoys, p);
+      return k === undefined ? 0 : fade.getX(k);
+    };
+    const dt = 1 / 60;
+    layer.sync(atRun(20, copy), 1);
+    expect(level(copy.at)).toBe(1);
+    let last = 1;
+    for (let k = 0; k <= 72; k++) {
+      const t = 29.2 + k * dt;
+      layer.sync(atRun(t, copy), 2 + k * dt);
+      const now = level(copy.at);
+      if (t < 30) expect(now, `run.t ${t}`).toBeCloseTo(Math.min(1, (30 - t) / 0.4), 5);
+      else expect(now, `run.t ${t}`).toBe(0);
+      expect(now).toBeLessThanOrEqual(last + 1e-12);
+      expect(last - now, `run.t ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      expect(level(lesson.at)).toBe(1);
+      last = now;
+    }
+    // One retired just before its end (by the cap or the route): it takes the lower of its going and its life, never a jump.
+    const late: Decoy = { ...copy, id: 41, born: 30, at: { x: -44, z: 26 } };
+    layer.sync(atRun(48, late), 5);
+    layer.sync(atRun(49, late), 6);
+    expect(level(late.at)).toBe(1);
+    last = 1;
+    for (let k = 0; k <= 60; k++) {
+      const t = 49.5 + k * dt;
+      layer.sync(atRun(t, t < 49.75 ? late : { ...late, state: 'gone' }), 7 + k * dt);
+      const now = level(late.at);
+      expect(now).toBeLessThanOrEqual(last + 1e-12);
+      expect(last - now, `run.t ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      if (t >= 50) expect(now).toBe(0);
+      last = now;
+    }
+  });
+
   it('draws the prologue’s start in 15 calls and the finale in 28: an instanced mesh per kind, a sprite per halo', () => {
     const { game } = fakeGame();
     const layer = createPickups(game);
@@ -1441,6 +1577,602 @@ describe('pickups', () => {
   });
 });
 
+describe('volleys', () => {
+  const PHONE_WORLD = createWorld({ mobile: true });
+  const NAMES = ['volley-arrows', 'volley-fletching', 'landed-arrows', 'landed-fletching', 'telegraph-columns', 'telegraph-rings'];
+  /** Whether o is drawn: it and every parent visible. */
+  const visibleUp = (o: THREE.Object3D) => {
+    for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return false;
+    return true;
+  };
+  const meshOf = (game: SceneGame, name: string) => named<THREE.InstancedMesh>(game.root, name);
+  /** The instances the named mesh draws: none while it or a parent is hidden. */
+  const drawnOf = (game: SceneGame, name: string) => {
+    const m = meshOf(game, name);
+    return visibleUp(m) ? m.count : 0;
+  };
+  const poseOf = (mesh: THREE.InstancedMesh, k: number) => {
+    const m = new THREE.Matrix4();
+    mesh.getMatrixAt(k, m);
+    return m;
+  };
+  const basisOf = (m: THREE.Matrix4) => {
+    const x = new THREE.Vector3();
+    const y = new THREE.Vector3();
+    const z = new THREE.Vector3();
+    m.extractBasis(x, y, z);
+    return { x, y, z };
+  };
+  const v3 = (p: { x: number; y: number; z: number }) => new THREE.Vector3(p.x, p.y, p.z);
+  /** Below this a mesh instance counts as not drawn: its own fade, the in-air fade, and the telegraph's brightness. */
+  const fadeOf = (mesh: THREE.InstancedMesh, k: number) => mesh.geometry.getAttribute('aFade').getX(k);
+  const glowOf = (mesh: THREE.InstancedMesh, k: number) => mesh.instanceColor!.getX(k);
+
+  /** Where test volleys land, on open ground; the car waits far from it unless a test brings it there. */
+  const LAND: XZ = { x: -40, z: 30 };
+  const AWAY = car(-110, 100);
+  /** Planned at run.t 30: warned until 31, in the air until it lands at 32.6. */
+  const PLANNED = 30;
+  /** The volley planned at PLANNED to land at `to`, in the state it has at run.t t. */
+  function volleyAt(t: number, o: { to?: XZ; id?: number; mobile?: boolean } = {}): Volley {
+    const v = scriptedVolley(o.to ?? LAND, PLANNED, o.id ?? 7, o.mobile ? PHONE_WORLD : WORLD);
+    const lands = v.t0 + v.flight;
+    return { ...v, state: t < v.t0 ? 'warn' : t < lands ? 'air' : 'landed' };
+  }
+  const V0 = volleyAt(0);
+  const LANDS = V0.t0 + V0.flight;
+  interface At {
+    car?: ChariotState;
+    clouds?: readonly Cloud[];
+    phase?: Phase;
+    sight?: boolean;
+  }
+  /** The prologue at run.t t with these volleys and haze: active, the car away and sight off unless told otherwise. */
+  function stateAtT(t: number, volleys: readonly Volley[], o: At = {}): GameState {
+    return {
+      ...BASE,
+      car: o.car ?? AWAY,
+      volleys,
+      clouds: o.clouds ?? [],
+      sight: { ...BASE.sight, on: o.sight ?? false },
+      run: { ...BASE.run, phase: o.phase ?? 'active', t },
+    };
+  }
+  /** The run.t of the volley planned at PLANNED, at u of its flight (0 when it leaves, 1 when it lands). */
+  const flightT = (u: number) => V0.t0 + u * V0.flight;
+  /** The hull circle nearest p (the gap from its edge), across the ground. */
+  const hullGap = (c: ChariotState, p: { x: number; z: number }) => Math.min(...hullCircles(c.x, c.z, c.yaw).map((h) => Math.hypot(p.x - h.x, p.z - h.z) - h.r));
+  /** Parva 1, in roam at its marker, with its two patches of haze laid out. */
+  const P1_ROAM = startChapter(missionFor(1, ['a', 'b']), missionFor(1, ['a', 'b']).start, 1, WORLD);
+
+  it('one volley in the air: 12 volley-arrows on desktops and 6 on phones, each on its arrowPoint, 2.2 times its size, heading along its arc', () => {
+    expect(VOLLEY.scale).toBe(2.2);
+    for (const mobile of [false, true]) {
+      const { game } = fakeGame();
+      const layer = createVolleys(game, mobile);
+      const t = flightT(0.5);
+      const v = volleyAt(t, { mobile });
+      expect(v.state).toBe('air');
+      expect(v.arrows).toBe(mobile ? 6 : 12);
+      layer.sync(stateAtT(t, [v]), 5);
+      const shafts = meshOf(game, 'volley-arrows');
+      const fletching = meshOf(game, 'volley-fletching');
+      expect(drawnOf(game, 'volley-arrows')).toBe(mobile ? 6 : 12);
+      expect(drawnOf(game, 'volley-fletching')).toBe(mobile ? 6 : 12);
+      const s = (t - v.t0) / v.flight;
+      for (let k = 0; k < v.arrows; k++) {
+        const m = poseOf(shafts, k);
+        const at = v3(arrowPoint(v, k, s, groundHeight));
+        expect(new THREE.Vector3().setFromMatrixPosition(m).distanceTo(at), `arrow ${k}`).toBeLessThanOrEqual(1e-3);
+        const { x, y, z } = basisOf(m);
+        for (const b of [x, y, z]) expect(b.length()).toBeCloseTo(2.2, 5);
+        // The shapes point their head along +y: here along the arc, the way the arrow flies.
+        const ahead = v3(arrowPoint(v, k, s + 1e-5, groundHeight)).sub(at).normalize();
+        expect(y.normalize().angleTo(ahead), `arrow ${k}`).toBeLessThan(1e-3);
+        expect(poseOf(fletching, k).equals(m)).toBe(true);
+        expect(fadeOf(shafts, k)).toBe(1);
+      }
+      expect(drawnOf(game, 'landed-arrows')).toBe(0);
+    }
+  });
+
+  it('draws the arrows in a light material: a frayed shaft #d6d9de lit #9aa0aa, its fletching #d6d9de unlit and left out of tone mapping', () => {
+    const { game } = fakeGame();
+    createVolleys(game, false);
+    for (const name of ['volley-arrows', 'landed-arrows']) {
+      const mat = meshOf(game, name).material as THREE.MeshStandardMaterial;
+      expect(mat.isMeshStandardMaterial, name).toBe(true);
+      expect(mat.color.getHexString(), name).toBe('d6d9de');
+      expect(mat.emissive.getHexString(), name).toBe('9aa0aa');
+      expect(mat.transparent, name).toBe(true);
+    }
+    for (const name of ['volley-fletching', 'landed-fletching']) {
+      const mat = meshOf(game, name).material as THREE.MeshBasicMaterial;
+      expect(mat.isMeshBasicMaterial, name).toBe(true);
+      expect(mat.color.getHexString(), name).toBe('d6d9de');
+      expect(mat.toneMapped, name).toBe(false);
+    }
+    // Each reads its instance's aFade in the shader, as the pickups' records and copies do.
+    const count = (src: string, s: string) => src.split(s).length - 1;
+    for (const name of NAMES.slice(0, 4)) {
+      const mesh = meshOf(game, name);
+      const mat = mesh.material as THREE.Material;
+      expect((mesh.geometry.getAttribute('aFade') as THREE.InstancedBufferAttribute).isInstancedBufferAttribute, name).toBe(true);
+      const lib = name.includes('fletching') ? THREE.ShaderLib.basic : THREE.ShaderLib.standard;
+      const shader = { uniforms: {}, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
+      mat.onBeforeCompile(shader as unknown as Parameters<THREE.Material['onBeforeCompile']>[0], undefined as unknown as THREE.WebGLRenderer);
+      expect(count(shader.vertexShader, 'vFade = aFade;'), name).toBe(1);
+      expect(count(shader.fragmentShader, 'diffuseColor.a *= vFade;'), name).toBe(1);
+    }
+  });
+
+  it('stands one telegraph column and one ring from telegraphAt to the landing: 1.4 s ahead, or from planning with sight', () => {
+    for (const sight of [false, true]) {
+      const { game } = fakeGame();
+      const layer = createVolleys(game, false);
+      const from = telegraphAt(V0, sight);
+      expect(from).toBeCloseTo(sight ? PLANNED : LANDS - 1.4, 9);
+      let shown = 0;
+      for (let k = 0; k <= 200; k++) {
+        const t = PLANNED - 0.495 + k * 0.02;
+        layer.sync(stateAtT(t, [volleyAt(t)], { sight }), t);
+        const want = t >= from && t < LANDS ? 1 : 0;
+        expect(drawnOf(game, 'telegraph-columns'), `sight ${sight}, t ${t}`).toBe(want);
+        expect(drawnOf(game, 'telegraph-rings'), `sight ${sight}, t ${t}`).toBe(want);
+        shown += want;
+      }
+      expect(shown).toBeGreaterThan(sight ? 120 : 60);
+    }
+  });
+
+  it('keeps a telegraph out once it shows: sight taken mid-warning brings it out then, and letting sight go does not take it back', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const at = (t: number, sight: boolean) => layer.sync(stateAtT(t, [volleyAt(t)], { sight }), t);
+    at(30.3, false);
+    expect(drawnOf(game, 'telegraph-columns')).toBe(0);
+    at(30.6, true);
+    expect(drawnOf(game, 'telegraph-columns')).toBe(1);
+    expect(drawnOf(game, 'telegraph-rings')).toBe(1);
+    at(30.7, false);
+    expect(drawnOf(game, 'telegraph-columns')).toBe(1);
+    at(31.1, false);
+    expect(drawnOf(game, 'telegraph-columns')).toBe(1);
+    expect(drawnOf(game, 'telegraph-rings')).toBe(1);
+  });
+
+  it('draws the column as an amber additive plane 1.2 m wide and 6 m tall, fog off, standing on the landing and turned to the camera', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const col = meshOf(game, 'telegraph-columns');
+    col.geometry.computeBoundingBox();
+    const size = col.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(size.x).toBeCloseTo(1.2, 6);
+    expect(size.y).toBeCloseTo(6, 6);
+    expect(size.z).toBeCloseTo(0, 6);
+    const mat = col.material as THREE.MeshBasicMaterial;
+    expect(mat.color.getHexString()).toBe('ffb84a');
+    expect(mat.blending).toBe(THREE.AdditiveBlending);
+    expect(mat.fog).toBe(false);
+    expect(mat.transparent).toBe(true);
+    expect(mat.depthWrite).toBe(false);
+    expect(mat.map).toBe(game.textures.shaft);
+    for (const cam of [new THREE.Vector3(-60, 12, 52), new THREE.Vector3(-20, 9, 10), new THREE.Vector3(-41, 30, 31)]) {
+      game.camera.position.copy(cam);
+      layer.sync(stateAtT(32, [volleyAt(32)]), 32);
+      const m = poseOf(col, 0);
+      const p = new THREE.Vector3().setFromMatrixPosition(m);
+      expect(flatDist(p, LAND)).toBeLessThanOrEqual(F32);
+      // From in the ground to well above it.
+      const g = groundHeight(LAND.x, LAND.z);
+      expect(p.y - 3).toBeLessThanOrEqual(g);
+      expect(p.y + 3).toBeGreaterThanOrEqual(g + 4);
+      const { x, y, z } = basisOf(m);
+      expect(y.clone().normalize().angleTo(new THREE.Vector3(0, 1, 0))).toBeLessThan(1e-6);
+      expect(Math.abs(angleDiff(Math.atan2(z.x, z.z), Math.atan2(cam.x - p.x, cam.z - p.z)))).toBeLessThan(1e-5);
+      expect(x.length()).toBeLessThanOrEqual(1 + 1e-6);
+    }
+  });
+
+  it('narrows the column from 1.2 m to 0.4 m as the arrows come, and brings it and the ring in and out no faster than 2 Hz allows', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const col = meshOf(game, 'telegraph-columns');
+    const ring = meshOf(game, 'telegraph-rings');
+    const dt = 1 / 60;
+    const widths: number[] = [];
+    let last = 0;
+    let peak = 0;
+    for (let t = LANDS - 1.4 + 0.004; t < LANDS + 0.2; t += dt) {
+      layer.sync(stateAtT(t, [volleyAt(t)]), t);
+      const out = drawnOf(game, 'telegraph-columns') > 0;
+      const glow = out ? glowOf(col, 0) : 0;
+      expect(out ? glowOf(ring, 0) : 0).toBeCloseTo(glow, 9);
+      expect(Math.abs(glow - last), `t ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      if (out) widths.push(1.2 * basisOf(poseOf(col, 0)).x.length());
+      peak = Math.max(peak, glow);
+      last = glow;
+    }
+    expect(peak).toBe(1);
+    expect(last).toBe(0);
+    expect(widths[0]).toBeCloseTo(1.2, 3);
+    expect(widths.at(-1)!).toBeGreaterThanOrEqual(0.4 - 1e-6);
+    expect(widths.at(-1)!).toBeLessThan(0.42);
+    for (let k = 1; k < widths.length; k++) expect(widths[k]).toBeLessThanOrEqual(widths[k - 1] + 1e-9);
+  });
+
+  it('lays the ring, a flat torus of r 2.4 and tube 0.08 in the same amber, over the ground round the landing', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const ring = meshOf(game, 'telegraph-rings');
+    ring.geometry.computeBoundingBox();
+    const size = ring.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(size.x).toBeCloseTo(2 * (2.4 + 0.08), 6);
+    expect(size.z).toBeCloseTo(2 * (2.4 + 0.08), 6);
+    expect(size.y).toBeLessThanOrEqual(2 * 0.08);
+    const mat = ring.material as THREE.MeshBasicMaterial;
+    expect(mat.color.getHexString()).toBe('ffb84a');
+    expect(mat.blending).toBe(THREE.AdditiveBlending);
+    expect(mat.fog).toBe(false);
+    expect(mat.depthWrite).toBe(false);
+    // No landing passes landingOk on the mound's slope; over the rolling plain a ring tilted to the slope at its centre
+    // keeps within 0.021 m of the ground all round.
+    for (const to of [LAND, { x: 60, z: 70 }, { x: -100, z: -40 }, { x: 95, z: 20 }]) {
+      layer.sync(stateAtT(32, [volleyAt(32, { to })]), 32);
+      expect(drawnOf(game, 'telegraph-rings')).toBe(1);
+      expect(flatDist(placeOf(ring, 0), to)).toBeLessThanOrEqual(F32);
+      // Every vertex a hair over the ground under it, however the ground leans there.
+      for (const p of vertices(ring, 0)) {
+        const h = p.y - groundHeight(p.x, p.z);
+        expect(h).toBeGreaterThan(0);
+        expect(h).toBeLessThan(0.3);
+      }
+    }
+  });
+
+  it('stands the 12 landed-arrows where the volley landed, their heads in the ground, for 12 s; sinks them over the next 0.6 s; then none', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const landed: Volley = { ...V0, state: 'landed' };
+    const mesh = meshOf(game, 'landed-arrows');
+    const standing: THREE.Vector3[] = [];
+    for (const age of [0, 0.5, 6, 11.9]) {
+      layer.sync(stateAtT(LANDS + age, [landed]), LANDS + age);
+      expect(drawnOf(game, 'landed-arrows'), `age ${age}`).toBe(12);
+      expect(drawnOf(game, 'landed-fletching'), `age ${age}`).toBe(12);
+      expect(drawnOf(game, 'volley-arrows'), `age ${age}`).toBe(0);
+      expect(drawnOf(game, 'telegraph-columns'), `age ${age}`).toBe(0);
+      for (let k = 0; k < 12; k++) {
+        const m = poseOf(mesh, k);
+        const p = new THREE.Vector3().setFromMatrixPosition(m);
+        const end = arrowPoint(V0, k, 1, groundHeight);
+        expect(p.distanceTo(v3(end)), `arrow ${k}`).toBeLessThanOrEqual(1e-3);
+        // As it came in: along the arc's last stretch, its head down into the ground.
+        const before = v3(arrowPoint(V0, k, 1 - 1e-5, groundHeight));
+        expect(basisOf(m).y.normalize().angleTo(v3(end).sub(before).normalize())).toBeLessThan(1e-3);
+        expect(fadeOf(mesh, k)).toBe(1);
+        standing[k] = p;
+      }
+    }
+    // Sinking: still drawn, each lower than where it stood.
+    layer.sync(stateAtT(LANDS + 12.3, [landed]), LANDS + 12.3);
+    expect(drawnOf(game, 'landed-arrows')).toBe(12);
+    for (let k = 0; k < 12; k++) expect(placeOf(mesh, k).y).toBeLessThan(standing[k].y - 0.3);
+    // Sunk: the engine drops it at 12.6 s; none is drawn after, listed or not.
+    layer.sync(stateAtT(LANDS + 12.61, [landed]), LANDS + 12.61);
+    expect(drawnOf(game, 'landed-arrows')).toBe(0);
+    expect(drawnOf(game, 'landed-fletching')).toBe(0);
+    layer.sync(stateAtT(LANDS + 12.7, []), LANDS + 12.7);
+    expect(drawnOf(game, 'landed-arrows')).toBe(0);
+  });
+
+  it('eases the arrows in as they leave, over at least 0.25 s, and carries each from the air to the ground with no jump', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const air = meshOf(game, 'volley-arrows');
+    const ground = meshOf(game, 'landed-arrows');
+    const dt = 1 / 60;
+    let last = 0;
+    let before: THREE.Vector3 | null = null;
+    for (let t = V0.t0 - 0.1; t < LANDS + 0.1; t += dt) {
+      layer.sync(stateAtT(t, [volleyAt(t)]), t);
+      const inAir = drawnOf(game, 'volley-arrows') > 0;
+      const k = inAir ? fadeOf(air, 0) : drawnOf(game, 'landed-arrows') > 0 ? fadeOf(ground, 0) : 0;
+      expect(k - last, `t ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      last = k;
+      const p = inAir ? placeOf(air, 0) : drawnOf(game, 'landed-arrows') > 0 ? placeOf(ground, 0) : null;
+      if (p && before) expect(p.distanceTo(before), `t ${t}`).toBeLessThan(1.5);
+      before = p;
+    }
+    expect(drawnOf(game, 'landed-arrows')).toBe(12);
+    expect(last).toBe(1);
+  });
+
+  it('hides each arrow in flight at once while it is within 3 m of a hull circle and below 4 m: none is drawn touching the chariot', () => {
+    let hidden = 0;
+    let shown = 0;
+    const cars = [car(LAND.x, LAND.z, 0), car(LAND.x + 5, LAND.z, 1), car(LAND.x - 4, LAND.z + 3, 2.5), car(LAND.x + 7, LAND.z - 6, -1), car(LAND.x + 2, LAND.z + 9, 0.6)];
+    for (const c of cars) {
+      for (const u of [0.6, 0.8, 0.9, 0.95, 0.99]) {
+        const { game } = fakeGame();
+        const layer = createVolleys(game, false);
+        const t = flightT(u);
+        layer.sync(stateAtT(t, [volleyAt(t)], { car: c }), t);
+        const n = drawnOf(game, 'volley-arrows');
+        hidden += 12 - n;
+        shown += n;
+        for (const name of ['volley-arrows', 'volley-fletching']) {
+          const mesh = meshOf(game, name);
+          for (let k = 0; k < n; k++) {
+            for (const p of vertices(mesh, k)) {
+              if (hullGap(c, p) < 3) expect(p.y - groundHeight(p.x, p.z), `${name} ${k}, u ${u}`).toBeGreaterThanOrEqual(4);
+            }
+          }
+        }
+      }
+    }
+    expect(hidden).toBeGreaterThan(20);
+    expect(shown).toBeGreaterThan(100);
+  });
+
+  it('eases landed arrows out over at least 0.25 s as the chariot drives over their patch, so none is drawn within 3 m of its hull, and back once it has gone', () => {
+    const dt = 1 / 60;
+    for (const [yaw, speed, side] of [[0.3, 12, 0], [2.2, 17, 1.5], [-1.2, 6, -2], [0.9, 25, 0.5]]) {
+      const { game } = fakeGame();
+      const layer = createVolleys(game, false);
+      const mesh = meshOf(game, 'landed-arrows');
+      const landed: Volley = { ...V0, state: 'landed' };
+      const spots = Array.from({ length: 12 }, (_, k) => v3(arrowPoint(V0, k, 1, groundHeight)));
+      const f = forward(yaw);
+      const r = rightOf(yaw);
+      // From 45 m short of the landing, across it (side m off its centre), to 45 m past it.
+      const start = { x: LAND.x - f.x * 45 + r.x * side, z: LAND.z - f.z * 45 + r.z * side };
+      const frames = Math.ceil(90 / speed / dt);
+      let last = Array<number>(12).fill(1);
+      let faded = 0;
+      for (let k = 0; k <= frames; k++) {
+        const c = car(start.x + f.x * speed * k * dt, start.z + f.z * speed * k * dt, yaw, speed);
+        // The arrows' age stays put (a second after landing, well short of their sinking); the scene's clock runs on.
+        layer.sync(stateAtT(LANDS + 1, [landed], { car: c }), 10 + k * dt);
+        const now = Array<number>(12).fill(0);
+        for (let i = 0; i < drawnOf(game, 'landed-arrows'); i++) {
+          const p = placeOf(mesh, i);
+          const j = spots.findIndex((s) => flatDist(s, p) <= 1e-3);
+          expect(j, 'a standing arrow out of place').toBeGreaterThanOrEqual(0);
+          now[j] = fadeOf(mesh, i);
+          // An arrow is under 3 m long: one whose head stands 6 m or more off the hull cannot reach within 3 m of it.
+          if (hullGap(c, p) >= 6) continue;
+          for (const v of vertices(mesh, i)) expect(hullGap(c, v), `arrow ${j}, frame ${k}`).toBeGreaterThanOrEqual(3);
+          for (const v of vertices(meshOf(game, 'landed-fletching'), i)) expect(hullGap(c, v), `fletching ${j}, frame ${k}`).toBeGreaterThanOrEqual(3);
+        }
+        for (let j = 0; j < 12; j++) {
+          expect(Math.abs(now[j] - last[j]), `arrow ${j}, frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+          if (now[j] === 0 && last[j] > 0) faded++;
+        }
+        last = now;
+      }
+      expect(faded, `yaw ${yaw}`).toBeGreaterThan(3);
+      expect(last).toEqual(Array<number>(12).fill(1));
+    }
+  });
+
+  it('fades what is in the air, the columns and the rings out over at least 0.25 s once the lakon is not active, and keeps them hidden', () => {
+    const dt = 1 / 60;
+    for (const phase of ['outro', 'failed', 'done'] as const) {
+      const { game } = fakeGame();
+      const layer = createVolleys(game, false);
+      // Two volleys: one in the air, one warned with its telegraph out (sight is on); half a second of play brings both
+      // telegraphs fully out. Then the lakon ends, and the run's clock stands still.
+      const t = flightT(0.4);
+      const other = scriptedVolley({ x: -70, z: 60 }, t - 0.4, 8, WORLD);
+      for (let k = 30; k > 0; k--) {
+        const tt = t - k * dt;
+        layer.sync(stateAtT(tt, tt >= other.planned ? [volleyAt(tt), other] : [volleyAt(tt)], { sight: true }), 10 - k * dt);
+      }
+      const both = [volleyAt(t), other];
+      expect(other.state).toBe('warn');
+      layer.sync(stateAtT(t, both, { sight: true }), 10);
+      expect(drawnOf(game, 'volley-arrows')).toBe(12);
+      expect(drawnOf(game, 'telegraph-columns')).toBe(2);
+      const level = () => ({
+        air: drawnOf(game, 'volley-arrows') > 0 ? fadeOf(meshOf(game, 'volley-arrows'), 0) : 0,
+        column: drawnOf(game, 'telegraph-columns') > 0 ? glowOf(meshOf(game, 'telegraph-columns'), 0) : 0,
+        ring: drawnOf(game, 'telegraph-rings') > 0 ? glowOf(meshOf(game, 'telegraph-rings'), 0) : 0,
+      });
+      let last = level();
+      expect(last.air).toBe(1);
+      expect(last.column).toBeGreaterThan(0.5);
+      let goneAt = NaN;
+      for (let k = 1; k <= 240; k++) {
+        layer.sync(stateAtT(t, both, { phase, sight: true }), 10 + k * dt);
+        const now = level();
+        for (const key of ['air', 'column', 'ring'] as const) {
+          expect(now[key], `${phase} ${key} at frame ${k}`).toBeLessThanOrEqual(last[key] + 1e-9);
+          expect(last[key] - now[key], `${phase} ${key} at frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        }
+        if (now.air === 0 && now.column === 0 && now.ring === 0 && Number.isNaN(goneAt)) goneAt = k * dt;
+        if (!Number.isNaN(goneAt)) for (const name of ['volley-arrows', 'volley-fletching', 'telegraph-columns', 'telegraph-rings']) expect(drawnOf(game, name), `${phase} ${name}`).toBe(0);
+        last = now;
+      }
+      expect(goneAt).toBeGreaterThanOrEqual(0.25);
+      expect(goneAt).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it('draws nothing of a volley the light takes: it leaves the list as it lands, and nothing of it stands', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const t = flightT(0.97);
+    layer.sync(stateAtT(t, [volleyAt(t)]), t);
+    expect(drawnOf(game, 'volley-arrows')).toBe(12);
+    // Absorbed: gone from s.volleys in the frame it lands; it leaves no copy and no haze either.
+    for (let k = 1; k <= 30; k++) {
+      layer.sync(stateAtT(LANDS + k / 60, []), LANDS + k / 60);
+      for (const name of NAMES) expect(drawnOf(game, name), name).toBe(0);
+    }
+  });
+
+  it('draws nothing in roam, nor with nothing in flight or standing: empty lists, and a lakon’s own haze waits for its intro', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const haze = named<THREE.Points>(game.root, 'haze');
+    const nothing = (why: string) => {
+      for (const name of NAMES) expect(drawnOf(game, name), `${why}: ${name}`).toBe(0);
+      expect(visibleUp(haze), `${why}: haze`).toBe(false);
+    };
+    nothing('made');
+    layer.sync(stateAtT(40, []), 1);
+    nothing('active, empty');
+    expect(P1_ROAM.run.phase).toBe('roam');
+    expect(P1_ROAM.clouds).toHaveLength(2);
+    expect(P1_ROAM.volleys).toEqual([]);
+    layer.sync(P1_ROAM, 2);
+    nothing('roam');
+    // Even a stray volley in roam stays undrawn: no pressure runs there.
+    layer.sync({ ...P1_ROAM, volleys: [volleyAt(32), { ...V0, id: 9, state: 'landed' }], run: { ...P1_ROAM.run, t: 32 } }, 3);
+    nothing('roam with a volley');
+    layer.sync({ ...P1_ROAM, run: { ...P1_ROAM.run, phase: 'intro' } }, 4);
+    expect(visibleUp(haze)).toBe(true);
+  });
+
+  it('draws haze as points with the soft texture, #a98d6a at a steady 0.35, puffs within the cloud’s 6 m: equal over 10 syncs, no flicker', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const haze = named<THREE.Points>(game.root, 'haze');
+    const mat = haze.material as THREE.PointsMaterial;
+    expect(haze.isPoints).toBe(true);
+    expect(mat.map).toBe(game.textures.soft);
+    expect(mat.color.getHexString()).toBe('a98d6a');
+    expect(mat.opacity).toBe(0.35);
+    expect(mat.transparent).toBe(true);
+    expect(mat.depthWrite).toBe(false);
+    expect(mat.vertexColors).toBe(true);
+    const cloud: Cloud = { id: 9, at: { x: -30, z: 40 }, r: VOLLEY.cloudR, born: 10, life: VOLLEY.cloudLife };
+    expect(cloud.r).toBe(6);
+    const pos = haze.geometry.getAttribute('position');
+    const col = haze.geometry.getAttribute('color');
+    let first: number[] | null = null;
+    for (let k = 0; k < 10; k++) {
+      layer.sync(stateAtT(14 + k / 60, [], { clouds: [cloud] }), 5 + k / 60);
+      expect(visibleUp(haze)).toBe(true);
+      expect(mat.opacity).toBe(0.35);
+      const n = haze.geometry.drawRange.count;
+      expect(n).toBeGreaterThanOrEqual(6);
+      const alphas = Array.from({ length: n }, (_, i) => col.getW(i));
+      first ??= alphas;
+      expect(alphas).toEqual(first);
+      expect(alphas.every((a) => a === 1)).toBe(true);
+      for (let i = 0; i < n; i++) {
+        expect(Math.hypot(pos.getX(i) - cloud.at.x, pos.getZ(i) - cloud.at.z)).toBeLessThanOrEqual(6);
+        expect(pos.getY(i) - groundHeight(pos.getX(i), pos.getZ(i))).toBeGreaterThan(0.3);
+      }
+    }
+  });
+
+  it('eases a volley’s haze in over its first 0.6 s and out over its last 0.6 s of run.t, no faster than 2 Hz, so it never pops when its life ends', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const haze = named<THREE.Points>(game.root, 'haze');
+    const col = haze.geometry.getAttribute('color');
+    const cloud: Cloud = { id: 9, at: { x: -30, z: 40 }, r: 6, born: 10, life: 8 };
+    const dt = 1 / 60;
+    const level = () => (visibleUp(haze) && haze.geometry.drawRange.count > 0 ? col.getW(0) : 0);
+    let last = 0;
+    for (let t = 9.9; t < 18.2; t += dt) {
+      // As the engine keeps haze: listed from its landing, dropped at born + life with no 'gone' first.
+      layer.sync(stateAtT(t, [], { clouds: t >= 10 && t < 18 ? [cloud] : [] }), t);
+      const want = Math.max(0, Math.min(1, (t - 10) / 0.6, (18 - t) / 0.6));
+      expect(level(), `t ${t}`).toBeCloseTo(t >= 10 && t < 18 ? want : 0, 5);
+      expect(Math.abs(level() - last), `t ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      last = level();
+    }
+  });
+
+  it('lays a lakon’s own haze out whole from its intro on, and keeps it through the outro', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const haze = named<THREE.Points>(game.root, 'haze');
+    const col = haze.geometry.getAttribute('color');
+    const pos = haze.geometry.getAttribute('position');
+    for (const phase of ['intro', 'active', 'outro', 'failed'] as const) {
+      layer.sync({ ...P1_ROAM, run: { ...P1_ROAM.run, phase } }, 1);
+      const n = haze.geometry.drawRange.count;
+      expect(visibleUp(haze), phase).toBe(true);
+      for (let i = 0; i < n; i++) expect(col.getW(i), phase).toBe(1);
+      // Both of parva 1's patches, each round its own spot.
+      for (const c of P1_ROAM.clouds) {
+        let near = 0;
+        for (let i = 0; i < n; i++) if (Math.hypot(pos.getX(i) - c.at.x, pos.getZ(i) - c.at.z) <= c.r) near++;
+        expect(near, phase).toBeGreaterThanOrEqual(n / 2);
+      }
+    }
+  });
+
+  it('puts the columns, rings and haze on FX_LAYER, and the solid arrows on the scene’s own layer, as the targets are', () => {
+    const { game } = fakeGame();
+    createVolleys(game, false);
+    for (const name of ['telegraph-columns', 'telegraph-rings', 'haze']) expect(named(game.root, name).layers.mask, name).toBe(1 << FX_LAYER);
+    for (const name of NAMES.slice(0, 4)) expect(named(game.root, name).layers.mask, name).toBe(1);
+  });
+
+  it('draws in 7 calls at most, and in none with nothing out', () => {
+    const { game } = fakeGame();
+    const layer = createVolleys(game, false);
+    const calls = () => {
+      let n = 0;
+      named(game.root, 'volleys').traverse((o) => {
+        const inst = o as THREE.InstancedMesh;
+        if (((o as THREE.Mesh).isMesh || (o as THREE.Points).isPoints) && visibleUp(o) && (!inst.isInstancedMesh || inst.count > 0)) n++;
+      });
+      return n;
+    };
+    expect(calls()).toBe(0);
+    const t = flightT(0.5);
+    const cloud: Cloud = { id: 3, at: { x: -30, z: 40 }, r: 6, born: 0, life: null };
+    // One in the air with its telegraph out, one landed 4.2 s before, standing, and the haze.
+    const earlier: Volley = { ...scriptedVolley({ x: -60, z: 60 }, PLANNED - 5, 2, WORLD), state: 'landed' };
+    layer.sync(stateAtT(t, [volleyAt(t), earlier], { clouds: [cloud] }), t);
+    expect(calls()).toBe(7);
+    layer.sync(stateAtT(t, []), t + 1);
+    expect(calls()).toBe(0);
+  });
+
+  it('allocates nothing per frame: no new, literal, spread or closure from function sync( to function dispose(, where every per-frame helper lives', () => {
+    const src = read('src/lib/bowobharata-game/world/volleys3d.ts');
+    const from = src.indexOf('  function sync(');
+    const to = src.indexOf('  function dispose(');
+    expect(from).toBeGreaterThan(0);
+    expect(to).toBeGreaterThan(from);
+    const frame = src.slice(from, to);
+    expect(frame).not.toMatch(/\bnew\b/);
+    expect(frame).not.toMatch(/=>|\.\.\./);
+    expect(frame).not.toMatch(/[=(,]\s*[[{]/);
+    expect(frame).not.toMatch(/\.(map|filter|slice|concat|flatMap|reduce|forEach|some|every|find)\(/);
+    // arrowPoint, hullCircles, forward and rightOf each build an object: a frame works the same sums in place.
+    expect(frame).not.toMatch(/\b(arrowPoint|hullCircles|forward|rightOf)\(/);
+    // So the check reads every function a frame runs: above sync only what runs once, or once a volley; after dispose, none.
+    const declared = (text: string) => [...text.matchAll(/\bfunction (\w+)\(/g)].map((m) => m[1]);
+    const start = src.indexOf('export function createVolleys(');
+    expect(start).toBeGreaterThan(0);
+    for (const fn of declared(src.slice(0, start))) expect(['fading', 'nearFade'], fn).toContain(fn);
+    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['instanced', 'fadeOn', 'claim'], fn).toContain(fn);
+    expect(declared(src.slice(to))).toEqual(['dispose']);
+  });
+
+  it('dispose removes its group and frees its geometries, materials and instanced meshes, not the scene’s textures', () => {
+    const { game, frames } = fakeGame();
+    const layer = createVolleys(game, false);
+    const t = flightT(0.5);
+    layer.sync(stateAtT(t, [volleyAt(t)], { clouds: [{ id: 3, at: { x: -30, z: 40 }, r: 6, born: 0, life: null }] }), t);
+    const group = named(game.root, 'volleys');
+    const owned = ownedBy(group, game);
+    expect(owned.size).toBeGreaterThan(12);
+    expectFreed(game, owned, () => layer.dispose());
+    expect(game.root.children).not.toContain(group);
+    expect(frames.size).toBe(0);
+  });
+});
+
 describe('disposeGroup', () => {
   it('frees each geometry, material and instanced mesh under a group once, hidden ones, points and lines too; never a texture or the sprites’ shared quad', () => {
     const tex = new THREE.Texture();
@@ -1472,8 +2204,8 @@ describe('disposeGroup', () => {
     expect(texture).toBe(0);
   });
 
-  it('is the one cleanup the layers share: landmarks3d and pickups3d call it and keep no copy of their own', () => {
-    for (const f of ['landmarks3d.ts', 'pickups3d.ts']) {
+  it('is the one cleanup the layers share: landmarks3d, pickups3d and volleys3d call it and keep no copy of their own', () => {
+    for (const f of ['landmarks3d.ts', 'pickups3d.ts', 'volleys3d.ts']) {
       const src = read(join('src/lib/bowobharata-game/world', f));
       expect(src, f).toMatch(/from '\.\/dispose'/);
       expect(src, f).toContain('disposeGroup(group)');
@@ -1495,7 +2227,7 @@ describe('world/ framing (source)', () => {
   const TEXT = /fillText|strokeText|TextGeometry|FontLoader|CSS2DRenderer|CSS3DRenderer/;
 
   it('covers every file of the layers', () => {
-    for (const f of ['types.ts', 'shapes.ts', 'dispose.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
+    for (const f of ['types.ts', 'shapes.ts', 'dispose.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts', 'volleys3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
   });
 
   it('the matcher catches each specifier with its closing quote, and lets the allowed ones through', () => {

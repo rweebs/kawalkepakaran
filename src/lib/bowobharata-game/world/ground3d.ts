@@ -1,6 +1,7 @@
 // Ground detail round the chariot: grass tufts on a fixed 5 m grid in a ring that follows it (a cell's tuft is always the
 // same, so tufts stay where they are as the ring moves on), and the dust its wheels raise. No tuft on the armies' field,
-// by the mound or in a landmark.
+// by the mound or in a landmark. A tuft grows from the ground as the chariot comes within the ring and shrinks into it
+// as the chariot leaves, by its distance from the chariot, so none pops in or out.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PAVILION, groundHeight } from '../../bowobharata/stage-math';
@@ -15,14 +16,18 @@ import type { Layer, SceneGame } from './types';
 
 /**
  * The tufts' grid (m); the ring round the chariot (m) and the most tufts it shows, on desktops and on phones (wherever it
- * is centred, a ring of 28 m meets at most 128 cells and one of 40 m at most 241); and how far a tuft keeps from a landmark (m).
+ * is centred, a ring of 28 m meets at most 128 cells and one of 40 m at most 241); how far a tuft keeps from a landmark
+ * (m); and the band inside the ring's edge (m) over which a tuft shrinks to nothing (tuftFade).
  */
 export const TUFTS = {
   cell: 5,
   desktop: { radius: 40, cap: 320 },
   phone: { radius: 28, cap: 140 },
   clear: 1,
+  fade: 6,
 } as const;
+/** Half a cell's diagonal: the farthest the chariot gets from the centre of the cell it is in. */
+const HALF_DIAG = (TUFTS.cell * Math.SQRT2) / 2;
 /** Metres round the mound kept clear, as the page's dressing keeps it. */
 const MOUND_CLEAR = 12;
 /**
@@ -66,6 +71,14 @@ export function cellTuft(i: number, j: number): { x: number; z: number; scale: n
   };
 }
 
+/**
+ * A tuft's share of its size at `d` m from the chariot, in a ring of `radius`: whole within radius − TUFTS.fade, nothing
+ * at the edge, a smoothstep between. Tufts are alpha-cut, so they fade by size, not by opacity.
+ */
+export function tuftFade(d: number, radius: number): number {
+  return 1 - smoothstep(radius - TUFTS.fade, radius, d);
+}
+
 /** On the armies' field (FIELD, edges included) or within 12 m of the mound: where no tuft grows. */
 export function inField(x: number, z: number): boolean {
   if (x >= FIELD.minX && x <= FIELD.maxX && z >= FIELD.minZ && z <= FIELD.maxZ) return true;
@@ -97,33 +110,76 @@ export function createGround(game: SceneGame, mobile: boolean): Layer {
   const solid = staticColliders().filter((c) => !c.figure);
   const d = new THREE.Object3D();
   const tint = new THREE.Color();
+  // The colour buffer now, never in a frame.
+  tufts.setColorAt(0, tint);
   let cell: { i: number; j: number } | null = null;
 
-  /** Lays the ring round the chariot's cell, when it has moved to another cell. */
+  // The pool: every tuft within the ring's radius of the chariot's cell, so of the chariot wherever it is in that cell,
+  // with its pose at full size and its tint. A cell's pool lies within radius + HALF_DIAG of the cell's centre, and the
+  // grid is the same round every cell, so one count bounds them all (a few more for rounding at the edge).
+  const pool = ringCells(TUFTS.cell / 2, TUFTS.cell / 2, ring.radius + HALF_DIAG, TUFTS.cell).length + 16;
+  const poolPose = new Float32Array(pool * 16);
+  const poolTint = new Float32Array(pool * 3);
+  const poolAt = new Float64Array(pool * 2);
+  let pooled = 0;
+  /** Where the chariot was when the tufts were last sized (NaN: size them at the next sync). */
+  let sizedX = NaN;
+  let sizedZ = NaN;
+
+  /** Pools the tufts round the chariot's cell, when it has moved to another cell. */
   function placeTufts(car: ChariotState) {
     const i = Math.floor(car.x / TUFTS.cell);
     const j = Math.floor(car.z / TUFTS.cell);
     if (!Number.isFinite(i) || !Number.isFinite(j) || (cell && cell.i === i && cell.j === j)) return;
     cell = { i, j };
-    const cx = (i + 0.5) * TUFTS.cell;
-    const cz = (j + 0.5) * TUFTS.cell;
+    const minX = i * TUFTS.cell;
+    const minZ = j * TUFTS.cell;
     let n = 0;
-    for (const c of ringCells(cx, cz, ring.radius, TUFTS.cell)) {
-      if (n === ring.cap) break;
+    for (const c of ringCells(minX + TUFTS.cell / 2, minZ + TUFTS.cell / 2, ring.radius + HALF_DIAG, TUFTS.cell)) {
+      if (n === pool) break;
       const t = cellTuft(c.i, c.j);
-      if (Math.hypot(t.x - cx, t.z - cz) > ring.radius || inField(t.x, t.z) || clearance(t, solid) < TUFTS.clear) continue;
+      // Its distance from the cell's square: the nearest the chariot can be to it while in this cell.
+      const dx = Math.max(minX - t.x, 0, t.x - minX - TUFTS.cell);
+      const dz = Math.max(minZ - t.z, 0, t.z - minZ - TUFTS.cell);
+      if (Math.hypot(dx, dz) >= ring.radius || inField(t.x, t.z) || clearance(t, solid) < TUFTS.clear) continue;
       d.position.set(t.x, groundHeight(t.x, t.z) - 0.05, t.z);
       d.rotation.set(0, t.turn, 0);
       d.scale.setScalar(t.scale);
       d.updateMatrix();
-      tufts.setMatrixAt(n, d.matrix);
+      d.matrix.toArray(poolPose, n * 16);
       const rnd = mulberry32(cellSeed(c.i, c.j, TINT_SALT));
-      tufts.setColorAt(n, tint.setHSL(0.13 + rnd() * 0.05, 0.25 + rnd() * 0.2, 0.55 + rnd() * 0.3));
+      tint.setHSL(0.13 + rnd() * 0.05, 0.25 + rnd() * 0.2, 0.55 + rnd() * 0.3).toArray(poolTint, n * 3);
+      poolAt[n * 2] = t.x;
+      poolAt[n * 2 + 1] = t.z;
+      n++;
+    }
+    pooled = n;
+    sizedX = NaN;
+  }
+
+  /**
+   * Draws the pooled tufts the chariot is within the ring's radius of, each at tuftFade of its distance from it: the
+   * pose's turn and size scaled, its place kept. Allocates nothing; skipped while the chariot stands still.
+   */
+  function fadeTufts(car: ChariotState) {
+    if (!Number.isFinite(car.x) || !Number.isFinite(car.z) || (car.x === sizedX && car.z === sizedZ)) return;
+    sizedX = car.x;
+    sizedZ = car.z;
+    const pose = tufts.instanceMatrix.array as Float32Array;
+    const rgb = tufts.instanceColor!.array as Float32Array;
+    let n = 0;
+    for (let k = 0; k < pooled && n < ring.cap; k++) {
+      const f = tuftFade(Math.hypot(poolAt[k * 2] - car.x, poolAt[k * 2 + 1] - car.z), ring.radius);
+      if (f <= 0) continue;
+      // Column-major: the first three columns hold the turn and size, the last the place.
+      for (let e = 0; e < 12; e++) pose[n * 16 + e] = poolPose[k * 16 + e] * f;
+      for (let e = 12; e < 16; e++) pose[n * 16 + e] = poolPose[k * 16 + e];
+      for (let e = 0; e < 3; e++) rgb[n * 3 + e] = poolTint[k * 3 + e];
       n++;
     }
     tufts.count = n;
     tufts.instanceMatrix.needsUpdate = true;
-    if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+    tufts.instanceColor!.needsUpdate = true;
   }
 
   // The dust: soft points tinted like the page's dust, each with its own opacity in the colour's alpha.
@@ -197,6 +253,7 @@ export function createGround(game: SceneGame, mobile: boolean): Layer {
   return {
     sync(s, time) {
       placeTufts(s.car);
+      fadeTufts(s.car);
       const dt = lastTime === null || !Number.isFinite(time) ? 0 : clamp(time - lastTime, 0, MAX_STEP);
       if (Number.isFinite(time)) lastTime = time;
       stepDust(s.car, dt);

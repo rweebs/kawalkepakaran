@@ -12,6 +12,7 @@ import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
 import { worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
+import { scriptedVolley } from '../src/lib/bowobharata-game/volley';
 import type { GameEvent } from '../src/lib/bowobharata-game/mission-run';
 import { ANCHORS, SPAWN, TOWER_EXIT, staticColliders } from '../src/lib/bowobharata-game/world';
 import { CHASE } from '../src/lib/bowobharata-game/tuning';
@@ -355,9 +356,9 @@ describe('runtime', () => {
     expect(h.game.refreshShadows).toHaveBeenCalledTimes(1);
   });
 
-  it('builds the landmarks, the ground detail and the targets into the game root, and binds the chariot to the car', () => {
+  it('builds the landmarks, the ground detail, the targets and the volleys into the game root, and binds the chariot to the car', () => {
     const h = harness();
-    expect(h.game.root.children.map((c) => c.name).sort()).toEqual(['ground-detail', 'landmarks', 'pickups']);
+    expect(h.game.root.children.map((c) => c.name).sort()).toEqual(['ground-detail', 'landmarks', 'pickups', 'volleys']);
     h.rt.start(0, [], 1);
     h.frames(90);
     const car = h.rt.state()!.car;
@@ -365,6 +366,30 @@ describe('runtime', () => {
     expect(h.game.chariot.root.position.z).toBeCloseTo(car.z, 9);
     expect(h.game.chariot.root.position.y).toBeCloseTo(groundHeight(car.x, car.z), 9);
     expect(h.game.chariot.setMotion).toHaveBeenCalledTimes(90);
+  });
+
+  it('pulses the prabha once for each volley its light takes, and never for one that lands clear', () => {
+    const still: Input = { drive: NO_INPUT, sight: false, skip: true, assist: false };
+    const h = harness({ input: () => still });
+    h.rt.start(0, [], 1);
+    for (let k = 0; k < 120 && h.rt.state()!.run.phase !== 'active'; k++) h.frame();
+    const s = h.rt.state()!;
+    expect(s.run.phase).toBe('active');
+    h.frames(30);
+    expect(h.game.chariot.pulse).not.toHaveBeenCalled();
+    // Three volleys due on the next frame, planned 2.6 s before: two landing within 7 m of the hull, one 40 m off it.
+    const now = h.rt.state()!;
+    const w = { colliders: [], zones: [], mobile: false };
+    const due = (dx: number, dz: number, id: number) => scriptedVolley({ x: now.car.x + dx, z: now.car.z + dz }, now.run.t - 2.6 + 0.005, id, w);
+    now.volleys = [due(2, 1, 90), due(-1, -3, 91), due(30, 30, 92)];
+    const before = h.events.length;
+    h.frame();
+    expect(types(h.events.slice(before)).filter((t) => t === 'absorbed')).toHaveLength(2);
+    expect(h.game.chariot.pulse).toHaveBeenCalledTimes(2);
+    h.frames(60);
+    expect(h.game.chariot.pulse).toHaveBeenCalledTimes(2);
+    // Nothing of the two taken stands; the third landed clear.
+    expect(h.rt.state()!.volleys.map((v) => [v.id, v.state])).toEqual([[92, 'landed']]);
   });
 
   it('sends a HUD at most every 0.1 s of real time, and events only when there are some', () => {
@@ -749,7 +774,9 @@ describe('runtime (source)', () => {
       'advance(',
       'ground.sync(',
       'pickups.sync(',
+      'volleys.sync(',
       'chariot.sync(',
+      'game.chariot.pulse()',
       'game.setPose(',
       'setFov(',
       'game.setTimeScale(timeScaleOf(',

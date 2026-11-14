@@ -32,6 +32,7 @@ import { createLandmarks } from './landmarks3d';
 import { progressForMix, watchFrames } from './perf';
 import { createPickups } from './pickups3d';
 import type { SceneGame } from './types';
+import { createVolleys } from './volleys3d';
 
 export interface RuntimeOpts {
   mobile: boolean;
@@ -86,6 +87,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
   const landmarks = createLandmarks(game);
   const ground = createGround(game, o.mobile);
   const pickups = createPickups(game);
+  const volleys = createVolleys(game, o.mobile);
   const chariot = bindChariot(game.chariot);
   game.refreshShadows();
   const watch = watchFrames(game.quality.pixelRatio, {
@@ -125,10 +127,13 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     const out = advance(s, { ...input, aspect }, real, world);
     const next = out.state;
     current = next;
-    // 3–4. The layers on the scene's clock; then the chariot, which the car moved on world time (slowed in Mata's sight).
+    // 3–4. The layers on the scene's clock; then the chariot, which the car moved on world time (slowed in Mata's sight),
+    // and its prabha's pulse, once for each volley the light took this frame (a pulse during a fall waits for it).
     ground.sync(next, time);
     pickups.sync(next, time);
+    volleys.sync(next, time);
     chariot.sync(next.car, real, worldDtOf(real, next.sight));
+    for (const e of out.events) if (e.type === 'absorbed') game.chariot.pulse();
     // 5. The camera: the chase view or the lakon's shot.
     const view = viewOf(next, world, aspect);
     game.setPose(view.pose);
@@ -234,6 +239,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       if (disposed) return;
       disposed = true;
       stopFrames();
+      volleys.dispose();
       pickups.dispose();
       ground.dispose();
       landmarks.dispose();

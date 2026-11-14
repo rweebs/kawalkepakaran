@@ -478,7 +478,7 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     let nRing = 0;
     for (let i = 0; i < s.decoys.length; i++) {
       const d = s.decoys[i];
-      const level = copyLevel(d, t);
+      const level = Math.min(copyLevel(d, t), lifeLeft(d, s.run.t));
       if (phase === 'roam' || level <= 0 || nCopy === CAP.copies) continue;
       copies.setMatrixAt(nCopy, stand(m4, d.at, ARROW.spread * Math.sin(d.id * GOLDEN)));
       copyFade.setX(nCopy++, level);
@@ -609,6 +609,14 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
       copyOut.set(d.id, t);
     }
     return clamp((went - since) / FADE, 0, 1) * clamp(1 - (t - went) / FADE, 0, 1);
+  }
+
+  /**
+   * A volley's copy leaves the engine's list at born + life with no 'gone' first: it fades out over its last FADE s of
+   * run time instead, so it never pops. The lakon's own copies have no end.
+   */
+  function lifeLeft(d: Decoy, runT: number): number {
+    return d.life === null ? 1 : clamp((d.born + d.life - runT) / FADE, 0, 1);
   }
 
   /** The marker ring whole at its mark, laid over the ground there; its beam goes with it. */
