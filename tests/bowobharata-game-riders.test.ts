@@ -379,18 +379,58 @@ describe('the prabha behind the game’s Krishna', () => {
 });
 
 describe('the riders’ per-frame code', () => {
-  it('allocates nothing: no new, no closure, no array or object literal, no spread and no array helper, from function animate( to the end', () => {
-    const src = readFileSync('src/lib/bowobharata/scene/riders.ts', 'utf8');
+  const RIDERS_SRC = readFileSync('src/lib/bowobharata/scene/riders.ts', 'utf8');
+  /** What allocates in riders.ts's per-frame code, from `function animate(` to the end with comments stripped, rule by rule. */
+  function perFrameProblems(src: string): string[] {
     const from = src.indexOf('function animate(');
-    expect(from).toBeGreaterThan(0);
-    // The code only: comments may say anything.
-    const frame = src.slice(from).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(frame.length).toBeGreaterThan(500);
-    expect(frame).not.toMatch(/\bnew\s/);
-    expect(frame).not.toMatch(/=>/);
-    expect(frame).not.toMatch(/[=(,:?]\s*[[{]/);
-    expect(frame).not.toMatch(/\.\.\./);
-    expect(frame).not.toMatch(/\.(map|filter|forEach|reduce|flatMap|slice|concat|some|every|find|from|of)\(/);
+    if (from < 0) return ['no function animate('];
+    const code = src.slice(from).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const rules: [string, RegExp][] = [
+      ['new', /\bnew\s/],
+      ['arrow function', /=>/],
+      ['array or object literal', /(?:[=(,:?&|!]|\b(?:return|of|in|throw))\s*[[{]/],
+      ['spread', /\.\.\./],
+      ['array helper', /\.(map|filter|forEach|reduce|flatMap|slice|concat|some|every|find|from|of)\(/],
+    ];
+    const problems = rules.filter(([, re]) => re.test(code)).map(([rule]) => rule);
+    // Every function here is declared on its own at the start of a line, so none is made anew inside a frame.
+    if ((code.match(/\bfunction\b/g) ?? []).length !== (code.match(/^function\b/gm) ?? []).length) problems.push('function expression or nested function');
+    if (code.length < 500) problems.push('too short to be the per-frame code');
+    return problems;
+  }
+
+  it('allocates nothing: no new, no closure or function made in a frame, no array or object literal, no spread, no array helper', () => {
+    expect(perFrameProblems(RIDERS_SRC)).toEqual([]);
+  });
+
+  it('catches each way a frame could allocate, put into animate()', () => {
+    const body = RIDERS_SRC.indexOf('{', RIDERS_SRC.indexOf('function animate(')) + 1;
+    for (const line of [
+      'for (const r of [k, a]) r.head.rotation.y = 0;',
+      'if (dt < 0) return [dt, dt];',
+      'const q = speed > 0 && [speed];',
+      'const o = dt || { s: speed };',
+      'const f = function () { return dt; };',
+    ]) expect(perFrameProblems(`${RIDERS_SRC.slice(0, body)}\n  ${line}${RIDERS_SRC.slice(body)}`), line).not.toEqual([]);
+  });
+});
+
+describe('the riders in the chariot', () => {
+  it('sway their cloth at a standstill in the chariot’s wind', () => {
+    const part = chariot(true);
+    // The scarf ends hang from Krishna's elbows, which stay still: only the wind moves them at a standstill.
+    const tips = allNamed(part.object, 'krishna-scarf-tip');
+    expect(tips).toHaveLength(2);
+    const xs = tips.map(() => [] as number[]);
+    drive(part, 0, 12, 0, 0, () => tips.forEach((tip, i) => xs[i].push(worldOf(tip).x)));
+    for (const x of xs) expect(Math.max(...x) - Math.min(...x)).toBeGreaterThan(0.03);
+  });
+
+  it('are wired in chariot.ts: the page scarf’s driver runs on the page only, and the riders get the same wind', () => {
+    const chariot = readFileSync('src/lib/bowobharata/scene/chariot.ts', 'utf8');
+    expect(chariot.match(/scarfDriver\(/g)).toHaveLength(1);
+    expect(chariot).toMatch(/^\s*if \(!drivable\) scarfDriver\(wind, dt\);$/m);
+    expect(chariot).toMatch(/^\s*riders\?\.update\(time, dt, motion, wind\);$/m);
   });
 });
 
@@ -472,4 +512,75 @@ describe('the prabha seen from the side', () => {
     drive(part, t, 60, 0);
     expect(light()).toEqual(TODAY);
   });
+});
+
+describe('the sash ends against their riders’ garments', () => {
+  const BACK = new THREE.Vector3(-1, 0, 0);
+  /** Faceting allowance: a sash end's centre line may sit at most this far (m) inside its rider's dhoti or kilt. */
+  const TOL = 0.002;
+
+  /**
+   * The back half of a rider's silk below the waist, all that a sash end can reach, as its own two-sided mesh at the silk's
+   * place: fewer triangles to cast against. Its world matrix is copied from the silk's each time it is used.
+   */
+  function backOf(silk: THREE.Mesh): THREE.Mesh {
+    const geo = silk.geometry;
+    const pos = geo.getAttribute('position');
+    const index = geo.index!;
+    const keep: number[] = [];
+    for (let i = 0; i < index.count; i += 3) {
+      const a = index.getX(i);
+      const b = index.getX(i + 1);
+      const c = index.getX(i + 2);
+      if ((pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3 < 0.03 && (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3 < 1.02) keep.push(a, b, c);
+    }
+    const back = new THREE.BufferGeometry();
+    back.setAttribute('position', pos);
+    back.setIndex(keep);
+    return new THREE.Mesh(back, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  }
+  /** Points along a sash end's segments 1 and 2, the tip's chain; segment 0 hangs from the knot at the hip, in it by design. */
+  function sashPoints(tip: THREE.Object3D): THREE.Vector3[] {
+    const last = tip.parent!;
+    const middle = last.parent!;
+    const out: THREE.Vector3[] = [];
+    for (const [from, to] of [[middle, last], [last, tip]]) {
+      const a = worldOf(from);
+      const b = worldOf(to);
+      for (let k = 0; k <= 4; k++) out.push(a.clone().lerp(b, k / 4));
+    }
+    return out;
+  }
+  /** How far inside the garment a point is: the length of a backward ray that leaves through it, or 0 outside. */
+  function depthIn(garment: THREE.Mesh, p: THREE.Vector3, ray: THREE.Raycaster): number {
+    ray.set(p, BACK);
+    const hit = ray.intersectObject(garment, false)[0];
+    if (!hit) return 0;
+    return hit.face!.normal.clone().transformDirection(garment.matrixWorld).dot(BACK) > 0 ? hit.distance : 0;
+  }
+
+  it('never sink into their rider’s dhoti or kilt: standing, backing up and driving, through a minute of wind, on both tiers', () => {
+    const ray = new THREE.Raycaster();
+    for (const mobile of [false, true]) {
+      for (const speed of [0, -2, -4, 6]) {
+        const part = chariot(true, mobile);
+        const riders = (['krishna', 'arjuna'] as const).map((rider) => {
+          const silk = named(part.object, `${rider}-silk`) as THREE.Mesh;
+          const tips = allNamed(part.object, `${rider}-sash-tip`);
+          expect(tips, rider).toHaveLength(2);
+          return { rider, silk, back: backOf(silk), tips, deepest: 0 };
+        });
+        // Two seconds to settle, then a minute, five looks a second.
+        let frame = 0;
+        drive(part, 0, 62, speed, 0, (t) => {
+          if (t < 2 || frame++ % 12 !== 0) return;
+          for (const r of riders) {
+            r.back.matrixWorld.copy(r.silk.matrixWorld);
+            for (const tip of r.tips) for (const p of sashPoints(tip)) r.deepest = Math.max(r.deepest, depthIn(r.back, p, ray));
+          }
+        });
+        for (const r of riders) expect(r.deepest, `${r.rider}, ${speed} m/s, mobile ${mobile}`).toBeLessThanOrEqual(TOL);
+      }
+    }
+  }, 120_000);
 });

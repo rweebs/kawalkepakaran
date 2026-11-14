@@ -360,12 +360,16 @@ interface Rider {
   /** Arjuna's whole body, which shifts its weight. */
   sway?: THREE.Group;
 }
-/** A cloth end's chain and its springs: each joint's swing back and forth (about z) and side to side (about x). */
-interface Cloth { joints: THREE.Group[]; base: number; phase: number; ang: Float64Array; vel: Float64Array; side: Float64Array; sideVel: Float64Array }
-function cloth(chain: { root: THREE.Group; joints: THREE.Group[] }, at: V3, base: number, phase: number): Cloth {
+/**
+ * A cloth end's chain and its springs: each joint's swing back and forth (about z) and side to side (about x). `reach` is the
+ * furthest forward any segment may lean (rad from hanging straight down): a sash hangs behind its rider's dhoti or kilt, which
+ * stops it there.
+ */
+interface Cloth { joints: THREE.Group[]; base: number; phase: number; reach: number; ang: Float64Array; vel: Float64Array; side: Float64Array; sideVel: Float64Array }
+function cloth(chain: { root: THREE.Group; joints: THREE.Group[] }, at: V3, base: number, phase: number, reach = Infinity): Cloth {
   chain.root.position.copy(at);
   const n = chain.joints.length;
-  const c = { joints: chain.joints, base, phase, ang: new Float64Array(n), vel: new Float64Array(n), side: new Float64Array(n), sideVel: new Float64Array(n) };
+  const c = { joints: chain.joints, base, phase, reach, ang: new Float64Array(n), vel: new Float64Array(n), side: new Float64Array(n), sideVel: new Float64Array(n) };
   // At rest the end hangs `base` back from its root, each segment straight on from the one above.
   c.ang[0] = base;
   pose(c);
@@ -550,7 +554,7 @@ function buildKrishna(M: Mats, arms: RiderArms, t: Tier): Rider {
   for (const [z, len, ph] of [[0.07, 0.15, 2], [0.13, 0.13, 3]] as const) {
     const c = clothEnd(M, C.sash, 3, len, [0.028, 0.005], [0.022, 0.004], 0, 'krishna-sash-tip');
     group.add(c.root);
-    ends.push(cloth(c, vec(-0.128, 0.94, z), -0.08, ph));
+    ends.push(cloth(c, vec(-0.128, 0.94, z), -0.08, ph, SASH_REACH));
   }
   return { group, head: headGroup, chest, cloth: ends };
 }
@@ -676,7 +680,7 @@ function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
   for (const [z, len, ph] of [[0.08, 0.14, 4], [0.14, 0.12, 5]] as const) {
     const c = clothEnd(M, C.saffron, 3, len, [0.03, 0.005], [0.024, 0.004], 0, 'arjuna-sash-tip');
     sway.add(c.root);
-    ends.push(cloth(c, vec(-0.165, 0.95, z), -0.08, ph));
+    ends.push(cloth(c, vec(-0.165, 0.95, z), -0.08, ph, SASH_REACH));
   }
   return { group, head: headGroup, chest, cloth: ends, sway };
 }
@@ -724,6 +728,8 @@ const HEAD_EASE = 0.45;
 const BREATH = 0.009;
 /** Arjuna's weight shifts over 14 s: a roll of at most SHIFT rad about his feet. */
 const SHIFT = 0.014;
+/** A sash end never leans forward of this (rad): hanging from its knot behind the hip, it clears the dhoti or kilt below. */
+const SASH_REACH = -0.02;
 /** The cloth's springs, per unit inertia, stepped at most CLOTH_STEP s at a time. */
 const CLOTH_K = 30;
 const CLOTH_C = 9.3;
@@ -751,14 +757,18 @@ function animate(k: Rider, a: Rider, time: number, dt: number, speed: number, ya
   for (let i = 0; i < a.cloth.length; i++) swing(a.cloth[i], wind, flow, flutter, out, time, h, steps);
 }
 
-/** Each joint's springs chase the change of angle from the segment above: the segments' own angles grow down the chain. */
+/**
+ * Each joint's springs chase the change of angle from the segment above: the segments' own angles grow down the chain. No
+ * segment leans further forward than the cloth's reach: its target stops there, and so does the segment itself.
+ */
 function swing(c: Cloth, wind: number, flow: number, flutter: number, out: number, time: number, h: number, steps: number): void {
   const n = c.joints.length;
   let above = 0;
   let aboveSide = 0;
+  let lean = 0;
   for (let j = 0; j < n; j++) {
     const w = (j + 1) / n;
-    const angle = c.base + wind * (0.3 + 0.3 * w) + flow * (0.7 + 0.3 * w) + flutter * w * Math.sin(time * 6 + c.phase + 1.3 * j);
+    const angle = Math.min(c.reach, c.base + wind * (0.3 + 0.3 * w) + flow * (0.7 + 0.3 * w) + flutter * w * Math.sin(time * 6 + c.phase + 1.3 * j));
     const side = out * (0.6 + 0.4 * w);
     const rel = angle - above;
     const relSide = side - aboveSide;
@@ -769,6 +779,12 @@ function swing(c: Cloth, wind: number, flow: number, flutter: number, out: numbe
       c.ang[j] += c.vel[j] * h;
       c.sideVel[j] += ((relSide - c.side[j]) * CLOTH_K - c.sideVel[j] * CLOTH_C) * h;
       c.side[j] += c.sideVel[j] * h;
+    }
+    lean += c.ang[j];
+    if (lean > c.reach) {
+      c.ang[j] -= lean - c.reach;
+      if (c.vel[j] > 0) c.vel[j] = 0;
+      lean = c.reach;
     }
   }
   pose(c);
