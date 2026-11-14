@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEve
 import type { Locale } from '../../i18n';
 import type { MapGraph, MapLinkKind, MapNode } from '../../lib/bowobharata-game/report-types';
 import {
-  BG_HEX, DIM_HEX, LINK_HEX, MAP_LINK_KINDS, MAP_SOURCES, NODE_HEX, SVG_H, SVG_W, WALK_MS, brightFor, entryFor, neighbours, railChips,
+  BG_HEX, DIM_HEX, HALO_SCALE, LINK_HEX, MAP_LINK_KINDS, MAP_SOURCES, NODE_HEX, SVG_H, SVG_W, WALK_MS, brightFor, entryFor, neighbours, railChips,
   sceneInput, shownUpTo, stillPicture, walkNext, walkStart, type RailChip, type StillPicture,
 } from '../../lib/bowobharata-game/report-map-view';
 import type { ReportMapApi } from '../../lib/bowobharata-game/world/report-map';
@@ -89,6 +89,8 @@ function webglOk(): boolean {
   return webgl;
 }
 
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
 /** The node under the pointer, and where the pointer is in the stage (px). */
 interface Hover { i: number; x: number; y: number; w: number; h: number }
 
@@ -100,13 +102,18 @@ function tipStyle(h: Hover): CSSProperties {
   };
 }
 
-/** The still picture: links, then the nodes far to near, each with its label as a title, then the selection on top. */
+/** The still picture: links, the halos of this chapter's nodes, then the nodes far to near, each with its label as a title, then the selection on top. */
 function Still({ picture, aria, onClick }: { picture: StillPicture; aria: string; onClick: (e: MouseEvent<SVGSVGElement>) => void }) {
   return (
     <svg className="bg-map__svg" viewBox={`0 0 ${SVG_W} ${SVG_H}`} role="img" aria-label={aria} onClick={onClick}>
       <g strokeWidth={1} strokeLinecap="round">
         {picture.lines.map((l) => (
           <line key={l.key} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={l.color} strokeOpacity={l.opacity} />
+        ))}
+      </g>
+      <g className="bg-map__halo">
+        {picture.dots.map((d) => (
+          <circle key={d.key} cx={d.cx} cy={d.cy} r={round1(d.r * HALO_SCALE)} fill={d.fill} fillOpacity={d.halo} />
         ))}
       </g>
       <g stroke={BG_HEX} strokeWidth={0.6}>

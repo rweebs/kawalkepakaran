@@ -34,12 +34,26 @@ export interface ReportMapInput {
   links: readonly { a: number; b: number; kind: ReportLinkKind; center: boolean }[];
 }
 
-/** A link's opacity while both its ends are bright: the Pelapor's links faintest (he is linked to almost every node), then membership, then the rest. */
+/** A link's opacity with no focus: the Pelapor's links faintest (he is linked to almost every node), then membership, then the rest. */
 export const linkOpacity = (kind: ReportLinkKind, center: boolean): number => (center ? 0.025 : kind === 'member' ? 0.22 : 0.5);
+/** A link's opacity under a focus when both ends are bright: this chapter's links, clearly drawn. */
+export const litLinkOpacity = (kind: ReportLinkKind, center: boolean): number => (center ? 0.3 : kind === 'member' ? 0.55 : 0.85);
 /** A link's opacity while either end is dim, which happens only when the map has a focus. */
 export const dimLinkOpacity = (center: boolean): number => (center ? 0.01 : 0.06);
 
-/** The fog, the camera and the orbit for a layout of this extent. */
+/** Under a focus, a dim node is drawn this much smaller. */
+export const DIM_SIZE = 0.7;
+/** A bright node's halo, under a focus: this much wider than the node, its colour added at this strength. */
+export const HALO_SIZE = 1.7;
+export const HALO_GLOW = 0.32;
+/** The smallest node's radius on screen at the fitted distance, in px. */
+export const MIN_NODE_PX = 3.5;
+/** Room around the framed nodes, as a share of their sphere's radius. */
+export const FIT_MARGIN = 0.08;
+/** How long the camera takes to move to a new framing, in ms. */
+export const FIT_MS = 1200;
+
+/** The fog, the camera and the orbit for a layout of this extent, before the first framing replaces the fog and distance. */
 export function sceneSettings(radius: number, reducedMotion: boolean) {
   return {
     fog: { near: radius * 1.6, far: radius * 4 },
@@ -48,21 +62,78 @@ export function sceneSettings(radius: number, reducedMotion: boolean) {
   };
 }
 
+export interface FitInput {
+  pos: ArrayLike<number>;
+  radii: readonly number[];
+  shown: readonly boolean[];
+  bright: readonly boolean[];
+  /** The camera's vertical field of view, in degrees, and its width over its height. */
+  fov: number;
+  aspect: number;
+  /** The canvas's height in px, which sets how large the nodes must be drawn. */
+  heightPx: number;
+}
+export interface Fit {
+  /** What the camera looks at: the centroid of the bright shown nodes, or of the shown nodes when none is bright. */
+  target: [number, number, number];
+  /** The camera's distance from the target. From any direction, every shown node, its halo included, is in view. */
+  distance: number;
+  /** The radius around the target that holds every shown node, its size and the margin. */
+  radius: number;
+  /** The nodes' scale: their radii times this put the smallest at MIN_NODE_PX on screen, at least 1. */
+  scale: number;
+}
+
+/**
+ * The framing of the shown nodes. It takes the sphere around the target that holds every shown node at its drawn size
+ * (with its halo) plus FIT_MARGIN, and the distance at which that sphere fits the narrower of the two fields of view:
+ * the sphere then stays inside the frustum from any direction, so the auto-rotation never clips a node. The node scale
+ * follows from the distance and the canvas height, and the sphere is measured again with it.
+ */
+export function fitView(f: FitInput): Fit {
+  const n = f.radii.length;
+  let ids = [...Array(n).keys()].filter((i) => f.shown[i]);
+  if (ids.length === 0) ids = [...Array(n).keys()];
+  if (ids.length === 0) return { target: [0, 0, 0], distance: 10, radius: 1, scale: 1 };
+  const lit = ids.filter((i) => f.bright[i]);
+  const from = lit.length ? lit : ids;
+  const target: [number, number, number] = [0, 1, 2].map((k) => from.reduce((s, i) => s + f.pos[i * 3 + k], 0) / from.length) as [number, number, number];
+  const half = (f.fov * Math.PI) / 360;
+  const tanV = Math.tan(half);
+  const sinMin = Math.sin(Math.min(half, Math.atan(tanV * Math.max(1e-3, f.aspect))));
+  const off = ids.map((i) => Math.hypot(f.pos[i * 3] - target[0], f.pos[i * 3 + 1] - target[1], f.pos[i * 3 + 2] - target[2]));
+  const smallest = ids.reduce((m, i) => Math.min(m, f.radii[i]), Infinity);
+  const sphere = (scale: number) => (1 + FIT_MARGIN) * ids.reduce((m, i, k) => Math.max(m, off[k] + f.radii[i] * scale * HALO_SIZE), 0) || 1;
+  let scale = 1;
+  for (let pass = 0; pass < 3; pass++) {
+    const distance = sphere(scale) / sinMin;
+    const unitsPerPx = (2 * distance * tanV) / Math.max(1, f.heightPx);
+    scale = Math.max(1, (MIN_NODE_PX * unitsPerPx) / smallest);
+  }
+  const radius = sphere(scale);
+  return { target, distance: radius / sinMin, radius, scale };
+}
+
 /** Ease in and out (quadratic), 0..1 to 0..1. */
 const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
 
 export interface ReportObjects {
   group: THREE.Group;
   nodes: THREE.InstancedMesh;
+  /** The bright nodes' halos under a focus: one additive instance per node, black (adding nothing) when off. */
+  halos: THREE.InstancedMesh;
   /** The links, one LineSegments per kind and side of the center split. Each has userData { kind, center, links }: its link indices, in order. */
   lines: THREE.LineSegments[];
   /** The selection's links, drawn on top. */
   hot: THREE.LineSegments;
   /** The wireframe ring around the selection. */
   ring: THREE.Mesh;
-  /** Shows, brightens and selects (see ReportMapApi.setState); `now` in ms. The first call snaps, later ones ease. */
-  setState(shown: readonly boolean[], bright: readonly boolean[], selected: number | null, now: number): void;
-  /** Moves an ease on to `now` (ms). True when it wrote new colours or opacities, that is when a frame should be drawn. */
+  /**
+   * Shows, brightens and selects (see ReportMapApi.setState), with the nodes' scale (Fit.scale; the last one when left
+   * out); `now` in ms. The first call snaps, later ones ease colour, size, halo and link opacity over EASE_MS.
+   */
+  setState(shown: readonly boolean[], bright: readonly boolean[], selected: number | null, now: number, scale?: number): void;
+  /** Moves an ease on to `now` (ms). True when it wrote new values, that is when a frame should be drawn. */
   tick(now: number): boolean;
   /** The nearest shown node under the ray, or null. */
   pick(ray: THREE.Raycaster): number | null;
@@ -75,29 +146,41 @@ export function buildReportObjects(input: ReportMapInput): ReportObjects {
   const n = radii.length;
   const group = new THREE.Group();
 
-  // Nodes: one instanced sphere mesh, a colour per instance.
+  // Nodes: one instanced sphere mesh, a colour and a size per instance. Their halos: a second, additive one.
   const nodes = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial(), n);
+  const halos = new THREE.InstancedMesh(
+    new THREE.SphereGeometry(1, 12, 8),
+    new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+    n,
+  );
+  // Sizes change with the framing, so the build-time bounds would not hold: never culled, and measured again for picks.
+  nodes.frustumCulled = false;
+  halos.frustumCulled = false;
+  halos.renderOrder = 1;
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const at = new THREE.Vector3();
   const size = new THREE.Vector3();
-  const place = (i: number, r: number) => {
-    nodes.setMatrixAt(i, m4.compose(at.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]), q, size.set(r, r, r)));
+  const place = (mesh: THREE.InstancedMesh, i: number, r: number) => {
+    mesh.setMatrixAt(i, m4.compose(at.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]), q, size.set(r, r, r)));
   };
   const base = colors.map((c) => new THREE.Color(c));
+  const black = new THREE.Color(0);
   for (let i = 0; i < n; i++) {
-    place(i, radii[i]);
+    place(nodes, i, radii[i]);
+    place(halos, i, radii[i] * HALO_SIZE);
     nodes.setColorAt(i, base[i]);
+    halos.setColorAt(i, black);
   }
   nodes.instanceMatrix.needsUpdate = true;
-  nodes.computeBoundingSphere();
-  group.add(nodes);
+  halos.instanceMatrix.needsUpdate = true;
+  group.add(nodes, halos);
 
-  // Links: one LineSegments per kind, split into the links that touch the Pelapor and the rest. The material holds the
-  // kind's colour and its opacity with both ends bright; a vertex alpha per link scales it down for dim links (under a
-  // focus one kind holds bright and dim links at once) and to nothing for links not on the map yet, and eases.
+  // Links: one LineSegments per kind, split into the links that touch the Pelapor and the rest, in the kind's colour.
+  // Each link's opacity is its vertex alpha: under a focus one kind holds bright and dim links at once, so the opacity
+  // is per link, and it eases.
   const lines: THREE.LineSegments[] = [];
-  const slot: { alpha: Float32Array; attr: THREE.BufferAttribute; at: number }[] = [];
+  const slot: { alpha: Float32Array; at: number }[] = [];
   for (const kind of KINDS) {
     for (const center of [false, true]) {
       const ids = links.flatMap((l, j) => (l.kind === kind && l.center === center ? [j] : []));
@@ -108,14 +191,16 @@ export function buildReportObjects(input: ReportMapInput): ReportObjects {
         xyz.set([P[a * 3], P[a * 3 + 1], P[a * 3 + 2], P[b * 3], P[b * 3 + 1], P[b * 3 + 2]], m * 6);
       });
       const rgba = new Float32Array(ids.length * 8).fill(1);
+      ids.forEach((j, m) => {
+        rgba[m * 8 + 3] = rgba[m * 8 + 7] = linkOpacity(kind, center);
+        slot[j] = { alpha: rgba, at: m };
+      });
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(xyz, 3));
-      const attr = new THREE.BufferAttribute(rgba, 4);
-      geometry.setAttribute('color', attr);
-      const material = new THREE.LineBasicMaterial({ color: LINK_COLORS[kind], vertexColors: true, transparent: true, opacity: linkOpacity(kind, center), depthWrite: false });
+      geometry.setAttribute('color', new THREE.BufferAttribute(rgba, 4));
+      const material = new THREE.LineBasicMaterial({ color: LINK_COLORS[kind], vertexColors: true, transparent: true, depthWrite: false });
       const obj = new THREE.LineSegments(geometry, material);
       obj.userData = { kind, center, links: ids };
-      ids.forEach((j, m) => { slot[j] = { alpha: rgba, attr, at: m }; });
       lines.push(obj);
       group.add(obj);
     }
@@ -142,16 +227,35 @@ export function buildReportObjects(input: ReportMapInput): ReportObjects {
   const from = base.map((c) => c.clone());
   const to = base.map((c) => c.clone());
   const cur = base.map((c) => c.clone());
-  const aFrom = new Float32Array(links.length).fill(1);
-  const aTo = new Float32Array(links.length).fill(1);
-  const aCur = new Float32Array(links.length).fill(1);
+  const gFrom = new Float32Array(n);
+  const gTo = new Float32Array(n);
+  const gCur = new Float32Array(n);
+  const sFrom = Float32Array.from(radii);
+  const sTo = Float32Array.from(radii);
+  const sCur = Float32Array.from(radii);
+  const aFrom = Float32Array.from(links, (l) => linkOpacity(l.kind, l.center));
+  const aTo = Float32Array.from(aFrom);
+  const aCur = Float32Array.from(aFrom);
+  const glow = new THREE.Color();
+  let scaleNow = 1;
   let t0 = 0;
   let easing = false;
   let primed = false;
 
   const write = (e: number) => {
-    for (let i = 0; i < n; i++) nodes.setColorAt(i, cur[i].lerpColors(from[i], to[i], e));
-    if (nodes.instanceColor) nodes.instanceColor.needsUpdate = true;
+    for (let i = 0; i < n; i++) {
+      nodes.setColorAt(i, cur[i].lerpColors(from[i], to[i], e));
+      gCur[i] = gFrom[i] + (gTo[i] - gFrom[i]) * e;
+      halos.setColorAt(i, glow.copy(base[i]).multiplyScalar(gCur[i]));
+      sCur[i] = sFrom[i] + (sTo[i] - sFrom[i]) * e;
+      place(nodes, i, sCur[i]);
+      place(halos, i, gCur[i] > 0 ? sCur[i] * HALO_SIZE : HIDDEN);
+    }
+    for (const mesh of [nodes, halos]) {
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.boundingSphere = null;
+    }
     for (let j = 0; j < links.length; j++) {
       const v = aFrom[j] + (aTo[j] - aFrom[j]) * e;
       aCur[j] = v;
@@ -179,7 +283,7 @@ export function buildReportObjects(input: ReportMapInput): ReportObjects {
     hotAttr.needsUpdate = true;
     hotGeo.setDrawRange(0, m * 2);
     hot.visible = m > 0;
-    const r = radii[sel] * 1.4 + 0.3;
+    const r = sTo[sel] * 1.4 + 0.3 * scaleNow;
     ring.position.set(P[sel * 3], P[sel * 3 + 1], P[sel * 3 + 2]);
     ring.scale.set(r, r, r);
     ring.visible = true;
@@ -196,28 +300,31 @@ export function buildReportObjects(input: ReportMapInput): ReportObjects {
   return {
     group,
     nodes,
+    halos,
     lines,
     hot,
     ring,
     tick,
-    setState(shown, bright, selected, now) {
+    setState(shown, bright, selected, now, scale = scaleNow) {
       tick(now);
-      let moved = false;
+      scaleNow = scale;
+      const focus = shown.some((s, i) => s && !bright[i]);
       for (let i = 0; i < n; i++) {
         const s = !!shown[i];
-        if (s !== shownNow[i]) {
-          shownNow[i] = s;
-          place(i, s ? radii[i] : HIDDEN);
-          moved = true;
-        }
-        // A node off the map turns to the background, so it fades in from there when it comes back.
+        const came = s && !shownNow[i];
+        shownNow[i] = s;
+        // A node off the map turns to the background and shrinks at once, so it grows and fades in from there when it comes back.
         to[i].setHex(!s ? BG : bright[i] ? colors[i] : DIM);
         from[i].copy(primed ? cur[i] : to[i]);
+        gTo[i] = s && focus && bright[i] ? HALO_GLOW : 0;
+        gFrom[i] = primed && s ? gCur[i] : gTo[i];
+        sTo[i] = !s ? HIDDEN : radii[i] * scale * (focus && !bright[i] ? DIM_SIZE : 1);
+        sFrom[i] = !primed || !s ? sTo[i] : came ? HIDDEN : sCur[i];
       }
-      if (moved) nodes.instanceMatrix.needsUpdate = true;
       links.forEach((l, j) => {
         const on = shownNow[l.a] && shownNow[l.b];
-        aTo[j] = !on ? 0 : bright[l.a] && bright[l.b] ? 1 : dimLinkOpacity(l.center) / linkOpacity(l.kind, l.center);
+        const lit = bright[l.a] && bright[l.b];
+        aTo[j] = !on ? 0 : !lit ? dimLinkOpacity(l.center) : focus ? litLinkOpacity(l.kind, l.center) : linkOpacity(l.kind, l.center);
         aFrom[j] = primed ? aCur[j] : aTo[j];
       });
       t0 = now;
@@ -237,9 +344,11 @@ export function buildReportObjects(input: ReportMapInput): ReportObjects {
     },
     dispose() {
       group.removeFromParent();
-      nodes.geometry.dispose();
-      (nodes.material as THREE.Material).dispose();
-      nodes.dispose();
+      for (const mesh of [nodes, halos]) {
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+        mesh.dispose();
+      }
       for (const l of [...lines, hot]) {
         l.geometry.dispose();
         (l.material as THREE.Material).dispose();
@@ -295,7 +404,8 @@ function start(
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(BG, 1);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(BG, s.fog.near, s.fog.far);
+  const fog = new THREE.Fog(BG, s.fog.near, s.fog.far);
+  scene.fog = fog;
   const camera = new THREE.PerspectiveCamera(s.camera.fov, 1, s.camera.near, s.camera.far);
   camera.position.set(...s.camera.position);
   const controls = new OrbitControls(camera, o.canvas);
@@ -317,6 +427,42 @@ function start(
   let selected: number | null = null;
   let lastShown: boolean[] | null = null;
   let lastBright: boolean[] | null = null;
+  // The framing: where the camera is headed, eased over FIT_MS, and the radius of the framed sphere (for the fog).
+  let fitR = o.radius;
+  let move: { t0: number; fromT: THREE.Vector3; toT: THREE.Vector3; fromD: number; toD: number; fromR: number; toR: number } | null = null;
+  const dir = new THREE.Vector3();
+  const aim = new THREE.Vector3();
+  /** Puts the camera `d` from target `t`, keeping its direction (the orbit may be turning it), and fogs only the far side. */
+  const place = (t: THREE.Vector3, d: number) => {
+    dir.subVectors(camera.position, controls.target);
+    if (dir.lengthSq() < 1e-9) dir.set(...s.camera.position);
+    dir.normalize();
+    controls.target.copy(t);
+    camera.position.copy(t).addScaledVector(dir, d);
+  };
+  const fogTo = () => {
+    const d = camera.position.distanceTo(controls.target);
+    fog.near = d;
+    fog.far = d + 4 * fitR;
+  };
+  /** Frames the shown nodes (fitView) and sets the nodes' scale for that distance: eased, or at once. */
+  const refit = (now: number, animate: boolean) => {
+    if (!lastShown || !lastBright) return;
+    const f = fitView({ pos: o.pos, radii: o.radii, shown: lastShown, bright: lastBright, fov: camera.fov, aspect: camera.aspect, heightPx: o.canvas.clientHeight });
+    controls.maxDistance = Math.max(s.controls.maxDistance, f.distance * 2);
+    camera.far = Math.max(s.camera.far, (f.distance + f.radius) * 2);
+    camera.updateProjectionMatrix();
+    objects.setState(lastShown, lastBright, selected, now, f.scale);
+    aim.set(...f.target);
+    if (animate) {
+      move = { t0: now, fromT: controls.target.clone(), toT: aim.clone(), fromD: camera.position.distanceTo(controls.target), toD: f.distance, fromR: fitR, toR: f.radius };
+    } else {
+      move = null;
+      fitR = f.radius;
+      place(aim, f.distance);
+      controls.update();
+    }
+  };
   const same = (a: readonly boolean[], b: boolean[] | null) => b !== null && a.length === b.length && a.every((v, i) => !!v === b[i]);
 
   const frame = (t: number) => {
@@ -328,7 +474,16 @@ function start(
     }
     const dt = last ? Math.min(0.1, (t - last) / 1000) : 0;
     last = t;
-    const moved = controls.update(dt);
+    const travelling = move !== null;
+    if (move) {
+      const k = Math.min(1, Math.max(0, (performance.now() - move.t0) / FIT_MS));
+      const e = ease(k);
+      fitR = move.fromR + (move.toR - move.fromR) * e;
+      place(aim.lerpVectors(move.fromT, move.toT, e), move.fromD + (move.toD - move.fromD) * e);
+      if (k >= 1) move = null;
+    }
+    const moved = controls.update(dt) || travelling;
+    fogTo();
     const eased = objects.tick(performance.now());
     if (moved || eased || dirty) {
       renderer.render(scene, camera);
@@ -345,6 +500,7 @@ function start(
 
   const onStart = () => {
     busy = true;
+    move = null;
     controls.autoRotate = false;
     wake();
   };
@@ -415,9 +571,13 @@ function start(
       // Picking a node stops the auto-rotation, as on /pantau.
       if (next !== null && next !== selected) controls.autoRotate = false;
       selected = next;
+      const reframe = !same(shown, lastShown) || !same(bright, lastBright);
+      const first = lastShown === null;
       lastShown = shown.map((v) => !!v);
       lastBright = bright.map((v) => !!v);
-      objects.setState(shown, bright, next, performance.now());
+      // A new chapter, or a new focus, moves the camera to frame it (at once the first time and under reduced motion).
+      if (reframe) refit(performance.now(), !first && !o.reducedMotion);
+      else objects.setState(shown, bright, next, performance.now());
       wake();
     },
     resize() {
@@ -427,6 +587,7 @@ function start(
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      refit(performance.now(), false);
       wake();
     },
     dispose() {

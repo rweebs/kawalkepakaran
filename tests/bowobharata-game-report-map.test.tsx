@@ -4,13 +4,15 @@ import { renderToString } from 'react-dom/server';
 import * as THREE from 'three';
 import type { MapGraph, MapNode } from '../src/lib/bowobharata-game/report-types';
 import {
-  BG_HEX, DIM_HEX, LINK_HEX, NODE_HEX, SVG_H, SVG_W, WALK_MS, brightFor, degrees, entryFor, neighbours, project2d, radiusFor, railChips,
+  BG_HEX, DIM_HEX, DIM_SCALE, HALO_SCALE, LINK_HEX, MAX_DOT, MIN_DOT, NODE_HEX, STILL_PAD, SVG_H, SVG_W, WALK_MS, brightFor, degrees, entryFor, neighbours, project2d, radiusFor, railChips,
   sceneInput, shownUpTo, stillOpacity, stillPicture, walkNext, walkStart,
 } from '../src/lib/bowobharata-game/report-map-view';
 import {
-  EASE_MS, LINK_COLORS, buildReportObjects, createReportMap, dimLinkOpacity, linkOpacity, sceneSettings, type ReportMapApi,
+  DIM_SIZE, EASE_MS, FIT_MARGIN, FIT_MS, HALO_GLOW, HALO_SIZE, LINK_COLORS, MIN_NODE_PX, buildReportObjects, createReportMap, dimLinkOpacity, fitView,
+  linkOpacity, litLinkOpacity, sceneSettings, type ReportMapApi,
 } from '../src/lib/bowobharata-game/world/report-map';
 import { ReportMap, namedGraph, type MapLabels } from '../src/components/bowobharata-game/ReportMap';
+import { gameData } from '../src/lib/bowobharata-game/data-build';
 
 // The record map (Task 3 of the chapter reports): the pure view, the three.js scene built in node without a renderer, the
 // scene's lifecycle against a stub renderer, the still SVG through renderToString, and source checks on the 3D module.
@@ -21,6 +23,7 @@ const stub = vi.hoisted(() => {
     calls: string[] = [];
     pixelRatio = 0;
     renders = 0;
+    camera: { position: { x: number; y: number; z: number }; getWorldDirection(v: unknown): unknown } | null = null;
     size: [number, number] = [0, 0];
     clear: [number, number] = [-1, -1];
     constructor(public params: { canvas: unknown; antialias?: boolean }) {
@@ -29,7 +32,10 @@ const stub = vi.hoisted(() => {
     setPixelRatio(r: number) { this.pixelRatio = r; }
     setClearColor(c: number, a: number) { this.clear = [c, a]; }
     setSize(w: number, h: number) { this.size = [w, h]; }
-    render() { this.renders++; }
+    render(_scene: unknown, camera: StubRenderer['camera']) {
+      this.renders++;
+      this.camera = camera;
+    }
     dispose() { this.calls.push('dispose'); }
     forceContextLoss() { this.calls.push('forceContextLoss'); }
   }
@@ -88,6 +94,9 @@ const LABELS: MapLabels = {
 };
 
 const hexNum = (h: string) => parseInt(h.slice(1), 16);
+/** Each chapter's terlapor ids on a graph, from the nodes' own chapters. */
+const chapterIdsOf = (g: MapGraph): string[][] =>
+  Array.from({ length: 10 }, (_, c) => g.nodes.filter((n) => n.id.startsWith('tl:') && n.chapter === c).map((n) => n.id.slice(3)));
 type Disposable = { addEventListener(type: 'dispose', listener: () => void): void };
 const sameSet = (a: Iterable<number>, b: Iterable<number>) => expect([...a].sort((x, y) => x - y)).toEqual([...b].sort((x, y) => x - y));
 
@@ -175,6 +184,19 @@ describe('report-map-view: the still projection', () => {
     expect(c[1].x - c[0].x).toBeCloseTo(600, 5);
   });
 
+  it('project2d with `only` fits just those nodes into the box', () => {
+    const shown = shownUpTo(G, 1);
+    const p = project2d(G, 640, 400, { only: shown });
+    const xs = p.filter((_, i) => shown[i]).map((q) => q.x);
+    const ys = p.filter((_, i) => shown[i]).map((q) => q.y);
+    for (const v of xs) expect(v).toBeGreaterThanOrEqual(16), expect(v).toBeLessThanOrEqual(624);
+    for (const v of ys) expect(v).toBeGreaterThanOrEqual(16), expect(v).toBeLessThanOrEqual(384);
+    const fills = (Math.min(...xs) === 16 && Math.max(...xs) === 624) || (Math.min(...ys) === 16 && Math.max(...ys) === 384);
+    expect(fills).toBe(true);
+    expect(project2d(G, 640, 400, { only: ALL })).toEqual(project2d(G, 640, 400));
+    expect(project2d(G, 640, 400, { only: ALL.map(() => false) })).toEqual(project2d(G, 640, 400));
+  });
+
   it('project2d is deterministic', () => {
     expect(project2d(G, 640, 400)).toEqual(project2d(G, 640, 400));
     expect(JSON.stringify(project2d(G, 640, 400, { yaw: 1.2, pitch: -0.2, pad: 8 }))).toBe(JSON.stringify(project2d(G, 640, 400, { yaw: 1.2, pitch: -0.2, pad: 8 })));
@@ -244,60 +266,88 @@ describe('report-map-view: neighbours', () => {
 });
 
 describe('report-map-view: the still picture', () => {
-  it('draws only shown links, in LINK_HEX, at 0.08 touching the center, 0.35 for members, 0.7 for the rest, and at most 0.12 when an end is dim', () => {
-    expect(stillOpacity('out-response', true, false)).toBe(0.08);
-    expect(stillOpacity('member', false, false)).toBe(0.35);
-    expect(stillOpacity('against', false, false)).toBe(0.7);
-    expect(stillOpacity('in-allegation', false, true)).toBe(0.12);
-    expect(stillOpacity('member', false, true)).toBe(0.12);
-    expect(stillOpacity('in-allegation', true, true)).toBe(0.08);
+  it('draws only shown links, in LINK_HEX, at 0.08 touching the center, 0.35 for members, 0.7 for the rest, at most 0.12 when an end is dim, and stronger between bright nodes under a focus', () => {
+    expect(stillOpacity('out-response', true, 'base')).toBe(0.08);
+    expect(stillOpacity('member', false, 'base')).toBe(0.35);
+    expect(stillOpacity('against', false, 'base')).toBe(0.7);
+    expect(stillOpacity('in-allegation', false, 'dim')).toBe(0.12);
+    expect(stillOpacity('member', false, 'dim')).toBe(0.12);
+    expect(stillOpacity('in-allegation', true, 'dim')).toBe(0.08);
+    for (const [k, c] of [['member', false], ['against', false], ['out-response', true]] as const) {
+      expect(stillOpacity(k, c, 'lit'), k).toBeGreaterThan(stillOpacity(k, c, 'base'));
+    }
 
     const all = stillPicture(G, ALL, ALL);
     expect(all.lines).toHaveLength(G.links.length);
-    const p = project2d(G, SVG_W, SVG_H);
+    const p = project2d(G, SVG_W, SVG_H, { pad: STILL_PAD, only: ALL });
     G.links.forEach((l, j) => {
       const line = all.lines[j];
       expect([line.x1, line.y1, line.x2, line.y2]).toEqual([p[l.a].x, p[l.a].y, p[l.b].x, p[l.b].y]);
       expect(line.color).toBe(LINK_HEX[l.kind]);
-      expect(line.opacity).toBe(stillOpacity(l.kind, l.a === RW || l.b === RW, false));
+      expect(line.opacity).toBe(stillOpacity(l.kind, l.a === RW || l.b === RW, 'base'));
     });
     const early = stillPicture(G, shownUpTo(G, 1), brightFor(G, CHAPTERS, null, shownUpTo(G, 1)));
     expect(early.lines.map((l) => l.key)).toEqual(['1-2', '2-3', '3-0', '5-6']);
     const shown = shownUpTo(G, 2);
     const focused = stillPicture(G, shown, brightFor(G, CHAPTERS, 2, shown));
     const op = new Map(focused.lines.map((l) => [l.key, l.opacity]));
-    expect(op.get('2-4')).toBe(0.35); // pk:A – T-2, both bright
+    expect(op.get('2-4')).toBe(stillOpacity('member', false, 'lit')); // pk:A – T-2, both bright
     expect(op.get('2-3')).toBe(0.12); // pk:A – T-1, T-1 dim
-    expect(op.get('7-4')).toBe(0.7); // LP-01 – T-2
-    expect(op.get('0-4')).toBe(0.08); // the center – T-2
+    expect(op.get('7-4')).toBe(stillOpacity('out-response', false, 'lit')); // LP-01 – T-2
+    expect(op.get('0-4')).toBe(stillOpacity('out-response', true, 'lit')); // the center – T-2
     expect(op.get('3-0')).toBe(0.08); // T-1 – the center, T-1 dim: never brighter than its own 0.08
   });
 
-  it('orders the dots far to near, sizes them by degree with the largest at 9, and fills dim ones with DIM_HEX', () => {
+  it('frames the shown nodes: they fill the box less the halo margin, whatever chapter it is', () => {
+    expect(STILL_PAD).toBeGreaterThanOrEqual(MAX_DOT * HALO_SCALE);
+    for (const upTo of [0, 1, 2]) {
+      const shown = shownUpTo(G, upTo);
+      const pic = stillPicture(G, shown, shown);
+      const xs = pic.dots.map((d) => d.cx);
+      const ys = pic.dots.map((d) => d.cy);
+      for (const d of pic.dots) {
+        expect(d.cx - d.r * HALO_SCALE).toBeGreaterThanOrEqual(0);
+        expect(d.cx + d.r * HALO_SCALE).toBeLessThanOrEqual(SVG_W);
+        expect(d.cy - d.r * HALO_SCALE).toBeGreaterThanOrEqual(0);
+        expect(d.cy + d.r * HALO_SCALE).toBeLessThanOrEqual(SVG_H);
+      }
+      const fillsX = Math.abs(Math.min(...xs) - STILL_PAD) < 0.11 && Math.abs(Math.max(...xs) - (SVG_W - STILL_PAD)) < 0.11;
+      const fillsY = Math.abs(Math.min(...ys) - STILL_PAD) < 0.11 && Math.abs(Math.max(...ys) - (SVG_H - STILL_PAD)) < 0.11;
+      expect(fillsX || fillsY, `up to ${upTo}`).toBe(true);
+    }
+  });
+
+  it('orders the dots far to near, sizes them from MIN_DOT to MAX_DOT by degree, shrinks dim ones to 0.7 and fills them with DIM_HEX, and haloes the bright', () => {
     const shown = shownUpTo(G, 2);
     const pic = stillPicture(G, shown, brightFor(G, CHAPTERS, 2, shown));
-    const p = project2d(G, SVG_W, SVG_H);
+    const p = project2d(G, SVG_W, SVG_H, { pad: STILL_PAD, only: shown });
     expect(pic.dots.map((d) => d.i)).toEqual([...G.nodes.keys()].sort((a, b) => p[a].depth - p[b].depth));
     const radii = degrees(G).map(radiusFor);
-    const k = 9 / Math.max(...radii);
+    const lo = Math.min(...radii);
+    const hi = Math.max(...radii);
+    const lit = [RW, PK_A, T2, LP01];
     for (const d of pic.dots) {
-      expect(d.r).toBeCloseTo(Math.round(radii[d.i] * k * 10) / 10, 10);
+      const size = MIN_DOT + ((radii[d.i] - lo) / (hi - lo)) * (MAX_DOT - MIN_DOT);
+      expect(d.r).toBeCloseTo(Math.round(size * (lit.includes(d.i) ? 1 : DIM_SCALE) * 10) / 10, 10);
       expect([d.cx, d.cy]).toEqual([p[d.i].x, p[d.i].y]);
       expect(d.label).toBe(G.nodes[d.i].label);
-      expect(d.fill).toBe([RW, PK_A, T2, LP01].includes(d.i) ? NODE_HEX[G.nodes[d.i].source] : DIM_HEX);
+      expect(d.fill).toBe(lit.includes(d.i) ? NODE_HEX[G.nodes[d.i].source] : DIM_HEX);
+      expect(d.halo).toBe(lit.includes(d.i) ? 0.22 : 0);
     }
-    expect(Math.max(...pic.dots.map((d) => d.r))).toBe(9);
+    expect(Math.max(...pic.dots.map((d) => d.r))).toBe(MAX_DOT);
+    expect(Math.min(...stillPicture(G, ALL, ALL).dots.map((d) => d.r))).toBe(MIN_DOT);
+    // No focus: no halo, nothing shrunk.
+    expect(stillPicture(G, ALL, ALL).dots.every((d) => d.halo === 0)).toBe(true);
     expect(stillPicture(G, shownUpTo(G, 1), shownUpTo(G, 1)).dots.map((d) => d.i).sort()).toEqual([0, 1, 2, 3, 5, 6]);
   });
 
-  it('draws the selection’s shown links and a ring at r × 1.4 + 0.3, and nothing for a hidden selection', () => {
+  it('draws the selection’s shown links and a ring around its dot, and nothing for a hidden selection', () => {
     const pic = stillPicture(G, ALL, ALL, T2);
     expect(pic.hot.map((h) => h.key).sort()).toEqual(['4-0', '4-2', '4-7']);
-    const p = project2d(G, SVG_W, SVG_H);
+    const p = project2d(G, SVG_W, SVG_H, { pad: STILL_PAD, only: ALL });
     expect(pic.hot.every((h) => h.x1 === p[T2].x && h.y1 === p[T2].y)).toBe(true);
-    const radii = degrees(G).map(radiusFor);
-    const k = 9 / Math.max(...radii);
-    expect(pic.ring).toEqual({ cx: p[T2].x, cy: p[T2].y, r: Math.round((radii[T2] * 1.4 + 0.3) * k * 10) / 10 });
+    const dot = pic.dots.find((d) => d.i === T2)!;
+    expect(pic.ring).toEqual({ cx: p[T2].x, cy: p[T2].y, r: Math.round((dot.r * 1.4 + 2) * 10) / 10 });
     const hidden = stillPicture(G, shownUpTo(G, 1), shownUpTo(G, 1), T2);
     expect(hidden.hot).toEqual([]);
     expect(hidden.ring).toBeNull();
@@ -424,8 +474,9 @@ describe('world/report-map: the scene objects, built in node without a renderer'
     o.dispose();
   });
 
-  it('link materials keep the /pantau colours and opacities: 0.025 touching the center, 0.22 for members, 0.5 for the rest', () => {
+  it('link materials keep the /pantau colours, and links open at the /pantau opacities: 0.025 touching the center, 0.22 for members, 0.5 for the rest', () => {
     expect(linkOpacity('out-response', true)).toBe(0.025);
+    for (const [k, c] of [['member', false], ['against', false], ['out-response', true]] as const) expect(litLinkOpacity(k, c), k).toBeGreaterThan(linkOpacity(k, c));
     expect(linkOpacity('member', false)).toBe(0.22);
     expect(linkOpacity('against', false)).toBe(0.5);
     expect(dimLinkOpacity(false)).toBe(0.06);
@@ -435,7 +486,8 @@ describe('world/report-map: the scene objects, built in node without a renderer'
       const m = l.material as THREE.LineBasicMaterial;
       expect(m).toBeInstanceOf(THREE.LineBasicMaterial);
       expect(m.color.getHex()).toBe(LINK_COLORS[l.userData.kind as keyof typeof LINK_COLORS]);
-      expect(m.opacity).toBe(linkOpacity(l.userData.kind, l.userData.center));
+      expect(m.opacity).toBe(1);
+      for (const j of l.userData.links as number[]) expect(linkAlpha(o.lines, j)).toBeCloseTo(linkOpacity(l.userData.kind, l.userData.center), 6);
       expect(m.transparent).toBe(true);
       expect(m.vertexColors).toBe(true);
       expect(l.geometry.getAttribute('color').itemSize).toBe(4);
@@ -468,14 +520,15 @@ describe('world/report-map: the scene objects, built in node without a renderer'
       if (g) owned.add(g);
       if (m) owned.add(m);
     });
-    expect(owned.size).toBe(2 + 2 * o.lines.length + 2 + 2);
+    expect(owned.size).toBe(2 + 2 + 2 * o.lines.length + 2 + 2);
     const times = new Map<unknown, number>();
     for (const r of owned) r.addEventListener('dispose', () => times.set(r, (times.get(r) ?? 0) + 1));
     let instanced = 0;
     o.nodes.addEventListener('dispose', () => instanced++);
+    o.halos.addEventListener('dispose', () => instanced++);
     o.dispose();
     for (const r of owned) expect(times.get(r), (r as { type?: string }).type).toBe(1);
-    expect(instanced).toBe(1);
+    expect(instanced).toBe(2);
     expect(o.group.parent).toBeNull();
   });
 
@@ -494,19 +547,35 @@ describe('world/report-map: the scene objects, built in node without a renderer'
     o.dispose();
   });
 
-  it('with a focus, dim nodes turn DIM and dim links drop to 0.06, or 0.01 touching the center', () => {
+  it('with a focus, dim nodes turn DIM at 0.7 of their size, bright ones keep their colour and get a halo, links between them strengthen and dim links drop to 0.06, or 0.01 touching the center', () => {
     const o = buildReportObjects(input);
     const shown = shownUpTo(G, 2);
     const bright = brightFor(G, CHAPTERS, 2, shown);
-    o.setState(shown, bright, null, 0);
-    G.nodes.forEach((_, i) => expect(colorAt(o.nodes, i).getHex(), G.nodes[i].id).toBe(bright[i] ? input.colors[i] : hexNum(DIM_HEX)));
+    o.setState(shown, bright, null, 0, 3);
+    G.nodes.forEach((_, i) => {
+      expect(colorAt(o.nodes, i).getHex(), G.nodes[i].id).toBe(bright[i] ? input.colors[i] : hexNum(DIM_HEX));
+      expect(scaleAt(o.nodes, i), G.nodes[i].id).toBeCloseTo(input.radii[i] * 3 * (bright[i] ? 1 : DIM_SIZE), 5);
+      const glow = colorAt(o.halos, i);
+      if (bright[i]) {
+        expect(glow.r + glow.g + glow.b).toBeCloseTo(new THREE.Color(input.colors[i]).multiplyScalar(HALO_GLOW).toArray().reduce((s, v) => s + v, 0), 5);
+        expect(scaleAt(o.halos, i)).toBeCloseTo(input.radii[i] * 3 * HALO_SIZE, 5);
+      } else expect(glow.getHex()).toBe(0);
+    });
     input.links.forEach((l, j) => {
       const lit = bright[l.a] && bright[l.b];
-      expect(linkAlpha(o.lines, j), `link ${j}`).toBeCloseTo(lit ? linkOpacity(l.kind, l.center) : dimLinkOpacity(l.center), 6);
+      expect(linkAlpha(o.lines, j), `link ${j}`).toBeCloseTo(lit ? litLinkOpacity(l.kind, l.center) : dimLinkOpacity(l.center), 6);
     });
     expect(linkAlpha(o.lines, 3)).toBeCloseTo(0.01, 6); // T-1 – the center
     expect(linkAlpha(o.lines, 1)).toBeCloseTo(0.06, 6); // pk:A – T-1
-    expect(linkAlpha(o.lines, 4)).toBeCloseTo(0.025, 6); // the center – T-2, both bright
+    expect(linkAlpha(o.lines, 4)).toBeCloseTo(litLinkOpacity('out-response', true), 6); // the center – T-2, both bright
+    // With no focus, nothing is shrunk, nothing glows, and links keep the /pantau opacities.
+    o.setState(ALL, ALL, null, 1000, 3);
+    o.tick(1600);
+    G.nodes.forEach((_, i) => {
+      expect(scaleAt(o.nodes, i)).toBeCloseTo(input.radii[i] * 3, 5);
+      expect(colorAt(o.halos, i).getHex()).toBe(0);
+    });
+    expect(linkAlpha(o.lines, 4)).toBeCloseTo(0.025, 6);
     o.dispose();
   });
 
@@ -547,12 +616,16 @@ describe('world/report-map: the scene objects, built in node without a renderer'
     const o = buildReportObjects(input);
     o.setState(shownUpTo(G, 1), shownUpTo(G, 1), null, 0);
     o.setState(ALL, ALL, null, 1000);
-    expect(scaleAt(o.nodes, T2)).toBeCloseTo(input.radii[T2], 6);
     o.tick(1000);
+    expect(scaleAt(o.nodes, T2)).toBeLessThan(0.001);
     expect(colorAt(o.nodes, T2).getHex()).toBe(hexNum(BG_HEX));
     expect(linkAlpha(o.lines, 2)).toBe(0);
+    o.tick(1300);
+    expect(scaleAt(o.nodes, T2)).toBeGreaterThan(0.1);
+    expect(scaleAt(o.nodes, T2)).toBeLessThan(input.radii[T2]);
     o.tick(1600);
     expect(colorAt(o.nodes, T2).getHex()).toBe(input.colors[T2]);
+    expect(scaleAt(o.nodes, T2)).toBeCloseTo(input.radii[T2], 6);
     expect(linkAlpha(o.lines, 2)).toBeCloseTo(0.22, 6);
     o.dispose();
   });
@@ -577,7 +650,7 @@ describe('world/report-map: the scene objects, built in node without a renderer'
     expect((o.ring.material as THREE.MeshBasicMaterial).wireframe).toBe(true);
     expect(o.ring.visible).toBe(true);
     expect(o.ring.position.toArray()).toEqual(G.pos.slice(T2 * 3, T2 * 3 + 3));
-    expect(o.ring.scale.x).toBeCloseTo(input.radii[T2] * 1.4 + 0.3, 10);
+    expect(o.ring.scale.x).toBeCloseTo(input.radii[T2] * 1.4 + 0.3, 5);
     // Up to chapter 1 the center keeps only T-1; T-2 cannot be selected.
     o.setState(shownUpTo(G, 1), shownUpTo(G, 1), RW, 100);
     expect(o.hot.geometry.drawRange.count).toBe(2);
@@ -611,6 +684,71 @@ describe('world/report-map: the scene objects, built in node without a renderer'
     o.setState(shownUpTo(G, 1), shownUpTo(G, 1), null, 100);
     expect(at(T2)).toBeNull();
     o.dispose();
+  });
+
+  it('fitView keeps every shown node, its halo included, inside the view frustum from any direction, at 16:10 and at a phone’s aspect', () => {
+    const real = gameData(JSON.parse(read('src/data/perkara.json'))).report.map;
+    const cases: { g: MapGraph; upTo: number; focus: number | null; chapters: readonly (readonly string[])[] }[] = [
+      { g: G, upTo: 1, focus: null, chapters: CHAPTERS },
+      { g: G, upTo: 2, focus: 2, chapters: CHAPTERS },
+      { g: G, upTo: 9, focus: null, chapters: CHAPTERS },
+      ...[0, 1, 3, 4, 6, 9].map((c) => ({ g: real, upTo: c, focus: c, chapters: chapterIdsOf(real) })),
+      { g: real, upTo: 9, focus: null, chapters: chapterIdsOf(real) },
+    ];
+    const dirs = [[0.8, 0.25, 1.05], [1, 0, 0], [0, 1, 0.01], [-1, -0.4, 0.2], [0.3, -1, -0.7], [0, 0, -1]];
+    for (const { g, upTo, focus, chapters } of cases) {
+      const input = sceneInput(g);
+      const shown = shownUpTo(g, upTo);
+      const bright = brightFor(g, chapters, focus, shown);
+      for (const [aspect, heightPx] of [[1.6, 420], [1.6, 200], [0.6, 600], [2.4, 300]]) {
+        const f = fitView({ ...input, shown, bright, fov: 50, aspect, heightPx });
+        expect(f.scale).toBeGreaterThanOrEqual(1);
+        const target = new THREE.Vector3(...f.target);
+        for (const d of dirs) {
+          const camera = new THREE.PerspectiveCamera(50, aspect, 0.5, (f.distance + f.radius) * 2);
+          camera.position.copy(target).addScaledVector(new THREE.Vector3(...d).normalize(), f.distance);
+          camera.lookAt(target);
+          camera.updateMatrixWorld(true);
+          const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+          shown.forEach((on, i) => {
+            if (!on) return;
+            const c = new THREE.Vector3(input.pos[i * 3], input.pos[i * 3 + 1], input.pos[i * 3 + 2]);
+            const r = input.radii[i] * f.scale * HALO_SIZE;
+            for (const plane of frustum.planes) expect(plane.distanceToPoint(c), `${g.nodes[i].id} ${aspect} ${d}`).toBeGreaterThanOrEqual(r);
+          });
+        }
+      }
+    }
+  });
+
+  it('fitView aims at the bright nodes’ centroid (the shown nodes’ without a focus), leaves FIT_MARGIN, and sizes the smallest node to about MIN_NODE_PX', () => {
+    const input = sceneInput(G);
+    const shown = shownUpTo(G, 2);
+    const bright = brightFor(G, CHAPTERS, 2, shown);
+    const f = fitView({ ...input, shown, bright, fov: 50, aspect: 1.6, heightPx: 400 });
+    const centroid = (ids: number[]) => [0, 1, 2].map((k) => ids.reduce((s, i) => s + G.pos[i * 3 + k], 0) / ids.length);
+    f.target.forEach((v, k) => expect(v).toBeCloseTo(centroid([RW, PK_A, T2, LP01])[k], 10));
+    const none = fitView({ ...input, shown: ALL, bright: ALL, fov: 50, aspect: 1.6, heightPx: 400 });
+    none.target.forEach((v, k) => expect(v).toBeCloseTo(centroid([...G.nodes.keys()])[k], 10));
+    // The framed sphere holds the farthest node's halo, with the margin, and the narrower field of view fits it.
+    const t = new THREE.Vector3(...f.target);
+    const reach = Math.max(...shown.flatMap((on, i) => (on ? [t.distanceTo(new THREE.Vector3(...G.pos.slice(i * 3, i * 3 + 3))) + input.radii[i] * f.scale * HALO_SIZE] : [])));
+    expect(f.radius).toBeCloseTo(reach * (1 + FIT_MARGIN), 6);
+    expect(f.distance).toBeCloseTo(f.radius / Math.sin((25 * Math.PI) / 180), 6);
+    // On the real record, the smallest node is drawn at about MIN_NODE_PX at the target's depth, on a desktop stage and a phone's.
+    const real = gameData(JSON.parse(read('src/data/perkara.json'))).report.map;
+    const ri = sceneInput(real);
+    for (const heightPx of [420, 200]) {
+      const rs = shownUpTo(real, 3);
+      const rf = fitView({ ...ri, shown: rs, bright: brightFor(real, chapterIdsOf(real), 3, rs), fov: 50, aspect: 1.6, heightPx });
+      const smallest = Math.min(...ri.radii.filter((_, i) => rs[i]));
+      const px = (smallest * rf.scale) / ((2 * rf.distance * Math.tan((25 * Math.PI) / 180)) / heightPx);
+      expect(px, `height ${heightPx}`).toBeGreaterThanOrEqual(MIN_NODE_PX * 0.85);
+      expect(px).toBeLessThanOrEqual(MIN_NODE_PX * 1.15);
+    }
+    // Nothing shown: a harmless default, no NaN.
+    const empty = fitView({ ...input, shown: ALL.map(() => false), bright: ALL.map(() => false), fov: 50, aspect: 1.6, heightPx: 400 });
+    expect([...empty.target, empty.distance, empty.radius, empty.scale].every(Number.isFinite)).toBe(true);
   });
 
   it('sceneSettings: fog from radius × 1.6 to × 4, the camera at (0.8, 0.25, 1.05) × radius, damped orbit, slow auto-rotation unless reduced', () => {
@@ -694,12 +832,14 @@ function open(page: ReturnType<typeof fakePage>, reducedMotion: boolean, calls: 
   return { api, calls, renderer: stub.made[stub.made.length - 1] };
 }
 
-/** Where node i lands on the 640 × 400 canvas at the opening view. */
+/** Where node i lands on the 640 × 400 canvas once the whole record is framed, seen from the opening direction. */
 function screenOf(i: number): [number, number] {
   const s = sceneSettings(G.radius, true);
-  const camera = new THREE.PerspectiveCamera(s.camera.fov, 640 / 400, s.camera.near, s.camera.far);
-  camera.position.set(...s.camera.position);
-  camera.lookAt(0, 0, 0);
+  const f = fitView({ ...sceneInput(G), shown: ALL, bright: ALL, fov: s.camera.fov, aspect: 640 / 400, heightPx: 400 });
+  const camera = new THREE.PerspectiveCamera(s.camera.fov, 640 / 400, s.camera.near, (f.distance + f.radius) * 2);
+  const target = new THREE.Vector3(...f.target);
+  camera.position.copy(target).addScaledVector(new THREE.Vector3(...s.camera.position).normalize(), f.distance);
+  camera.lookAt(target);
   camera.updateMatrixWorld(true);
   const v = new THREE.Vector3(G.pos[i * 3], G.pos[i * 3 + 1], G.pos[i * 3 + 2]).project(camera);
   return [((v.x + 1) / 2) * 640, ((1 - v.y) / 2) * 400];
@@ -769,12 +909,12 @@ describe('world/report-map: createReportMap with a stub renderer', () => {
     const settled = renderer.renders;
     page.run();
     expect(renderer.renders).toBe(settled);
-    // A state change wakes it for the 0.6 s ease, then it idles again.
+    // A new focus wakes it for the 1.2 s camera move (the 0.6 s ease runs inside it), then it idles again.
     api.setState(ALL, brightFor(G, CHAPTERS, 2, ALL), null);
     n = 0;
     while (page.frames.size > 0 && n < 400) { page.run(); n++; }
-    expect(renderer.renders - settled).toBeGreaterThanOrEqual(600 / 16);
-    expect(renderer.renders - settled).toBeLessThan(600 / 16 + 6);
+    expect(renderer.renders - settled).toBeGreaterThanOrEqual(FIT_MS / 16);
+    expect(renderer.renders - settled).toBeLessThan(FIT_MS / 16 + 6);
     api.dispose();
 
     const still = fakePage();
@@ -791,6 +931,42 @@ describe('world/report-map: createReportMap with a stub renderer', () => {
     r.api.setState(ALL, ALL, RW);
     expect(still.frames.size).toBe(1);
     r.api.dispose();
+  });
+
+  it('frames the shown nodes at once when it opens, then eases over 1.2 s to frame this chapter’s people; under reduced motion it jumps', () => {
+    const camOf = (r: InstanceType<typeof stub.StubRenderer>) => {
+      const c = r.camera as unknown as THREE.PerspectiveCamera;
+      return { at: c.position.clone(), look: c.getWorldDirection(new THREE.Vector3()) };
+    };
+    const looksAt = (r: InstanceType<typeof stub.StubRenderer>, f: { target: number[]; distance: number }) => {
+      const { at, look } = camOf(r);
+      const t = new THREE.Vector3(...f.target);
+      expect(at.distanceTo(t)).toBeCloseTo(f.distance, 3);
+      expect(look.dot(t.clone().sub(at).normalize())).toBeCloseTo(1, 5);
+    };
+    const fitFor = (shown: boolean[], bright: boolean[]) => fitView({ ...sceneInput(G), shown, bright, fov: 50, aspect: 640 / 400, heightPx: 400 });
+    for (const reduced of [true, false]) {
+      const page = fakePage();
+      const { api, renderer } = open(page, reduced);
+      const shown1 = shownUpTo(G, 1);
+      api.setState(shown1, shown1, null);
+      page.run();
+      looksAt(renderer, fitFor(shown1, shown1));
+      const shown2 = shownUpTo(G, 2);
+      const bright2 = brightFor(G, CHAPTERS, 2, shown2);
+      api.setState(shown2, bright2, null);
+      page.run(600);
+      if (reduced) looksAt(renderer, fitFor(shown2, bright2));
+      else {
+        // Halfway there: neither the old framing nor the new.
+        const half = camOf(renderer).at;
+        expect(half.distanceTo(new THREE.Vector3(...fitFor(shown2, bright2).target))).not.toBeCloseTo(fitFor(shown2, bright2).distance, 1);
+        page.run(700);
+        page.run();
+        looksAt(renderer, fitFor(shown2, bright2));
+      }
+      api.dispose();
+    }
   });
 
   it('pauses while the document is hidden and while the canvas is off screen, and resumes after', () => {
@@ -878,12 +1054,14 @@ describe('ReportMap (renderToString)', () => {
     expect(h).toContain(LABELS.title);
   });
 
-  it('one circle per shown node, each titled with its label; unshown nodes are absent', () => {
+  it('one dot per shown node, each titled with its label, with a halo behind it; unshown nodes are absent', () => {
+    expect(html().match(/<g class="bg-map__halo">([\s\S]*?)<\/g>/)![1].match(/<circle /g)).toHaveLength(G.nodes.length);
+    expect(html({ upTo: 2, focus: 2 })).toContain('fill-opacity="0.22"');
     const h = html();
-    expect(h.match(/<circle /g)).toHaveLength(G.nodes.length);
+    expect(h.match(/<circle data-i=/g)).toHaveLength(G.nodes.length);
     expect(titles(h).sort()).toEqual([...LABEL_LIST].sort());
     const early = html({ upTo: 1 });
-    expect(early.match(/<circle /g)).toHaveLength(6);
+    expect(early.match(/<circle data-i=/g)).toHaveLength(6);
     expect(titles(early).sort()).toEqual(LABEL_LIST.filter((_, i) => i !== T2 && i !== LP01).sort());
     for (const gone of ['Nama Dua', 'LP-01']) expect(early).not.toContain(gone);
     expect(early.match(/<line /g)).toHaveLength(4);
@@ -1085,7 +1263,7 @@ describe('bowobharata-game-map.css', () => {
       if (/^none/.test(v.trim())) continue;
       for (const t of v.matchAll(/(\d*\.?\d+)(ms|s)\b/g)) expect(t[2] === 'ms' ? Number(t[1]) / 1000 : Number(t[1]), v).toBeGreaterThanOrEqual(0.5);
     }
-    expect(declared('.bg-map__svg circle', 'transition')).toEqual(['fill 0.6s ease']);
+    expect(declared('.bg-map__svg circle', 'transition')).toEqual(['fill 0.6s ease, r 0.6s ease, fill-opacity 0.6s ease']);
     expect(declared('.bg-map__svg line', 'transition')).toEqual(['stroke-opacity 0.6s ease']);
     const reduced = RULES.filter((r) => r.media === '(prefers-reduced-motion: reduce)');
     expect(reduced.some((r) => r.selector.includes('.bg-map__svg circle') && r.selector.includes('.bg-map__svg line') && /transition: none/.test(r.body))).toBe(true);

@@ -19,8 +19,14 @@ export const MAP_LINK_KINDS: readonly MapLinkKind[] = ['in-allegation', 'out-res
 /** The still picture's box, in SVG units. */
 export const SVG_W = 640;
 export const SVG_H = 400;
-/** The largest dot's radius in the still picture. */
-const MAX_DOT = 9;
+/** The smallest and largest dot radius in the still picture, in SVG units: the smallest still reads on a phone. */
+export const MIN_DOT = 4.5;
+export const MAX_DOT = 11;
+/** Under a focus, a dim node is drawn this much smaller, and a bright one gets a halo this much wider. */
+export const DIM_SCALE = 0.7;
+export const HALO_SCALE = 1.6;
+/** The still picture's margin: room for the widest halo at the edge. */
+export const STILL_PAD = Math.ceil(MAX_DOT * HALO_SCALE) + 2;
 /** The walk shows each chapter this long, in ms. */
 export const WALK_MS = 5200;
 
@@ -89,10 +95,16 @@ export function brightFor(g: MapGraph, chapterIds: readonly (readonly string[])[
 /**
  * The still picture's 2D layout. Each node is turned about y by `yaw` and about x by `pitch`, which puts the viewer where
  * the 3D camera starts (beside +z, a little to +x and above), and projected straight onto the screen. The whole graph is
- * then fitted into the box inside `pad` with one scale for both axes and centred. `depth` grows toward the viewer, `y`
- * grows down, and every value is rounded to 0.1.
+ * then fitted into the box inside `pad` with one scale for both axes and centred: the whole graph, or only the nodes in
+ * `only` when it is given, so the picture frames what is on the map. `depth` grows toward the viewer, `y` grows down,
+ * and every value is rounded to 0.1.
  */
-export function project2d(g: MapGraph, w: number, h: number, { yaw = 0.6, pitch = 0.35, pad = 16 }: { yaw?: number; pitch?: number; pad?: number } = {}): { x: number; y: number; depth: number }[] {
+export function project2d(
+  g: MapGraph,
+  w: number,
+  h: number,
+  { yaw = 0.6, pitch = 0.35, pad = 16, only }: { yaw?: number; pitch?: number; pad?: number; only?: readonly boolean[] } = {},
+): { x: number; y: number; depth: number }[] {
   const cy = Math.cos(yaw);
   const sy = Math.sin(yaw);
   const cp = Math.cos(pitch);
@@ -110,7 +122,8 @@ export function project2d(g: MapGraph, w: number, h: number, { yaw = 0.6, pitch 
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-  for (const r of raw) {
+  const fitted = only && raw.some((_, i) => only[i]) ? raw.filter((_, i) => only[i]) : raw;
+  for (const r of fitted) {
     minX = Math.min(minX, r.x);
     maxX = Math.max(maxX, r.x);
     minY = Math.min(minY, r.y);
@@ -140,18 +153,25 @@ export function neighbours(g: MapGraph, i: number, shown: readonly boolean[]): {
   return out.sort((x, y) => member(x.kind) - member(y.kind) || byCodePoint(g.nodes[x.other].label, g.nodes[y.other].label) || x.other - y.other);
 }
 
-/** A link's opacity in the still picture: faintest when it touches the Pelapor, at most 0.12 when an end is dim. */
-export function stillOpacity(kind: MapLinkKind, center: boolean, dim: boolean): number {
+/**
+ * A link's opacity in the still picture: faintest when it touches the Pelapor; at most 0.12 when an end is dim; and,
+ * under a focus, stronger between two bright nodes, so this chapter's links stand out.
+ */
+export function stillOpacity(kind: MapLinkKind, center: boolean, state: 'base' | 'dim' | 'lit'): number {
+  if (state === 'lit') return center ? 0.35 : kind === 'member' ? 0.6 : 0.9;
   const base = center ? 0.08 : kind === 'member' ? 0.35 : 0.7;
-  return dim ? Math.min(base, 0.12) : base;
+  return state === 'dim' ? Math.min(base, 0.12) : base;
 }
 
+/** True when the map has a focus: some shown node is not bright. */
+export const focused = (shown: readonly boolean[], bright: readonly boolean[]): boolean => shown.some((s, i) => s && !bright[i]);
+
 export interface StillLine { key: string; x1: number; y1: number; x2: number; y2: number; color: string; opacity: number }
-export interface StillDot { i: number; key: string; cx: number; cy: number; r: number; fill: string; label: string }
+export interface StillDot { i: number; key: string; cx: number; cy: number; r: number; fill: string; label: string; halo: number }
 export interface StillPicture {
   /** The shown links, in graph order. */
   lines: StillLine[];
-  /** The shown nodes, far to near. */
+  /** The shown nodes, far to near. `halo` is the opacity of the glow behind a bright node under a focus, else 0. */
   dots: StillDot[];
   /** The selection's shown links, from the selection out. */
   hot: Omit<StillLine, 'color' | 'opacity'>[];
@@ -160,25 +180,32 @@ export interface StillPicture {
 }
 
 /**
- * The still picture in the SVG box: what ReportMap.tsx draws without the 3D scene. A dot's radius is radiusFor(degree),
- * scaled so the largest node of the whole graph is 9, so sizes stay the same from chapter to chapter.
+ * The still picture in the SVG box: what ReportMap.tsx draws without the 3D scene. It frames the shown nodes. A dot's
+ * radius grows with radiusFor(degree) from MIN_DOT to MAX_DOT over the whole graph, so sizes stay the same from chapter
+ * to chapter; under a focus a dim dot is DIM_SCALE of that and a bright one gets a halo.
  */
 export function stillPicture(g: MapGraph, shown: readonly boolean[], bright: readonly boolean[], selected: number | null = null): StillPicture {
-  const p = project2d(g, SVG_W, SVG_H);
+  const p = project2d(g, SVG_W, SVG_H, { pad: STILL_PAD, only: shown });
   const radii = degrees(g).map(radiusFor);
-  const k = MAX_DOT / radii.reduce((m, r) => Math.max(m, r), 0.35);
+  const lo = radii.reduce((m, r) => Math.min(m, r), Infinity);
+  const hi = radii.reduce((m, r) => Math.max(m, r), -Infinity);
+  const size = (i: number) => (hi > lo ? MIN_DOT + ((radii[i] - lo) / (hi - lo)) * (MAX_DOT - MIN_DOT) : MIN_DOT);
+  const focus = focused(shown, bright);
   const center = g.nodes.findIndex((n) => n.kind === 'center');
   const lines = g.links
     .filter((l) => shown[l.a] && shown[l.b])
-    .map((l) => ({
-      key: `${l.a}-${l.b}`,
-      x1: p[l.a].x,
-      y1: p[l.a].y,
-      x2: p[l.b].x,
-      y2: p[l.b].y,
-      color: LINK_HEX[l.kind],
-      opacity: stillOpacity(l.kind, l.a === center || l.b === center, !bright[l.a] || !bright[l.b]),
-    }));
+    .map((l) => {
+      const lit = bright[l.a] && bright[l.b];
+      return {
+        key: `${l.a}-${l.b}`,
+        x1: p[l.a].x,
+        y1: p[l.a].y,
+        x2: p[l.b].x,
+        y2: p[l.b].y,
+        color: LINK_HEX[l.kind],
+        opacity: stillOpacity(l.kind, l.a === center || l.b === center, !lit ? 'dim' : focus ? 'lit' : 'base'),
+      };
+    });
   const dots = g.nodes
     .map((_, i) => i)
     .filter((i) => shown[i])
@@ -188,9 +215,10 @@ export function stillPicture(g: MapGraph, shown: readonly boolean[], bright: rea
       key: g.nodes[i].id,
       cx: p[i].x,
       cy: p[i].y,
-      r: round1(radii[i] * k),
+      r: round1(size(i) * (focus && !bright[i] ? DIM_SCALE : 1)),
       fill: bright[i] ? NODE_HEX[g.nodes[i].source] : DIM_HEX,
       label: g.nodes[i].label,
+      halo: focus && bright[i] ? 0.22 : 0,
     }));
   const sel = selected !== null && shown[selected] ? selected : null;
   if (sel === null) return { lines, dots, hot: [], ring: null };
@@ -200,7 +228,7 @@ export function stillPicture(g: MapGraph, shown: readonly boolean[], bright: rea
       const o = l.a === sel ? l.b : l.a;
       return { key: `${sel}-${o}`, x1: p[sel].x, y1: p[sel].y, x2: p[o].x, y2: p[o].y };
     });
-  return { lines, dots, hot, ring: { cx: p[sel].x, cy: p[sel].y, r: round1((radii[sel] * 1.4 + 0.3) * k) } };
+  return { lines, dots, hot, ring: { cx: p[sel].x, cy: p[sel].y, r: round1(size(sel) * (focus && !bright[sel] ? DIM_SCALE : 1) * 1.4 + 2) } };
 }
 
 /** The numbers the 3D scene takes (world/report-map.ts's ReportMapInput): colours as numbers, radii, and the center's links. */
