@@ -114,7 +114,7 @@ export interface GameState {
   rng: number;
   /** The clamour's whole level as last reported: a `level` event fires when riuhLevel(riuh.value) differs from it. */
   level: number;
-  /** Whether the lakon's scripted volley (scripted.volleyNear) has been planned: it comes once. */
+  /** Whether the lakon's scripted volley (scripted.volleyLine) has been planned: it comes once. */
   scriptedPlanned: boolean;
 }
 
@@ -355,6 +355,19 @@ function prune<T extends Lived>(xs: readonly T[], t: number): readonly T[] {
   return xs;
 }
 
+/** The side of w from the line uv: positive to its left, 0 on it. */
+const side = (u: XZ, v: XZ, w: XZ) => (v.x - u.x) * (w.z - u.z) - (v.z - u.z) * (w.x - u.x);
+/** Whether w, known to lie on the line uv, lies between u and v. */
+const between = (u: XZ, v: XZ, w: XZ) =>
+  Math.min(u.x, v.x) <= w.x && w.x <= Math.max(u.x, v.x) && Math.min(u.z, v.z) <= w.z && w.z <= Math.max(u.z, v.z);
+/** Whether w lies on the segment uv. */
+const onSegment = (u: XZ, v: XZ, w: XZ) => side(u, v, w) === 0 && between(u, v, w);
+/** Whether the path from a to b meets the segment pq, touching included: stopping on a line counts as reaching it. */
+function meets(a: XZ, b: XZ, p: XZ, q: XZ): boolean {
+  if (side(p, q, a) * side(p, q, b) < 0 && side(a, b, p) * side(a, b, q) < 0) return true;
+  return onSegment(p, q, a) || onSegment(p, q, b) || onSegment(a, b, p) || onSegment(a, b, q);
+}
+
 /** What a landed volley leaves shares its id, lies at its landing and dates from it. */
 const leftBy = (v: Volley) => ({ id: v.id, at: { x: v.to.x, z: v.to.z }, born: v.t0 + v.flight });
 
@@ -364,9 +377,9 @@ const leftBy = (v: Volley) => ({ id: v.id, at: { x: v.to.x, z: v.to.z }, born: v
  * its own step to run.t from the zones the chariot is in, then this frame's kicks; a new whole level gives a `level`
  * event. While the lakon is still active, volleys are planned: from run.t 20 at level 1 or more, the first after half
  * the level's gap, then one each gap, each leaving a copy, and haze from level 3; the scripted volley comes the first
- * time the chariot is near its spot. Every volley is stepped: an absorbed one gives an event and leaves nothing; a
- * landed one leaves its copy (VOLLEY.decoyLife s) and its haze. Spent copies and haze go, and beyond the cap the oldest
- * volley copy is retired. With nothing in flight no list is rebuilt: only what is spent goes.
+ * time the hull's middle reaches its line. Every volley is stepped: an absorbed one gives an event and leaves nothing;
+ * a landed one leaves its copy (VOLLEY.decoyLife s) and its haze. Spent copies and haze go, and beyond the cap the
+ * oldest volley copy is retired. With nothing in flight no list is rebuilt: only what is spent goes.
  */
 function stepPressure(
   next: GameState,
@@ -397,10 +410,10 @@ function stepPressure(
     if (plan.volley) (planned ??= []).push(plan.volley);
     next.nextVolley = t + every;
   }
-  const near = def.scripted.volleyNear;
-  if (on && near && !prev.scriptedPlanned && dist(car, near.near) <= near.r) {
+  const line = def.scripted.volleyLine;
+  if (on && line && !prev.scriptedPlanned && meets(hullMid(prev.car), hullMid(car), line.a, line.b)) {
     const id = prev.nextId + (planned?.length ?? 0);
-    (planned ??= []).push(scriptedVolley(near.at, t, id, w));
+    (planned ??= []).push(scriptedVolley(line.at, t, id, w));
     next.scriptedPlanned = true;
   }
   if (planned) {
@@ -452,9 +465,11 @@ function stepCamera(s: GameState, before: GameState['shot'], dt: number, aspect:
 const HINT = {
   /** steer: the next target's bearing off the heading. */
   steerOff: 25,
-  /** rewrites and sight: a copy this near, in front of the hull's middle. */
+  /** rewrites and sight: a copy this near, in front of the hull's middle; for sight it must also lie in the way. */
   copyNear: 30,
   copyClose: 15,
+  /** sight: in the way means within this of the route (volley copies keep 5 m off it). */
+  copyInWay: 4.5,
   /** slow and stop: this near the open reach circle's edge, above these speeds. */
   slowNear: 25,
   slowSpeed: 8,
@@ -533,6 +548,13 @@ function sharpTurnAhead(s: GameState): boolean {
   return turnsAhead(pts, p.along).some(sharp);
 }
 
+/** An open copy within HINT.copyClose in front of the hull's middle, in the way: within HINT.copyInWay of the route. */
+const closeInWay = (s: GameState, d: Decoy) =>
+  d.state === 'open' &&
+  ahead(s.car, d.at, HINT.copyClose) &&
+  !!s.route &&
+  polylineDist(d.at, s.route.points) <= HINT.copyInWay;
+
 /** The prologue's lessons come only in an active lakon that teaches; the surge and the drift from chapter 1 on. */
 const lesson = (s: GameState) => s.run.def.hints && s.run.phase === 'active';
 const fromChapterOne = (s: GameState) => s.run.def.chapter >= 1 && drivable(s.run);
@@ -541,7 +563,7 @@ const HINT_RULES: Readonly<Record<HintKey, (s: GameState) => boolean>> = {
   ride: (s) => lesson(s),
   steer: (s) => lesson(s) && targetOff(s) > HINT.steerOff * DEG,
   rewrites: (s) => lesson(s) && s.decoys.some((d) => d.state === 'open' && ahead(s.car, d.at, HINT.copyNear)),
-  sight: (s) => lesson(s) && !s.sight.on && s.decoys.some((d) => d.state === 'open' && ahead(s.car, d.at, HINT.copyClose)),
+  sight: (s) => lesson(s) && !s.sight.on && s.decoys.some((d) => closeInWay(s, d)),
   slow: (s) => lesson(s) && reachEdge(s) <= HINT.slowNear && pace(s.car) > HINT.slowSpeed,
   stop: (s) => lesson(s) && reachEdge(s) <= 0 && pace(s.car) > HINT.stopSpeed,
   surge: (s) => fromChapterOne(s) && straightAhead(s) >= HINT.straight,
@@ -623,7 +645,7 @@ export function advance(
     decoys: s.decoys,
   });
   events.push(...ran.events);
-  // The frame's one new state; step 9 fills in its clamour and volleys before it is handed on.
+  // The frame's new state; step 9 fills in its clamour and volleys before it is handed on to the camera and hints.
   const moved: GameState = {
     ...s,
     clock,

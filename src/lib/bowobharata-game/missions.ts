@@ -50,10 +50,20 @@ export interface MissionDef {
   legTimes: { fromStep: number; seconds: number }[] | null;
   decoyLimit: number | null;
   riuh: { start: number; frozen: boolean; volleys: boolean };
-  /** `volleyNear` plans one volley to land at `at` the first time the car comes within `r` of `near`. */
-  scripted: { decoys: XZ[]; clouds: XZ[]; volleyNear: { near: XZ; r: number; at: XZ } | null };
+  /**
+   * `volleyLine` plans one volley to land at `at` the first time the chariot's hull middle reaches the line from `a` to
+   * `b` while the lakon is active.
+   */
+  scripted: { decoys: XZ[]; clouds: XZ[]; volleyLine: VolleyLine | null };
   dawn: boolean;
   hints: boolean;
+}
+
+/** A line across the path, and where the one volley it plans lands. */
+export interface VolleyLine {
+  a: XZ;
+  b: XZ;
+  at: XZ;
 }
 
 export const CHAPTER_TYPES = ['himpun', 'himpun', 'antar', 'himpun', 'lintasan', 'uji', 'himpun', 'lintasan', 'himpun'] as const;
@@ -75,7 +85,7 @@ interface Lakon {
   decoyLimit: number | null;
   decoys: XZ[];
   clouds: XZ[];
-  volleyNear: { near: XZ; r: number; at: XZ } | null;
+  volleyLine: VolleyLine | null;
   dawn: boolean;
   hints: boolean;
 }
@@ -85,16 +95,27 @@ const BASE: Omit<Lakon, 'marker' | 'records' | 'softTime' | 'decoyLimit'> = {
   standIn: false,
   decoys: [],
   clouds: [],
-  volleyNear: null,
+  volleyLine: null,
   dawn: false,
   hints: false,
 };
 
 /** Indexed by chapter: the prologue, then parva 1 to 8. */
 const LAKON: Lakon[] = [
-  // The prologue: eight arrows from the spawn round to the tower. The copy on the L7→L8 line is the Mata lesson. The
-  // teaching volley is planned on the L4→L5 leg, 6 m short of (−70, 66), and lands 2.6 s later 7.1 m beside the route
-  // just past L6, ahead of the chariot and 18 m or more from its hull at any pace, so it always lands (never absorbed).
+  // The prologue: eight arrows from the spawn round to the tower. The copy on the L7→L8 line is the Mata lesson.
+  // The teaching volley is planned as the chariot sets off: its line spans the corridor between the ranks (its ends
+  // lie inside both army zones, so no chariot goes round it), 0.4 m ahead of the hull's middle at rest. Every chariot
+  // is then still near its standing start, so all of them meet it at much the same pace. It lands 2.6 s later at
+  // (−11, 58), 6.5 m beside the route just past L2, on the outside of the gentle right-hand curve from the spawn to L3:
+  // ahead of the chariot, which is still on that curve, heading along it.
+  // Measured over 216 bot runs (speedCap 0.2–1, a reaction of 0–1 s, careless and careful, Laju never, always or on
+  // straights):
+  // - every chariot reaches the line once, with L1 open;
+  // - without Laju it always lands, its centre 21.2 m or more from every hull circle's centre;
+  // - with Laju none is absorbed;
+  // - on a 16:9 screen it lands within 0.31 of the half-width from the middle;
+  // - on an upright phone, for speedCap 0.3–0.8 at a 0.4 s reaction and for the autopilot, within 0.49 of it, shown for
+  //   its whole telegraph.
   {
     ...BASE,
     marker: null,
@@ -102,7 +123,7 @@ const LAKON: Lakon[] = [
     softTime: null,
     decoyLimit: null,
     decoys: [xz(-66, 12)],
-    volleyNear: { near: xz(-70, 66), r: 6, at: xz(-91, 17) },
+    volleyLine: { a: xz(-4, 11), b: xz(4, 11), at: xz(-11, 58) },
     hints: true,
   },
   // Parva 1: the lures sit 6.5–7.6 m off the A→B line; the haze lies on it.
@@ -191,7 +212,11 @@ export function missionFor(chapter: number, slugs: readonly string[]): MissionDe
     scripted: {
       decoys: row.decoys.map(clonePt),
       clouds: row.clouds.map(clonePt),
-      volleyNear: row.volleyNear && { near: clonePt(row.volleyNear.near), r: row.volleyNear.r, at: clonePt(row.volleyNear.at) },
+      volleyLine: row.volleyLine && {
+        a: clonePt(row.volleyLine.a),
+        b: clonePt(row.volleyLine.b),
+        at: clonePt(row.volleyLine.at),
+      },
     },
     dawn: row.dawn,
     hints: row.hints,

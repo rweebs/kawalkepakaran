@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NO_INPUT, REST_SPEED, initChariot, speedOf, type ChariotInput, type Guard } from '../src/lib/bowobharata-game/drive';
 import { hullCircles, hullClearance, hullMid } from '../src/lib/bowobharata-game/collide';
-import { chaseView } from '../src/lib/bowobharata-game/chase';
+import { chaseView, projectNdc } from '../src/lib/bowobharata-game/chase';
 import { clamp, dist, forward, polylineDist, rightOf, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
 import { missionFor, type MissionDef } from '../src/lib/bowobharata-game/missions';
 import { timeLeft, type Decoy, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
@@ -10,6 +10,7 @@ import { GUARD, MISSION_TIMING, VOLLEY } from '../src/lib/bowobharata-game/tunin
 import { kickRiuh, riuhLevel, stepRiuh } from '../src/lib/bowobharata-game/riuh';
 import { planVolley, scriptedVolley, type Cloud, type Volley } from '../src/lib/bowobharata-game/volley';
 import {
+  DEFAULT_ASPECT,
   HINT_MIN,
   advance,
   createWorld,
@@ -401,20 +402,32 @@ describe('the autopilot meets the lures', () => {
   }, BOT_TIMEOUT);
 });
 
+type P2 = { x: number; z: number };
+/** Whether the segment ab meets the segment pq, touching included (a chariot that stops on a line has reached it). */
+function meets(a: P2, b: P2, p: P2, q: P2) {
+  const side = (o: P2, u: P2, v: P2) => (u.x - o.x) * (v.z - o.z) - (u.z - o.z) * (v.x - o.x);
+  const inBox = (u: P2, v: P2, w: P2) =>
+    Math.min(u.x, v.x) <= w.x && w.x <= Math.max(u.x, v.x) && Math.min(u.z, v.z) <= w.z && w.z <= Math.max(u.z, v.z);
+  const within = (u: P2, v: P2, w: P2) => side(u, v, w) === 0 && inBox(u, v, w);
+  if (side(p, q, a) * side(p, q, b) < 0 && side(a, b, p) * side(a, b, q) < 0) return true;
+  return within(p, q, a) || within(p, q, b) || within(a, b, p) || within(a, b, q);
+}
+
 describe('prologue pacing', () => {
   /**
    * The prologue from its start with one bot, checked frame by frame: no record raises the clamour; the scripted volley
-   * is planned once, on the frame the car first comes within r of `near`, and lands 2.6 s later at `at` (never
-   * absorbed: 8.5 m or more from every hull circle's centre), leaving its open copy; no other volley comes before 20 s;
-   * the pressure rules hold throughout.
+   * is planned once, on the frame the hull's middle first reaches its line (with L1 still open), and lands 2.6 s later
+   * at `at` (never absorbed: 8.5 m or more from every hull circle's centre), leaving its open copy; no other volley
+   * comes before 20 s; the pressure rules hold throughout.
    */
   function pacing(opts: Partial<AutoOpts> | undefined, seed: number) {
     const w = desktop;
     const def = defOf(0);
-    const near = def.scripted.volleyNear!;
+    const line = def.scripted.volleyLine!;
     let s = startChapter(def, def.start, seed, w);
     const bot = createBot(opts);
-    let firstNear: number | null = null;
+    let reached: number | null = null;
+    let openThen = -1;
     let landedAt: number | null = null;
     let gap = NaN;
     const scripted: Volley[] = [];
@@ -432,18 +445,22 @@ describe('prologue pacing', () => {
         }
         if (e.type !== 'volley') continue;
         const v = next.volleys.find((x) => x.id === e.id)!;
-        if (v.to.x === near.at.x && v.to.z === near.at.z) scripted.push(v);
+        if (v.to.x === line.at.x && v.to.z === line.at.z) scripted.push(v);
         else if (next.run.t < MISSION_TIMING.firstVolley) early.push(e);
       }
-      if (firstNear === null && next.run.phase === 'active' && dist(next.car, near.near) <= near.r) firstNear = next.run.t;
+      const active = s.run.phase === 'active' && next.run.phase === 'active';
+      if (reached === null && active && meets(hullMid(s.car), hullMid(next.car), line.a, line.b)) {
+        reached = next.run.t;
+        openThen = next.run.recorded.length;
+      }
       const one = scripted[0];
       if (one && landedAt === null && next.run.t >= one.t0 + one.flight) {
         // Its landing frame: landed, not absorbed, well clear of the hull, and its copy is out.
         expect(next.volleys.find((x) => x.id === one.id)?.state).toBe('landed');
         landedAt = next.run.t;
-        gap = Math.min(...hullCircles(next.car.x, next.car.z, next.car.yaw).map((c) => dist(c, near.at)));
+        gap = Math.min(...hullCircles(next.car.x, next.car.z, next.car.yaw).map((c) => dist(c, line.at)));
         expect(next.decoys.find((d) => d.id === one.id)).toEqual({
-          id: one.id, at: near.at, born: one.t0 + one.flight, life: VOLLEY.decoyLife, state: 'open', mimic: false,
+          id: one.id, at: line.at, born: one.t0 + one.flight, life: VOLLEY.decoyLife, state: 'open', mimic: false,
         });
       }
       s = next;
@@ -451,20 +468,21 @@ describe('prologue pacing', () => {
     expect(s.run.phase).toBe('done');
     expect(records).toBe(8);
     expect(scripted).toHaveLength(1);
-    expect(firstNear).not.toBeNull();
+    expect(reached).not.toBeNull();
+    expect(openThen).toBe(0);
     const v = scripted[0];
-    expect(v.planned).toBe(firstNear);
+    expect(v.planned).toBe(reached);
     expect(v.decoy).toBe(true);
     expect(v.t0 + v.flight - v.planned).toBeCloseTo(2.6, 9);
     expect(landedAt).not.toBeNull();
-    expect(landedAt! - firstNear!).toBeGreaterThanOrEqual(2.6 - 1e-9);
-    expect(landedAt! - firstNear!).toBeLessThan(2.6 + DT);
+    expect(landedAt! - reached!).toBeGreaterThanOrEqual(2.6 - 1e-9);
+    expect(landedAt! - reached!).toBeLessThan(2.6 + DT);
     expect(gap).toBeGreaterThanOrEqual(VOLLEY.absorbR + 1.5);
     expect(early).toEqual([]);
     expect(faults).toEqual([]);
   }
 
-  const lands = 'the teaching volley lands (never absorbed) 2.6 s after the car first comes within 6 m of (−70, 66)';
+  const lands = 'the teaching volley lands (never absorbed) 2.6 s after the chariot sets off across its line';
 
   it.each(SEEDS)(`the autopilot, seed %i: no record raises the clamour; ${lands}; no other volley before 20 s`, (seed) => {
     pacing(undefined, seed);
@@ -475,6 +493,117 @@ describe('prologue pacing', () => {
   it.each([0.3, 0.4, 0.5, 0.6, 0.7, 0.8])(`at speedCap %s, careless and careful: ${lands}`, (speedCap) => {
     pacing({ speedCap, reaction: 0.4, useSight: false, avoidDecoys: false }, 1);
     pacing({ speedCap, reaction: 0.4 }, 1);
+  }, BOT_TIMEOUT);
+});
+
+describe("the teaching volley in every driver's hands", () => {
+  /** A driver of the sweep: the bot at a speed share and reaction, careless or careful, with Laju never, always or on
+   * straights. */
+  type Surge = 'none' | 'always' | 'straights';
+  type Driver = { speedCap: number; reaction: number; careful: boolean; surge: Surge };
+  const SURGES: readonly Surge[] = ['none', 'always', 'straights'];
+  const SWEEP: Driver[] = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1].flatMap((speedCap) =>
+    [0, 0.4, 0.8, 1].flatMap((reaction) =>
+      [false, true].flatMap((careful) => SURGES.map((surge) => ({ speedCap, reaction, careful, surge }))),
+    ),
+  );
+  /** The drivers held to an upright phone too: the autopilot and the first-time player at speedCap 0.3–0.8. */
+  const firstTime = (d: Driver) => d.reaction === 0.4 && d.speedCap >= 0.3 && d.speedCap <= 0.8;
+  const theAutopilot = (d: Driver) => d.speedCap === 1 && d.reaction === 0 && d.careful;
+  const upright = (d: Driver) => d.surge === 'none' && (firstTime(d) || theAutopilot(d));
+  const name = (d: Driver) =>
+    `speedCap ${d.speedCap}, reaction ${d.reaction}, ${d.careful ? 'careful' : 'careless'}, Laju ${d.surge}`;
+
+  interface Teaching {
+    /** The scripted volley's planning frames, and how many records were in by then. */
+    planned: number;
+    recordedThen: number;
+    outcome: 'landed' | 'absorbed' | null;
+    /** On the frame it came down: the least distance to a hull circle's centre, and where it showed (NDC). */
+    gap: number;
+    ndc: { x: number; y: number; z: number };
+    /** Frames from its telegraph (1.4 s before it lands) to its landing, and how many of them showed it. */
+    shown: number;
+    frames: number;
+  }
+
+  /** The prologue from its start for one driver, at one screen aspect, until the teaching volley has come down. */
+  function teach(d: Driver, aspect: number): Teaching {
+    const w = desktop;
+    const def = defOf(0);
+    const at = def.scripted.volleyLine!.at;
+    const spot = { x: at.x, y: w.ground(at.x, at.z), z: at.z };
+    let s = startChapter(def, def.start, 1, w);
+    const lures = d.careful ? {} : { useSight: false, avoidDecoys: false };
+    const bot = createBot({ speedCap: d.speedCap, reaction: d.reaction, ...lures });
+    const none = { x: NaN, y: NaN, z: NaN };
+    const out: Teaching = { planned: 0, recordedThen: -1, outcome: null, gap: NaN, ndc: none, shown: 0, frames: 0 };
+    let v: Volley | null = null;
+    for (let k = 0; k < 40 / DT && !out.outcome; k++) {
+      const auto = bot(s, w);
+      const straight = Math.abs(auto.drive.steer) < 0.1 && auto.drive.throttle > 0;
+      const boost = d.surge === 'always' || (d.surge === 'straights' && straight);
+      const r = advance(s, { ...auto, aspect, drive: { ...auto.drive, boost } }, DT, w);
+      const next = r.state;
+      for (const e of r.events) {
+        if (e.type !== 'volley') continue;
+        const x = next.volleys.find((y) => y.id === e.id)!;
+        if (x.to.x !== at.x || x.to.z !== at.z) continue;
+        out.planned++;
+        out.recordedThen = next.run.recorded.length;
+        v = x;
+      }
+      if (v) {
+        const lands = v.t0 + v.flight;
+        const view = viewOf(next, w, aspect);
+        const ndc = projectNdc(view.pose, view.fov, aspect, spot);
+        if (next.run.t >= lands - VOLLEY.telegraph) {
+          out.frames++;
+          if (ndc.z > 0 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1) out.shown++;
+        }
+        if (next.run.t >= lands) {
+          const id = v.id;
+          const landed = next.volleys.some((y) => y.id === id && y.state === 'landed');
+          out.outcome = landed ? 'landed' : r.events.some((e) => e.type === 'absorbed') ? 'absorbed' : null;
+          out.gap = Math.min(...hullCircles(next.car.x, next.car.z, next.car.yaw).map((c) => dist(c, at)));
+          out.ndc = ndc;
+        }
+      }
+      s = next;
+    }
+    return out;
+  }
+
+  it('every driver of the sweep reaches the line once, with L1 open; without Laju it always lands, 8.5 m clear', () => {
+    let absorbedWithLaju = 0;
+    for (const d of SWEEP) {
+      const t = teach(d, DEFAULT_ASPECT);
+      expect(t.planned, name(d)).toBe(1);
+      expect(t.recordedThen, name(d)).toBe(0);
+      expect(t.outcome, name(d)).not.toBeNull();
+      if (d.surge === 'none') {
+        expect(t.outcome, name(d)).toBe('landed');
+        expect(t.gap, name(d)).toBeGreaterThanOrEqual(VOLLEY.absorbR + 1.5);
+      } else if (t.outcome === 'absorbed') absorbedWithLaju++;
+      // On a wide screen it comes down in front of the camera, within 0.9 of the half-width.
+      expect(t.ndc.z, name(d)).toBeGreaterThan(0);
+      expect(Math.abs(t.ndc.x), name(d)).toBeLessThanOrEqual(0.9);
+    }
+    expect(SWEEP).toHaveLength(216);
+    expect(absorbedWithLaju).toBeLessThanOrEqual(SWEEP.length / 3);
+  }, BOT_TIMEOUT);
+
+  it('on an upright phone it comes down inside the width, and shows for at least half of its telegraph', () => {
+    const drivers = SWEEP.filter(upright);
+    expect(drivers).toHaveLength(13);
+    for (const d of drivers) {
+      const t = teach(d, 9 / 16);
+      expect(t.outcome, name(d)).toBe('landed');
+      expect(t.ndc.z, name(d)).toBeGreaterThan(0);
+      expect(Math.abs(t.ndc.x), name(d)).toBeLessThanOrEqual(1);
+      expect(t.frames, name(d)).toBeGreaterThan(30);
+      expect(t.shown / t.frames, name(d)).toBeGreaterThanOrEqual(0.5);
+    }
   }, BOT_TIMEOUT);
 });
 
@@ -881,15 +1010,31 @@ describe('the clamour and the volleys in the engine', () => {
     expect(types(log)).not.toContain('volley');
   });
 
+  it("a chariot whose hull middle stands on the teaching volley's line has reached it; one just short has not", () => {
+    const line = defOf(0).scripted.volleyLine!;
+    const s = toActive(0);
+    const yaw = s.car.yaw;
+    // Facing due south (+z), the hull's middle lies 1.6 m ahead of the origin; the line runs along z = 11.
+    const at = (z: number) => ({ ...s, car: initChariot(s.car.x, z - 1.6, yaw) });
+    const on = advance(at(line.a.z), IDLE, DT, desktop);
+    expect(hullMid(on.state.car).z).toBe(line.a.z);
+    expect(on.events.filter((e) => e.type === 'volley')).toHaveLength(1);
+    expect(on.state.scriptedPlanned).toBe(true);
+    const short = advance(at(line.a.z - 0.01), IDLE, DT, desktop);
+    expect(short.events.filter((e) => e.type === 'volley')).toEqual([]);
+    expect(short.state.scriptedPlanned).toBe(false);
+  });
+
   it('a scheduled volley and the scripted one on the same frame take the next two ids', () => {
-    // The prologue, active at run.t 30 and level 2 with a volley due, the chariot rolling into the trigger circle.
+    // The prologue, active at run.t 30 and level 2 with a volley due, the hull's middle 0.1 m short of the teaching
+    // volley's line and rolling across it.
     const def = defOf(0);
-    const near = def.scripted.volleyNear!;
+    const line = def.scripted.volleyLine!;
     let s = toActive(0);
     const yaw = s.car.yaw;
     const f = forward(yaw);
-    const back = near.r + 0.1;
-    const car = { ...initChariot(near.near.x - f.x * back, near.near.z - f.z * back, yaw), vx: 6 * f.x, vz: 6 * f.z };
+    expect(f.z).toBeCloseTo(1, 12);
+    const car = { ...initChariot(s.car.x, line.a.z - 0.1 - 1.6, yaw), vx: 6 * f.x, vz: 6 * f.z };
     s = { ...s, car, run: { ...s.run, t: 30 }, riuh: { ...s.riuh, value: 2.5, quietT: 1e9 }, level: 2, nextVolley: 30 };
     const r = advance(s, IDLE, DT, desktop);
     const ids = r.events.flatMap((e) => (e.type === 'volley' ? [e.id] : []));
@@ -898,7 +1043,7 @@ describe('the clamour and the volleys in the engine', () => {
     expect(r.state.scriptedPlanned).toBe(true);
     expect(r.state.volleys.map((v) => v.id)).toEqual(ids);
     // The scheduled one first, then the scripted one at its spot.
-    expect(r.state.volleys[1].to).toEqual(near.at);
+    expect(r.state.volleys[1].to).toEqual(line.at);
   });
 
   it('from level 3 the volleys carry haze', () => {
@@ -935,11 +1080,13 @@ describe('the clamour and the volleys in the engine', () => {
     const a = run(2);
     const b = run(2);
     expect(a.faults).toEqual([]);
+    expect(b.faults).toEqual([]);
     expect(a.planned.length).toBeGreaterThanOrEqual(2);
     for (let k = 0; k < 600; k += 37) expect(b.states[k]).toEqual(a.states[k]);
     expect(b.states[599]).toEqual(a.states[599]);
     // The seed is the volleys' only randomness: another seed lands the first one elsewhere.
     const c = run(3);
+    expect(c.faults).toEqual([]);
     expect(c.planned[0].to).not.toEqual(a.planned[0].to);
   });
 });
@@ -948,23 +1095,37 @@ describe('hints', () => {
   /**
    * The brief's prologue: the bot's steering throughout; after the 8th record the throttle and brake are scripted so the
    * car comes within 25 m of the tower's centre above 8 m/s, enters the reach circle at 5–7 m/s, then stops. It runs on
-   * HINT_SECONDS past the outro's start so the last hint's time on the HUD is complete.
+   * HINT_SECONDS past the outro's start so the last hint's time on the HUD is complete. It also notes the frames in
+   * which the lesson copy is out and within 15 m in front of the hull's middle (its approach).
    */
-  function scriptedPrologue(seed: number) {
+  function scriptedPrologue(seed: number, opts?: Partial<AutoOpts>) {
     const w = desktop;
     const def = defOf(0);
     let s = startChapter(def, def.start, seed, w);
-    const bot = createBot();
-    /** The nearest open copy in front of the hull's middle (its whole front half-plane), the one a copy hint is about. */
-    const nearestCopyAhead = (s: GameState) => {
+    const bot = createBot(opts);
+    const lesson = def.scripted.decoys[0];
+    const front = (s: GameState, at: { x: number; z: number }) => {
       const m = hullMid(s.car);
       const f = forward(s.car.yaw);
-      const ahead = s.decoys.filter((d) => d.state === 'open' && (d.at.x - m.x) * f.x + (d.at.z - m.z) * f.z >= 0);
-      return Math.min(...ahead.map((d) => dist(m, d.at)));
+      return (at.x - m.x) * f.x + (at.z - m.z) * f.z >= 0;
+    };
+    /** The nearest open copy in front of the hull's middle (its whole front half-plane), the one a copy hint is about. */
+    const nearestCopyAhead = (s: GameState) => {
+      const ahead = s.decoys.filter((d) => d.state === 'open' && front(s, d.at));
+      return Math.min(...ahead.map((d) => dist(hullMid(s.car), d.at)));
+    };
+    /** The nearest open copy within 15 m in front that lies in the way: within 4.5 m of the route. */
+    const nearestInWay = (s: GameState) => {
+      const m = hullMid(s.car);
+      const inWay = (d: Decoy) => !!s.route && polylineDist(d.at, s.route.points) <= 4.5;
+      const near = s.decoys.filter((d) => d.state === 'open' && front(s, d.at) && dist(m, d.at) <= 15 && inWay(d));
+      return near.sort((a, b) => dist(m, a.at) - dist(m, b.at))[0] ?? null;
     };
     const log: GameEvent[] = [];
-    const fired: { key: HintKey; clock: number; copy: number }[] = [];
+    const fired: { key: HintKey; clock: number; copy: number; inWay: Decoy | null }[] = [];
     const shown: { clock: number; hint: HintKey | null }[] = [];
+    /** The clocks of the frames in which the lesson copy is out and within 15 m in front of the hull's middle. */
+    const approach: number[] = [];
     let fastNear = false;
     let entry: number | null = null;
     let end = Infinity;
@@ -982,21 +1143,25 @@ describe('hints', () => {
       }
       s = step(s, { ...auto, drive }, w, log);
       for (const e of log.splice(0)) {
-        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, copy: nearestCopyAhead(s) });
+        const copy = e.type === 'hint' ? nearestCopyAhead(s) : 0;
+        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, copy, inWay: nearestInWay(s) });
         if (e.type === 'outroStart') end = s.clock + HINT_SECONDS;
       }
+      const copy = s.decoys.find((d) => d.life === null)!;
+      if (copy.state === 'open' && front(s, lesson) && dist(hullMid(s.car), lesson) <= 15) approach.push(s.clock);
       shown.push({ clock: s.clock, hint: hudOf(s, w).hint });
     }
-    return { s, fired, shown, fastNear, entry };
+    return { s, fired, shown, fastNear, entry, approach };
   }
 
-  it.each(SEEDS)('the prologue teaches ride, steer, rewrites, sight, slow and stop, in order, once each (seed %i)', (seed) => {
+  it.each(SEEDS)('the prologue teaches ride, rewrites, steer, sight, slow and stop in order, once each (%i)', (seed) => {
     const { s, fired, shown, fastNear, entry } = scriptedPrologue(seed);
     expect(fastNear).toBe(true);
     expect(entry).not.toBeNull();
     expect(entry!).toBeGreaterThanOrEqual(5);
     expect(entry!).toBeLessThanOrEqual(7);
-    const order: HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop'];
+    // The teaching volley's copy lands beside L2 as the chariot sets off, so rewrites comes before steer (at L3).
+    const order: HintKey[] = ['ride', 'rewrites', 'steer', 'sight', 'slow', 'stop'];
     expect(fired.map((f) => f.key)).toEqual(order);
     expect(s.hintsShown).toEqual(order);
     // Each stays on the HUD until the next replaces it, which is never sooner than HINT_MIN; the last for HINT_SECONDS.
@@ -1007,12 +1172,33 @@ describe('hints', () => {
       expect(on.length).toBeGreaterThan(0);
       for (const v of on) expect(v.hint, `${f.key} at ${v.clock.toFixed(2)}`).toBe(f.key);
     });
-    // The copy counts as ahead in the whole front half-plane, within 30 m. The first copy met is the teaching volley's:
-    // it lands 7 m beside the route past L6, about 20 m ahead of the chariot, so rewrites comes as it lands, before the
-    // lesson copy on the L7→L8 line, which is still more than 30 m off.
-    const rewrites = fired.find((f) => f.key === 'rewrites')!;
-    expect(rewrites.copy).toBeGreaterThan(15);
-    expect(rewrites.copy).toBeLessThanOrEqual(30);
+  }, BOT_TIMEOUT);
+
+  it.each([
+    ['the autopilot', undefined],
+    ['a first-time player who ignores lures', CARELESS],
+  ] as const)('%s: rewrites before the lesson copy is near; sight on the lesson copy, in the way', (_who, opts) => {
+    const def = defOf(0);
+    for (const seed of SEEDS) {
+      const { fired, shown, approach } = scriptedPrologue(seed, opts);
+      expect(approach.length, `seed ${seed}`).toBeGreaterThan(0);
+      const start = approach[0];
+      const last = approach[approach.length - 1] + DT;
+      // rewrites on the first copy ahead (within 30 m), before the lesson copy comes within 15 m.
+      const rewrites = fired.find((f) => f.key === 'rewrites')!;
+      expect(rewrites.copy).toBeLessThanOrEqual(30);
+      expect(rewrites.clock, `seed ${seed}`).toBeLessThan(start);
+      // sight only for a copy in the way: here the lesson copy, the nearest such copy within 15 m in front.
+      const sight = fired.find((f) => f.key === 'sight')!;
+      expect(sight.inWay?.at, `seed ${seed}`).toEqual(def.scripted.decoys[0]);
+      // Its time on the HUD overlaps the lesson copy's approach by 2 s or more.
+      const next = fired[fired.indexOf(sight) + 1]?.clock ?? Infinity;
+      const until = Math.min(next, sight.clock + HINT_SECONDS);
+      const overlap = Math.max(0, Math.min(until, last) - Math.max(sight.clock, start));
+      expect(overlap, `seed ${seed}`).toBeGreaterThanOrEqual(2);
+      const during = shown.filter((x) => x.clock >= sight.clock && x.clock < until - 1e-9);
+      for (const v of during) expect(v.hint).toBe('sight');
+    }
   }, BOT_TIMEOUT);
 
   it('a hint due within HINT_MIN of the last waits in the queue, then fires even after its moment', () => {

@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { PARVAS, parvaEvents } from '../src/lib/bowobharata';
 import { PAVILION } from '../src/lib/bowobharata/stage-math';
-import { groundHeight, type Pose } from '../src/lib/bowobharata/stage-math';
-import { dist, forward, polylineDist, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
-import { ANCHORS, SPAWN, TOWER_EXIT, clearance, inPlay, staticColliders } from '../src/lib/bowobharata-game/world';
-import { hullCircles, hullClearance } from '../src/lib/bowobharata-game/collide';
-import { initChariot } from '../src/lib/bowobharata-game/drive';
-import { chaseView, initChase } from '../src/lib/bowobharata-game/chase';
-import { buildNav, pathLength, pointAt, routeTo } from '../src/lib/bowobharata-game/route';
+import { dist, forward, polylineDist, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
+import {
+  ANCHORS,
+  SPAWN,
+  TOWER_EXIT,
+  clearance,
+  distToCollider,
+  inPlay,
+  staticColliders,
+} from '../src/lib/bowobharata-game/world';
+import { crossesSegment, hullClearance } from '../src/lib/bowobharata-game/collide';
+import { buildNav, pathLength, routeTo } from '../src/lib/bowobharata-game/route';
 import {
   CHAPTER_TYPES,
   REAL_DAYS_P4,
@@ -19,7 +24,7 @@ import {
   type MissionDef,
   type PickupDef,
 } from '../src/lib/bowobharata-game/missions';
-import { MISSION_TIMING, VOLLEY } from '../src/lib/bowobharata-game/tuning';
+import { MISSION_TIMING } from '../src/lib/bowobharata-game/tuning';
 
 const COLS = staticColliders();
 const nav = buildNav(COLS);
@@ -74,26 +79,6 @@ function straightRun(def: MissionDef): number {
     least = Math.min(least, hullClearance(def.start.x + f.x * s, def.start.z + f.z * s, def.start.yaw, COLS));
   }
   return least;
-}
-
-type V3 = { x: number; y: number; z: number };
-/** Whether p lies inside the camera's view: in front of it, within half the vertical FOV and half the horizontal one. */
-function inView(pose: Pose, fovDeg: number, aspect: number, p: V3): boolean {
-  const sub = (a: V3, b: V3): V3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
-  const dot = (a: V3, b: V3) => a.x * b.x + a.y * b.y + a.z * b.z;
-  const cross = (a: V3, b: V3): V3 => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
-  const unit = (a: V3): V3 => {
-    const l = Math.hypot(a.x, a.y, a.z);
-    return { x: a.x / l, y: a.y / l, z: a.z / l };
-  };
-  const ahead = unit(sub(pose.look, pose.pos));
-  const right = unit(cross(ahead, { x: 0, y: 1, z: 0 }));
-  const up = cross(right, ahead);
-  const d = sub(p, pose.pos);
-  const depth = dot(d, ahead);
-  if (depth <= 0) return false;
-  const half = (fovDeg * Math.PI) / 360;
-  return Math.abs(dot(d, up)) / depth <= Math.tan(half) && Math.abs(dot(d, right)) / depth <= Math.tan(half) * aspect;
 }
 
 const TOWER = xz(-46, 52);
@@ -202,18 +187,19 @@ describe('the lakon table', () => {
 
   it('places the scripted copies, the haze and the teaching volley', () => {
     const scripted = DEFS.map((d) => d.scripted);
-    expect(scripted[0]).toEqual({ decoys: [xz(-66, 12)], clouds: [], volleyNear: { near: xz(-70, 66), r: 6, at: xz(-91, 17) } });
+    const volleyLine = { a: xz(-4, 11), b: xz(4, 11), at: xz(-11, 58) };
+    expect(scripted[0]).toEqual({ decoys: [xz(-66, 12)], clouds: [], volleyLine });
     expect(scripted[1]).toEqual({
       decoys: [xz(62, 22), xz(50, -6), xz(66, -26), xz(68, -40)],
       clouds: [xz(57, 8), xz(60, -30)],
-      volleyNear: null,
+      volleyLine: null,
     });
     expect(scripted[7]).toEqual({
       decoys: [],
       clouds: [xz(103, -3), xz(78, 30), xz(48, 56), xz(16, 69), xz(-20, 66), xz(60, 52)],
-      volleyNear: null,
+      volleyLine: null,
     });
-    for (const i of [2, 3, 4, 5, 6, 8]) expect(scripted[i]).toEqual({ decoys: [], clouds: [], volleyNear: null });
+    for (const i of [2, 3, 4, 5, 6, 8]) expect(scripted[i]).toEqual({ decoys: [], clouds: [], volleyLine: null });
   });
 
   it('is deterministic and hands out fresh data', () => {
@@ -233,11 +219,11 @@ describe('the lakon table', () => {
     expect(a.scripted.clouds[0]).not.toBe(b.scripted.clouds[0]);
     const p = missionFor(0, []);
     const q = missionFor(0, []);
-    expect(p.scripted.volleyNear!.near).not.toBe(q.scripted.volleyNear!.near);
-    expect(p.scripted.volleyNear!.at).not.toBe(q.scripted.volleyNear!.at);
+    for (const k of ['a', 'b', 'at'] as const) expect(p.scripted.volleyLine![k]).not.toBe(q.scripted.volleyLine![k]);
     // Scribbling over one result leaves the next call untouched.
     for (const pt of [a.marker!, pickups(a)[0].at, towerAt(a), a.scripted.decoys[0], a.scripted.clouds[0]]) pt.x = 999;
-    for (const pt of [p.scripted.volleyNear!.near, p.scripted.volleyNear!.at, pickups(p)[0].at]) pt.x = 999;
+    const vl = p.scripted.volleyLine!;
+    for (const pt of [vl.a, vl.b, vl.at, pickups(p)[0].at]) pt.x = 999;
     expect(missionFor(1, slugsOf(1))).toEqual(b);
     expect(missionFor(0, [])).toEqual(q);
   });
@@ -444,48 +430,29 @@ describe('lures sit off the route', () => {
     expect(polylineDist(DEFS[0].scripted.decoys[0], leg)).toBeLessThanOrEqual(2.5);
   });
 
-  it('the teaching volley is planned on the L4→L5 leg and lands 5–8 m beside the prologue route', () => {
-    const volley = DEFS[0].scripted.volleyNear!;
-    const l4l5 = lakonLegs(0)[4];
-    expect([l4l5.from, l4l5.to]).toEqual([pickups(DEFS[0])[3].at, pickups(DEFS[0])[4].at]);
-    expect(polylineDist(volley.near, l4l5.path!)).toBeLessThanOrEqual(1);
-    const off = polylineDist(volley.at, lakonLine(0));
-    expect(off).toBeGreaterThanOrEqual(5);
-    expect(off).toBeLessThanOrEqual(8);
-    // Clear of the Mata lesson: a separate lure, well apart.
-    expect(dist(volley.at, DEFS[0].scripted.decoys[0])).toBeGreaterThan(20);
+  it("the teaching volley's line crosses the corridor between the ranks just ahead of the spawn: none goes round it", () => {
+    const { a, b } = DEFS[0].scripted.volleyLine!;
+    const line = lakonLine(0);
+    // It crosses the routed prologue once, on the first leg, 0.4 m ahead of the hull's middle at rest on the spawn.
+    let crossings = 0;
+    for (let k = 1; k < line.length; k++) if (crossesSegment(a, b, line[k - 1], line[k])) crossings++;
+    expect(crossings).toBe(1);
+    expect(crossesSegment(a, b, lakonLegs(0)[0].path![0], pickups(DEFS[0])[0].at)).toBe(true);
+    const mid = { x: SPAWN.x + 1.6 * forward(SPAWN.yaw).x, z: SPAWN.z + 1.6 * forward(SPAWN.yaw).z };
+    expect(segPointDist(mid, a, b)).toBeCloseTo(0.4, 9);
+    // Each end lies inside one of the two army zones, which the guard keeps every chariot out of.
+    const armies = COLS.filter((c) => c.figure);
+    for (const end of [a, b]) expect(Math.min(...armies.map((c) => distToCollider(end, c)))).toBeLessThan(0);
   });
 
-  it('the teaching volley always lands, in view: 8.5 m or more from the hull at any steady pace along the route', () => {
-    // The chariot rides the routed prologue at a steady pace, facing along it. The volley is planned when its origin
-    // first comes within r of `near`, and lands 2.6 s later. Absorption takes a landing within 7 m of a hull circle's
-    // centre; the landing keeps 1.5 m more, from a chariot standing at that first point and from any pace 3–14 m/s.
-    const volley = DEFS[0].scripted.volleyNear!;
-    const line = lakonLine(0);
-    let entry = -1;
-    const length = pathLength(line);
-    for (let s = 0; s <= length && entry < 0; s += 0.01) if (dist(pointAt(line, s), volley.near) <= volley.r) entry = s;
-    expect(entry).toBeGreaterThan(0);
-    const lead = VOLLEY.warn + VOLLEY.flight;
-    expect(lead).toBeCloseTo(2.6, 12);
-    for (const pace of [0, 3, 3.5, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
-      const at = entry + pace * lead;
-      const p = pointAt(line, at);
-      const a = pointAt(line, at - 0.25);
-      const b = pointAt(line, at + 0.25);
-      const yaw = yawOf({ x: b.x - a.x, z: b.z - a.z });
-      const f = forward(yaw);
-      const car = { ...initChariot(p.x, p.z, yaw), vx: pace * f.x, vz: pace * f.z };
-      const gap = Math.min(...hullCircles(car.x, car.z, car.yaw).map((c) => dist(c, volley.at)));
-      expect(gap, `${pace} m/s`).toBeGreaterThanOrEqual(VOLLEY.absorbR + 1.5);
-      // In front of the chase camera, inside its view on a wide screen and on a phone held upright.
-      for (const aspect of [16 / 9, 9 / 16]) {
-        const o = { aspect, boosting: false, ground: groundHeight, tall: COLS.filter((c) => c.tall) };
-        const view = chaseView(initChase(car, o), car, o);
-        const landing = { x: volley.at.x, y: groundHeight(volley.at.x, volley.at.z), z: volley.at.z };
-        expect(inView(view.pose, view.fov, aspect, landing), `${pace} m/s at aspect ${aspect.toFixed(2)}`).toBe(true);
-      }
-    }
+  it('the teaching volley lands 5–8 m beside the prologue route, well clear of the Mata lesson', () => {
+    const { at } = DEFS[0].scripted.volleyLine!;
+    const off = polylineDist(at, lakonLine(0));
+    expect(off).toBeGreaterThanOrEqual(5);
+    expect(off).toBeLessThanOrEqual(8);
+    expect(dist(at, DEFS[0].scripted.decoys[0])).toBeGreaterThan(20);
+    // Past L2, on the outside of the gentle right-hand curve from the spawn through L1 and L2 to L3.
+    expect(dist(at, pickups(DEFS[0])[1].at)).toBeLessThan(8);
   });
 });
 
@@ -496,7 +463,7 @@ describe('timers and pressure', () => {
     expect(five.map((d) => d.decoyLimit)).toEqual([null, 3, 3, 3, null]);
     for (const d of five) expect(d.riuh).toEqual({ start: 0, frozen: false, volleys: true });
     expect(DEFS[8].dawn).toBe(true);
-    expect(DEFS[0].scripted.volleyNear).toEqual({ near: { x: -70, z: 66 }, r: 6, at: { x: -91, z: 17 } });
+    expect(DEFS[0].scripted.volleyLine).toEqual({ a: { x: -4, z: 11 }, b: { x: 4, z: 11 }, at: { x: -11, z: 58 } });
   });
 
   it('no leg timers in these five; dawn only in parva 8; hints only in the prologue', () => {
