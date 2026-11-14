@@ -379,18 +379,58 @@ describe('the prabha behind the game’s Krishna', () => {
 });
 
 describe('the riders’ per-frame code', () => {
-  it('allocates nothing: no new, no closure, no array or object literal, no spread and no array helper, from function animate( to the end', () => {
-    const src = readFileSync('src/lib/bowobharata/scene/riders.ts', 'utf8');
+  const RIDERS_SRC = readFileSync('src/lib/bowobharata/scene/riders.ts', 'utf8');
+  /** What allocates in riders.ts's per-frame code, from `function animate(` to the end with comments stripped, rule by rule. */
+  function perFrameProblems(src: string): string[] {
     const from = src.indexOf('function animate(');
-    expect(from).toBeGreaterThan(0);
-    // The code only: comments may say anything.
-    const frame = src.slice(from).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(frame.length).toBeGreaterThan(500);
-    expect(frame).not.toMatch(/\bnew\s/);
-    expect(frame).not.toMatch(/=>/);
-    expect(frame).not.toMatch(/[=(,:?]\s*[[{]/);
-    expect(frame).not.toMatch(/\.\.\./);
-    expect(frame).not.toMatch(/\.(map|filter|forEach|reduce|flatMap|slice|concat|some|every|find|from|of)\(/);
+    if (from < 0) return ['no function animate('];
+    const code = src.slice(from).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const rules: [string, RegExp][] = [
+      ['new', /\bnew\s/],
+      ['arrow function', /=>/],
+      ['array or object literal', /(?:[=(,:?&|!]|\b(?:return|of|in|throw))\s*[[{]/],
+      ['spread', /\.\.\./],
+      ['array helper', /\.(map|filter|forEach|reduce|flatMap|slice|concat|some|every|find|from|of)\(/],
+    ];
+    const problems = rules.filter(([, re]) => re.test(code)).map(([rule]) => rule);
+    // Every function here is declared on its own at the start of a line, so none is made anew inside a frame.
+    if ((code.match(/\bfunction\b/g) ?? []).length !== (code.match(/^function\b/gm) ?? []).length) problems.push('function expression or nested function');
+    if (code.length < 500) problems.push('too short to be the per-frame code');
+    return problems;
+  }
+
+  it('allocates nothing: no new, no closure or function made in a frame, no array or object literal, no spread, no array helper', () => {
+    expect(perFrameProblems(RIDERS_SRC)).toEqual([]);
+  });
+
+  it('catches each way a frame could allocate, put into animate()', () => {
+    const body = RIDERS_SRC.indexOf('{', RIDERS_SRC.indexOf('function animate(')) + 1;
+    for (const line of [
+      'for (const r of [k, a]) r.head.rotation.y = 0;',
+      'if (dt < 0) return [dt, dt];',
+      'const q = speed > 0 && [speed];',
+      'const o = dt || { s: speed };',
+      'const f = function () { return dt; };',
+    ]) expect(perFrameProblems(`${RIDERS_SRC.slice(0, body)}\n  ${line}${RIDERS_SRC.slice(body)}`), line).not.toEqual([]);
+  });
+});
+
+describe('the riders in the chariot', () => {
+  it('sway their cloth at a standstill in the chariot’s wind', () => {
+    const part = chariot(true);
+    // The scarf ends hang from Krishna's elbows, which stay still: only the wind moves them at a standstill.
+    const tips = allNamed(part.object, 'krishna-scarf-tip');
+    expect(tips).toHaveLength(2);
+    const xs = tips.map(() => [] as number[]);
+    drive(part, 0, 12, 0, 0, () => tips.forEach((tip, i) => xs[i].push(worldOf(tip).x)));
+    for (const x of xs) expect(Math.max(...x) - Math.min(...x)).toBeGreaterThan(0.03);
+  });
+
+  it('are wired in chariot.ts: the page scarf’s driver runs on the page only, and the riders get the same wind', () => {
+    const chariot = readFileSync('src/lib/bowobharata/scene/chariot.ts', 'utf8');
+    expect(chariot.match(/scarfDriver\(/g)).toHaveLength(1);
+    expect(chariot).toMatch(/^\s*if \(!drivable\) scarfDriver\(wind, dt\);$/m);
+    expect(chariot).toMatch(/^\s*riders\?\.update\(time, dt, motion, wind\);$/m);
   });
 });
 
@@ -471,5 +511,229 @@ describe('the prabha seen from the side', () => {
     light().forEach((v, i) => expect(v, `${i}`).toBeLessThanOrEqual(edge[i] + (1 - Math.exp(-1)) * (TODAY[i] - edge[i]) + 1e-6));
     drive(part, t, 60, 0);
     expect(light()).toEqual(TODAY);
+  });
+});
+
+describe('the sash ends against their riders’ garments', () => {
+  const BACK = new THREE.Vector3(-1, 0, 0);
+  /** Faceting allowance: a sash end's centre line may sit at most this far (m) inside its rider's dhoti or kilt. */
+  const TOL = 0.002;
+
+  /**
+   * The back half of a rider's silk below the waist, all that a sash end can reach, as its own two-sided mesh at the silk's
+   * place: fewer triangles to cast against. Its world matrix is copied from the silk's each time it is used.
+   */
+  function backOf(silk: THREE.Mesh): THREE.Mesh {
+    const geo = silk.geometry;
+    const pos = geo.getAttribute('position');
+    const index = geo.index!;
+    const keep: number[] = [];
+    for (let i = 0; i < index.count; i += 3) {
+      const a = index.getX(i);
+      const b = index.getX(i + 1);
+      const c = index.getX(i + 2);
+      if ((pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3 < 0.03 && (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3 < 1.02) keep.push(a, b, c);
+    }
+    const back = new THREE.BufferGeometry();
+    back.setAttribute('position', pos);
+    back.setIndex(keep);
+    return new THREE.Mesh(back, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  }
+  /** Points along a sash end's segments 1 and 2, the tip's chain; segment 0 hangs from the knot at the hip, in it by design. */
+  function sashPoints(tip: THREE.Object3D): THREE.Vector3[] {
+    const last = tip.parent!;
+    const middle = last.parent!;
+    const out: THREE.Vector3[] = [];
+    for (const [from, to] of [[middle, last], [last, tip]]) {
+      const a = worldOf(from);
+      const b = worldOf(to);
+      for (let k = 0; k <= 4; k++) out.push(a.clone().lerp(b, k / 4));
+    }
+    return out;
+  }
+  /** How far inside the garment a point is: the length of a backward ray that leaves through it, or 0 outside. */
+  function depthIn(garment: THREE.Mesh, p: THREE.Vector3, ray: THREE.Raycaster): number {
+    ray.set(p, BACK);
+    const hit = ray.intersectObject(garment, false)[0];
+    if (!hit) return 0;
+    return hit.face!.normal.clone().transformDirection(garment.matrixWorld).dot(BACK) > 0 ? hit.distance : 0;
+  }
+
+  it('never sink into their rider’s dhoti or kilt: standing, backing up and driving, through a minute of wind, on both tiers', () => {
+    const ray = new THREE.Raycaster();
+    for (const mobile of [false, true]) {
+      for (const speed of [0, -2, -4, 6]) {
+        const part = chariot(true, mobile);
+        const riders = (['krishna', 'arjuna'] as const).map((rider) => {
+          const silk = named(part.object, `${rider}-silk`) as THREE.Mesh;
+          const tips = allNamed(part.object, `${rider}-sash-tip`);
+          expect(tips, rider).toHaveLength(2);
+          return { rider, silk, back: backOf(silk), tips, deepest: 0 };
+        });
+        // Two seconds to settle, then a minute, five looks a second.
+        let frame = 0;
+        drive(part, 0, 62, speed, 0, (t) => {
+          if (t < 2 || frame++ % 12 !== 0) return;
+          for (const r of riders) {
+            r.back.matrixWorld.copy(r.silk.matrixWorld);
+            for (const tip of r.tips) for (const p of sashPoints(tip)) r.deepest = Math.max(r.deepest, depthIn(r.back, p, ray));
+          }
+        });
+        for (const r of riders) expect(r.deepest, `${r.rider}, ${speed} m/s, mobile ${mobile}`).toBeLessThanOrEqual(TOL);
+      }
+    }
+  }, 120_000);
+});
+
+describe('Arjuna’s kavacha and clothes', () => {
+  /** He stands at (−0.55, 1.3, 0.1) in the chariot: a point in his figure, in the chariot's frame. */
+  const at = (x: number, y: number, z: number) => new THREE.Vector3(-0.55 + x, 1.3 + y, 0.1 + z);
+  const ray = new THREE.Raycaster();
+
+  interface Piece { mesh: string; tris: THREE.Triangle[]; verts: THREE.Vector3[] }
+  /** Every connected piece of every mesh under `root`, in the chariot's frame. */
+  function pieces(root: THREE.Object3D): Piece[] {
+    root.updateMatrixWorld(true);
+    const out: Piece[] = [];
+    for (const m of meshesUnder(root)) {
+      const pos = m.geometry.getAttribute('position');
+      const index = m.geometry.index;
+      const count = index ? index.count : pos.count;
+      const vi = (k: number) => (index ? index.getX(k) : k);
+      const up = Array.from({ length: pos.count }, (_, i) => i);
+      const find = (i: number): number => { while (up[i] !== i) { up[i] = up[up[i]]; i = up[i]; } return i; };
+      for (let k = 0; k < count; k += 3) for (const o of [vi(k + 1), vi(k + 2)]) { const a = find(vi(k)); const b = find(o); if (a !== b) up[b] = a; }
+      const world = Array.from({ length: pos.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld));
+      const byRoot = new Map<number, Piece>();
+      for (let k = 0; k < count; k += 3) {
+        const r = find(vi(k));
+        if (!byRoot.has(r)) byRoot.set(r, { mesh: m.name, tris: [], verts: [] });
+        byRoot.get(r)!.tris.push(new THREE.Triangle(world[vi(k)], world[vi(k + 1)], world[vi(k + 2)]));
+      }
+      for (let i = 0; i < pos.count; i++) byRoot.get(find(i))?.verts.push(world[i]);
+      out.push(...byRoot.values());
+    }
+    return out;
+  }
+  /** The pieces not joined, piece to piece within `gap` m, to the one holding the most triangles (his body): where each is. */
+  function floating(root: THREE.Object3D, gap: number): string[] {
+    const all = pieces(root);
+    const CELL = 0.04;
+    const cell = (x: number) => Math.floor(x / CELL);
+    const grid = new Map<string, number[]>();
+    all.forEach((p, id) => p.tris.forEach((tri, k) => {
+      const box = new THREE.Box3().setFromPoints([tri.a, tri.b, tri.c]).expandByScalar(gap);
+      for (let x = cell(box.min.x); x <= cell(box.max.x); x++) for (let y = cell(box.min.y); y <= cell(box.max.y); y++) for (let z = cell(box.min.z); z <= cell(box.max.z); z++) {
+        const key = `${x},${y},${z}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key)!.push(id, k);
+      }
+    }));
+    const up = all.map((_, i) => i);
+    const find = (i: number): number => { while (up[i] !== i) { up[i] = up[up[i]]; i = up[i]; } return i; };
+    const near = new THREE.Vector3();
+    all.forEach((p, id) => {
+      for (const v of p.verts) {
+        const list = grid.get(`${cell(v.x)},${cell(v.y)},${cell(v.z)}`) ?? [];
+        for (let n = 0; n < list.length; n += 2) {
+          const other = list[n];
+          if (find(other) === find(id)) continue;
+          if (all[other].tris[list[n + 1]].closestPointToPoint(v, near).distanceTo(v) <= gap) up[find(other)] = find(id);
+        }
+      }
+    });
+    const body = all.reduce((best, p, i) => (p.tris.length > all[best].tris.length ? i : best), 0);
+    return all.filter((_, i) => find(i) !== find(body)).map((p) => {
+      const c = new THREE.Box3().setFromPoints(p.verts).getCenter(new THREE.Vector3());
+      return `${p.mesh} at (${c.toArray().map((v) => v.toFixed(3)).join(', ')})`;
+    });
+  }
+
+  it('lets nothing float free: every piece of him touches or overlaps the rest of him within 1 cm, on both tiers', () => {
+    for (const mobile of [false, true]) expect(floating(named(chariot(true, mobile).object, 'arjuna'), 0.01), `mobile ${mobile}`).toEqual([]);
+  });
+
+  it('counts his new parts in the budget: pauldrons and channavira are meshes of their own among at most 14', () => {
+    for (const mobile of [false, true]) {
+      const names = meshesUnder(named(chariot(true, mobile).object, 'arjuna')).map((m) => m.name).filter((n) => n !== 'cloth');
+      expect(names, `mobile ${mobile}`).toEqual(expect.arrayContaining(['arjuna-pauldrons', 'arjuna-channavira', 'arjuna-armour']));
+      expect(names.length, `mobile ${mobile}`).toBeLessThanOrEqual(14);
+    }
+  });
+
+  it('crosses the channavira on his chest and on his back, each crossing a gold boss lying on the plate', () => {
+    const part = chariot(true);
+    const solid = meshesUnder(named(part.object, 'arjuna'));
+    const channavira = named(part.object, 'arjuna-channavira');
+    const armour = named(part.object, 'arjuna-armour');
+    // His centre line at mid-chest, from in front and from behind (below his hair).
+    for (const [from, dir, side] of [[at(1.5, 1.27, 0), new THREE.Vector3(-1, 0, 0), 'chest'], [at(-1.5, 1.27, 0), new THREE.Vector3(1, 0, 0), 'back']] as const) {
+      ray.set(from, dir);
+      const hits = ray.intersectObjects(solid, false);
+      expect(hits[0]?.object, side).toBe(channavira);
+      const plate = hits.find((h) => h.object === armour);
+      expect(plate, side).toBeDefined();
+      expect(plate!.distance - hits[0].distance, side).toBeLessThan(0.025);
+    }
+    // And each strap runs on over the shoulders: the channavira reaches up over both of them.
+    const box = new THREE.Box3().setFromObject(channavira);
+    expect(box.max.y).toBeGreaterThan(1.3 + 1.46);
+    expect(box.min.y).toBeLessThan(1.3 + 1.1);
+  });
+
+  it('seats layered pauldrons on his deltoids: at least two gold-edged lames a shoulder, resting within 2 cm of it', () => {
+    const part = chariot(true);
+    const arjuna = named(part.object, 'arjuna');
+    const pauldrons = named(part.object, 'arjuna-pauldrons') as THREE.Mesh;
+    const skin = named(part.object, 'arjuna-skin');
+    const solid = meshesUnder(arjuna);
+    const lames = pieces(pauldrons);
+    const gold = new THREE.Color('#d4a24a');
+    const colour = pauldrons.geometry.getAttribute('color');
+    const pos = pauldrons.geometry.getAttribute('position');
+    for (const [key, side] of [['left', 1], ['right', -1]] as const) {
+      const s = ARJUNA_ARMS.lowered[key][0];
+      const shoulder = at(s[0], s[1], s[2]);
+      const mine = lames.filter((l) => Math.sign(l.verts[0].z - 0.1) === side);
+      expect(mine.length, key).toBeGreaterThanOrEqual(2);
+      // Every lame stays on the shoulder: within 13 cm of the joint.
+      for (const l of mine) for (const v of l.verts) expect(v.distanceTo(shoulder), key).toBeLessThan(0.13);
+      // Seated: straight down over the deltoid, the pauldron and then the arm, within 2 cm.
+      for (const dx of [-0.02, 0, 0.02]) {
+        for (const dz of [0, 0.02]) {
+          ray.set(at(s[0] + dx, 3, s[2] + side * dz), new THREE.Vector3(0, -1, 0));
+          const hits = ray.intersectObjects(solid, false);
+          expect(hits[0]?.object, `${key} ${dx} ${dz}`).toBe(pauldrons);
+          const under = hits.find((h) => h.object !== pauldrons);
+          expect(under?.object, `${key} ${dx} ${dz}`).toBe(skin);
+          expect(under!.distance - hits[0].distance, `${key} ${dx} ${dz}`).toBeLessThan(0.02 + 0.012);
+        }
+      }
+    }
+    // Their edges are gold.
+    let golden = 0;
+    for (let i = 0; i < colour.count; i++) if (Math.abs(colour.getX(i) - gold.r) < 1e-3 && Math.abs(colour.getY(i) - gold.g) < 1e-3) golden++;
+    expect(golden).toBeGreaterThan(pos.count * 0.15);
+  });
+
+  it('shows a gold belt and a saffron sash as colour blocks of their own, the crimson kilt between them', () => {
+    const part = chariot(true);
+    const solid = meshesUnder(named(part.object, 'arjuna'));
+    const colourAt = (y: number) => {
+      ray.set(at(-1.5, y, 0), new THREE.Vector3(1, 0, 0));
+      const hit = ray.intersectObjects(solid, false)[0];
+      expect(hit, `${y}`).toBeDefined();
+      const c = (hit.object as THREE.Mesh).geometry.getAttribute('color');
+      return { mesh: hit.object.name, colour: [c.getX(hit.face!.a), c.getY(hit.face!.a), c.getZ(hit.face!.a)] };
+    };
+    // From behind on his centre line: the belt, a band of kilt, the sash, and the kilt lower down.
+    const belt = colourAt(0.968);
+    const between = colourAt(0.937);
+    const sash = colourAt(0.9);
+    const kilt = colourAt(0.7);
+    expect(belt.mesh).toBe('arjuna-gold');
+    expect(between).toEqual(kilt);
+    expect(sash.mesh).toBe('arjuna-silk');
+    expect(sash.colour).not.toEqual(kilt.colour);
   });
 });

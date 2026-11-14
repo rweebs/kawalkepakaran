@@ -29,18 +29,21 @@ const C = {
   krishnaSkin: '#2f4c8c', krishnaLips: '#5a2f52', arjunaSkin: '#b07e5a', arjunaLips: '#7e4536',
   hair: '#120c0a', eye: '#0d0a0c',
   pitambara: '#f0b62a', scarf: '#1e3c96', sash: '#7a1424', crimson: '#8a1f2c', saffron: '#e8892a',
-  gold: '#d4a24a', paleGold: '#e8c46a', silver: '#c9ced8', ruby: '#a8142a', emerald: '#13804a', sapphire: '#1f3fae',
+  gold: '#d4a24a', paleGold: '#e8c46a', ruby: '#a8142a', emerald: '#13804a', sapphire: '#1f3fae',
+  // Arjuna's kavacha: polished steel, darker than cloth-white, so the light it catches reads as metal; the kilt's deep folds.
+  steel: '#b3bbc6', crimsonFold: '#5e1119',
   // The peacock feather, from its bronze-green vane in to the eye's dark heart.
   vane: '#3d6b2a', barb: '#5e7f2c', eyeGold: '#c9a43a', eyeTeal: '#1aa59a', eyeBlue: '#1b2c8f', quill: '#e6dcc0',
 } as const;
 /** The garland's flowers, round and round: white, red, marigold, violet and rose. */
 const FLOWERS = ['#f4efe0', '#c8263a', '#f2a516', '#5a3fa0', '#e57aa0'] as const;
 
-/** One set per scene, shared by both riders: matte (skin, hair, flowers), metal (gold, silver, the gems) and silk. */
+/** One set per scene, shared by both riders: matte (skin, hair, flowers), metal (gold, the gems), steel (armour) and silk. */
 function riderMaterials() {
   return {
     matte: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }),
     metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.85, emissive: '#3a2408', emissiveIntensity: 0.35 }),
+    steel: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.92 }),
     silk: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.55, sheen: 0.8, sheenColor: new THREE.Color('#fff0c8'), sheenRoughness: 0.5 }),
   };
 }
@@ -130,8 +133,8 @@ const superSin = (phi: number, n: number) => { const s = Math.sin(phi); return M
  * A ribbon of cloth along a smooth curve through `pts`, `width(t)` across and `thick` through, lying flat against a body whose
  * outward normal near a point is `out(point, result)`. Closed round its thin edge, so it shows from both sides.
  */
-function ribbon(pts: V3[], width: (t: number) => number, thick: number, out: (p: V3, o: V3) => void, rows: number, hex: string): THREE.BufferGeometry {
-  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+function ribbon(pts: V3[], width: (t: number) => number, thick: number, out: (p: V3, o: V3) => void, rows: number, hex: string, closed = false): THREE.BufferGeometry {
+  const curve = new THREE.CatmullRomCurve3(pts, closed, 'centripetal');
   const P = new THREE.Vector3();
   const T = new THREE.Vector3();
   const N = new THREE.Vector3();
@@ -294,9 +297,10 @@ const wrapped = (wrap: Wrap, y0: number, y1: number, grow: number, groove: numbe
 
 /**
  * The pleated fan hanging down the front of a wrapped garment from y1 to y0: `pleats` folds across, `top` and `bottom`
- * half-widths, a slab 8 mm thick so it shows from both sides. `colour` paints by height (0 at the hem).
+ * half-widths, a slab 8 mm thick so it shows from both sides. `colour` paints by height (0 at the hem) and by where on a
+ * pleat a point lies (0 in a fold, 1 on a crest).
  */
-function fan(wrap: Wrap, y0: number, y1: number, top: number, bottom: number, pleats: number, t: Tier, colour: (v: number) => string): THREE.BufferGeometry {
+function fan(wrap: Wrap, y0: number, y1: number, top: number, bottom: number, pleats: number, t: Tier, colour: (v: number, crest: number) => string): THREE.BufferGeometry {
   const across = pleats * 4;
   return surface(seg(t, 14, 7), across * 2, (v, u, o) => {
     const y = y0 + v * (y1 - y0);
@@ -305,7 +309,7 @@ function fan(wrap: Wrap, y0: number, y1: number, top: number, bottom: number, pl
     const zig = Math.abs(((k * pleats) % 1) - 0.5) * 2;
     const front = keyed(wrap, y, 1) + keyed(wrap, y, 2) + 0.012 + 0.016 * zig * (0.5 + 0.5 * (1 - v)) + 0.02 * (1 - v);
     o.set(u < 0.5 ? front : front - 0.008, y, -hw + 2 * hw * k);
-  }, (v) => colour(v));
+  }, (v, u) => colour(v, Math.abs((((u < 0.5 ? u * 2 : (1 - u) * 2) * pleats) % 1) - 0.5) * 2));
 }
 
 /** A ring of `count` small round gems at radius r and height y about the y axis, alternating colours; squashed in z by `zs`. */
@@ -360,12 +364,16 @@ interface Rider {
   /** Arjuna's whole body, which shifts its weight. */
   sway?: THREE.Group;
 }
-/** A cloth end's chain and its springs: each joint's swing back and forth (about z) and side to side (about x). */
-interface Cloth { joints: THREE.Group[]; base: number; phase: number; ang: Float64Array; vel: Float64Array; side: Float64Array; sideVel: Float64Array }
-function cloth(chain: { root: THREE.Group; joints: THREE.Group[] }, at: V3, base: number, phase: number): Cloth {
+/**
+ * A cloth end's chain and its springs: each joint's swing back and forth (about z) and side to side (about x). `reach` is the
+ * furthest forward any segment may lean (rad from hanging straight down): a sash hangs behind its rider's dhoti or kilt, which
+ * stops it there.
+ */
+interface Cloth { joints: THREE.Group[]; base: number; phase: number; reach: number; ang: Float64Array; vel: Float64Array; side: Float64Array; sideVel: Float64Array }
+function cloth(chain: { root: THREE.Group; joints: THREE.Group[] }, at: V3, base: number, phase: number, reach = Infinity): Cloth {
   chain.root.position.copy(at);
   const n = chain.joints.length;
-  const c = { joints: chain.joints, base, phase, ang: new Float64Array(n), vel: new Float64Array(n), side: new Float64Array(n), sideVel: new Float64Array(n) };
+  const c = { joints: chain.joints, base, phase, reach, ang: new Float64Array(n), vel: new Float64Array(n), side: new Float64Array(n), sideVel: new Float64Array(n) };
   // At rest the end hangs `base` back from its root, each segment straight on from the one above.
   c.ang[0] = base;
   pose(c);
@@ -550,7 +558,7 @@ function buildKrishna(M: Mats, arms: RiderArms, t: Tier): Rider {
   for (const [z, len, ph] of [[0.07, 0.15, 2], [0.13, 0.13, 3]] as const) {
     const c = clothEnd(M, C.sash, 3, len, [0.028, 0.005], [0.022, 0.004], 0, 'krishna-sash-tip');
     group.add(c.root);
-    ends.push(cloth(c, vec(-0.128, 0.94, z), -0.08, ph));
+    ends.push(cloth(c, vec(-0.128, 0.94, z), -0.08, ph, SASH_REACH));
   }
   return { group, head: headGroup, chest, cloth: ends };
 }
@@ -566,6 +574,60 @@ const KILT: Wrap = [
   [1.0, 0.012, 0.115, 0.165],
 ];
 
+/** Arjuna's build and depth: his torso, and the kavacha over it. */
+const ARJUNA = { build: 1.1, depth: 1.08 } as const;
+/** A point on Arjuna's torso at height y and angle phi, `grow` m out: where his armour and its straps lie. */
+const onArjuna = (y: number, phi: number, grow: number) => torsoAt(y, phi, ARJUNA.build, ARJUNA.depth, grow, new THREE.Vector3());
+/** A point on the yoke over his shoulders, `v` of the way in from the plate's rim to the neck guard, `lift` m above it. */
+function onYoke(phi: number, v: number, lift: number, o = new THREE.Vector3()): V3 {
+  const rim = torsoAt(1.47, phi, ARJUNA.build, ARJUNA.depth, 0.014, new THREE.Vector3());
+  o.set(0.004 + Math.cos(phi) * 0.08, 1.488, Math.sin(phi) * 0.076).sub(rim).multiplyScalar(v).add(rim);
+  o.y += Math.sin(v * Math.PI) * 0.01 + lift;
+  return o;
+}
+/** Outward from Arjuna's armour near a point: how the channavira's straps lie on it. */
+const armourNormal = (p: V3, o: V3) => o.set((p.x - 0.008) / 0.0144, (p.y - 1.25) / 0.09, p.z / 0.04).normalize();
+
+/**
+ * One lame of a pauldron: a band of a shell round the deltoid (centre `at`, radii `r`) between polar angles a0 and a1 from
+ * `axis`, flaring out a little to its lower edge, which is gold.
+ */
+function lame(at: V3, r: V3, axis: V3, a0: number, a1: number, t: Tier): THREE.BufferGeometry {
+  const B = new THREE.Vector3(1, 0, 0).cross(axis).normalize();
+  const D = axis.clone().cross(B).normalize();
+  const d = new THREE.Vector3();
+  return surface(seg(t, 5, 3), seg(t, 22, 12), (v, u, o) => {
+    const th = a0 + (a1 - a0) * v;
+    d.copy(axis).multiplyScalar(Math.cos(th)).addScaledVector(B, Math.sin(th) * Math.cos(u * TAU)).addScaledVector(D, Math.sin(th) * Math.sin(u * TAU));
+    const k = 1 + 0.05 * v * v;
+    o.set(at.x + d.x * r.x * k, at.y + d.y * r.y * k, at.z + d.z * r.z * k);
+  }, (v) => (v > 0.7 ? C.gold : C.steel));
+}
+
+/**
+ * One strap of the channavira, a closed loop: over the shoulder on `side`, down across his back to the far hip, round his
+ * side, and up across his chest to the shoulder again; the two straps cross on his spine and on his breastbone.
+ */
+function strap(side: number, grow: number, t: Tier): THREE.BufferGeometry {
+  const pts: V3[] = [onYoke(side * (Math.PI / 2 - 0.42), 0.45, 0.006), onYoke(side * Math.PI / 2, 0.45, 0.006), onYoke(side * (Math.PI / 2 + 0.42), 0.45, 0.006)];
+  // Down the back to the far hip, round the side, and up the front: (height, angle) stations, filled in between.
+  const stations: [number, number][] = [
+    [1.43, side * (Math.PI - 0.95)], [1.27, side * Math.PI], [1.11, side * (Math.PI + 1.0)], [1.04, side * (Math.PI + Math.PI / 2)],
+    [1.11, side * (TAU - 1.0)], [1.27, side * TAU], [1.43, side * (TAU + 0.95)],
+  ];
+  for (let i = 0; i < stations.length - 1; i++) {
+    const [y0, a0] = stations[i];
+    const [y1, a1] = stations[i + 1];
+    for (let k = 0; k < 4; k++) {
+      const f = k / 4;
+      const y = y0 + (y1 - y0) * f;
+      pts.push(onArjuna(y, a0 + (a1 - a0) * f, y < 1.14 ? grow + 0.012 : grow));
+    }
+  }
+  pts.push(onArjuna(1.43, side * (TAU + 0.95), grow));
+  return ribbon(pts, () => 0.032, 0.006, armourNormal, seg(t, 90, 44), C.gold, true);
+}
+
 function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
   const group = new THREE.Group();
   group.name = 'arjuna';
@@ -574,12 +636,13 @@ function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
   sway.name = 'arjuna-body';
   group.add(sway);
   const S = C.arjunaSkin;
-  const H = 1.1;
+  const H = ARJUNA.build;
   const ARMS = 1.18;
   const skin: THREE.BufferGeometry[] = [];
   const silk: THREE.BufferGeometry[] = [];
   const gold: THREE.BufferGeometry[] = [];
   const locks: THREE.BufferGeometry[] = [];
+  const pauldrons: THREE.BufferGeometry[] = [];
 
   // Legs and feet, gold greaves over the shins; the neck and its guard.
   for (const z of [-0.115, 0.115]) {
@@ -590,34 +653,47 @@ function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
   skin.push(limb([vec(0.002, 1.47, 0), vec(0.008, 1.57, 0), vec(0.013, 1.66, 0)], [[0.058, 0.062], [0.054, 0.058], [0.05, 0.054]], seg(t, 6, 4), seg(t, 14, 8), S));
   gold.push(place(lathe([[0.07, 1.452], [0.086, 1.466], [0.083, 1.5], [0.068, 1.524], [0.062, 1.53]], t, C.gold, 0.95), 0.004, 0, 0));
 
-  // Arms lowered, hands at his sides: round shoulder guards, gold vambraces on the forearms.
+  // Arms lowered, hands at his sides: layered pauldrons over the deltoids, gold keyura below them, gold vambraces.
   for (const [key, side] of [['left', 1], ['right', -1]] as const) {
     const j = arms[key];
     skin.push(...arm(j, ARMS, t, S));
     const s = v3(j[0]);
     const e = v3(j[1]);
     const w = v3(j[2]);
-    const brace = [0.3, 0.62, 0.95].map((f): Radii => { const r = armRadius(0.5 + f / 2, ARMS) + 0.009; return [r, r]; });
+    const brace = [0.3, 0.62, 0.95].map((f): Radii => { const r = armRadius(0.5 + f / 2, ARMS) + 0.007; return [r, r]; });
     gold.push(limb([e.clone().lerp(w, 0.3), e.clone().lerp(w, 0.62), e.clone().lerp(w, 0.95)], brace, seg(t, 6, 4), seg(t, 12, 8), C.gold));
-    const out = vec(0, 0.72, side * 0.7).normalize();
-    const at = s.clone().add(vec(-0.004, 0.02, side * 0.022));
-    gold.push(aim(tint(new THREE.SphereGeometry(0.09, seg(t, 16, 10), seg(t, 8, 5), 0, TAU, 0, Math.PI * 0.42), C.silver), at, out));
-    gold.push(aim(tint(new THREE.SphereGeometry(0.068, seg(t, 14, 8), seg(t, 6, 4), 0, TAU, 0, Math.PI * 0.36), C.silver), at.clone().addScaledVector(out, 0.03), out));
-    gold.push(aim(place(tint(new THREE.TorusGeometry(0.089, 0.006, seg(t, 6, 4), seg(t, 20, 12)).rotateX(Math.PI / 2), C.gold), 0, 0.022, 0), at, out));
+    // Three lames over the deltoid (arm() sets its centre and radii), each lower one tucked under the one above.
+    const deltoid = vec(s.x - 0.004, s.y + 0.008, s.z + side * 0.006);
+    const radii = vec(0.057, 0.063, 0.054).multiplyScalar(ARMS);
+    const axis = vec(0, 0.8, side * 0.6).normalize();
+    pauldrons.push(
+      lame(deltoid, radii.clone().addScalar(0.003), axis, 0.83, 1.3, t),
+      lame(deltoid, radii.clone().addScalar(0.006), axis, 0.48, 0.95, t),
+      lame(deltoid, radii.clone().addScalar(0.009), axis, 0, 0.6, t),
+    );
+    // The keyura, hugging the upper arm below the pauldron, a leaf crest on its outer side.
+    const upper = e.clone().sub(s).normalize();
+    const ring = armRadius(0.31, ARMS) + 0.004;
+    const at = s.clone().lerp(e, 0.62);
+    gold.push(band(ring, 0.008, at, upper, t, C.gold));
+    gold.push(aim(place(tint(new THREE.ConeGeometry(0.018, 0.045, seg(t, 6, 4)), C.gold), 0, 0.01, 0), at.clone().add(vec(0, 0, side * (ring + 0.006))), upper));
     const hand = new THREE.Mesh(hangingHand(t, S, side), M.matte);
     hand.name = `arjuna-hand-${key}`;
     hand.position.copy(w);
     sway.add(hand);
   }
 
-  // The kilt with its pleated fan and gold border, held by a gold belt; the saffron sash knotted at the back of the hip.
+  // The crimson kilt: a pleated fan with deep folds, a bold gold hem. A gold belt with its clasp; below it a band of kilt, then
+  // the saffron sash, knotted at the back of the hip.
   silk.push(wrapped(KILT, 0.46, 1.0, 0, 0.02, seg(t, 18, 9), seg(t, 40, 22), () => C.crimson));
-  silk.push(fan(KILT, 0.5, 0.96, 0.03, 0.07, seg(t, 5, 4), t, (v) => (v < 0.05 ? C.paleGold : C.crimson)));
-  gold.push(wrapped(KILT, 0.455, 0.49, 0.006, 0.02, 2, seg(t, 40, 22), () => C.gold));
-  silk.push(wrapped(KILT, 0.93, 0.982, 0.014, 0, seg(t, 4, 3), seg(t, 36, 18), () => C.saffron));
-  silk.push(place(tint(ellipsoid(0.042, 0.046, 0.04, seg(t, 10, 7), seg(t, 8, 5)), C.saffron), -0.14, 0.955, 0.11));
-  gold.push(wrapped(KILT, 0.982, 1.002, 0.02, 0, 1, seg(t, 36, 18), () => C.gold));
-  gold.push(place(tint(new THREE.CylinderGeometry(0.03, 0.03, 0.012, seg(t, 14, 8)), C.gold), 0.152, 0.992, 0, 0, 0, Math.PI / 2));
+  silk.push(fan(KILT, 0.5, 0.87, 0.03, 0.07, seg(t, 5, 4), t, (v, crest) => (v < 0.05 ? C.paleGold : crest < 0.45 ? C.crimsonFold : C.crimson)));
+  gold.push(wrapped(KILT, 0.45, 0.5, 0.008, 0.02, 3, seg(t, 40, 22), () => C.gold));
+  gold.push(wrapped(KILT, 0.95, 0.985, 0.014, 0, 2, seg(t, 36, 18), () => C.gold));
+  const clasp = wrapAt(KILT, 0.967, 0, 0.022, 0, vec(0, 0, 0));
+  gold.push(place(tint(new THREE.CylinderGeometry(0.03, 0.03, 0.012, seg(t, 16, 10)), C.gold), clasp.x, clasp.y, 0, 0, 0, Math.PI / 2));
+  gold.push(place(tint(ellipsoid(0.007, 0.012, 0.012, 8, 6), C.ruby), clasp.x + 0.007, clasp.y, 0));
+  silk.push(wrapped(KILT, 0.875, 0.925, 0.016, 0, seg(t, 4, 3), seg(t, 36, 18), () => C.saffron));
+  silk.push(place(tint(ellipsoid(0.042, 0.046, 0.04, seg(t, 10, 7), seg(t, 8, 5)), C.saffron), -0.14, 0.9, 0.11));
 
   // Long hair down his back to the shoulder blades, over the back plate.
   for (let i = -2; i <= 2; i++) {
@@ -627,27 +703,37 @@ function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
       [[0.03, 0.013], [0.034, 0.014], [0.028, 0.012], [0.019, 0.009], [0.008, 0.004]], seg(t, 14, 8), seg(t, 6, 5), C.hair));
   }
 
-  // The kavacha, which breathes with him: a silver breastplate trimmed in gold with a sun disc on the chest, and segmented
-  // bands over the abdomen.
+  // The kavacha, which breathes with him: a steel breastplate with a ridge down the spine and a sculpted chest, gold trim at its
+  // neck, armholes and lower edge, the yoke over the shoulders, and four overlapping lames over the abdomen with gold edges.
   const chest = new THREE.Group();
   chest.name = 'arjuna-chest';
-  const plate = torso(1.1, 1.47, H, 1.08, 0.014, seg(t, 24, 13), seg(t, 40, 22), (v) => (v < 0.07 || v > 0.93 ? C.gold : C.silver));
-  // A sun disc on the chest, a ruby at its heart.
-  const heart = torsoAt(1.28, 0, H, 1.08, 0.014, vec(0, 0, 0));
-  const disc = [
-    place(tint(new THREE.CylinderGeometry(0.044, 0.044, 0.008, seg(t, 20, 12)), C.gold), heart.x + 0.002, heart.y, 0, 0, 0, Math.PI / 2),
-    place(tint(ellipsoid(0.008, 0.014, 0.014, 8, 6), C.ruby), heart.x + 0.008, heart.y, 0),
+  const plate = surface(seg(t, 26, 13), seg(t, 44, 24), (v, u, o) => {
+    torsoAt(1.12 + v * 0.35, u * TAU, H, ARJUNA.depth, 0.014 + 0.007 * smooth(0.08, 0, v), o);
+  }, (v, u) => {
+    const y = 1.12 + v * 0.35;
+    const a = Math.abs(u > 0.5 ? u * TAU - TAU : u * TAU);
+    const hole = Math.hypot((y - 1.39) / 0.07, (a - Math.PI / 2) / 0.4);
+    return y < 1.155 || y > 1.446 || (hole > 0.72 && hole < 1) ? C.gold : C.steel;
+  });
+  const yoke = surface(seg(t, 4, 2), seg(t, 44, 24), (v, u, o) => { onYoke(u * TAU, v, 0, o); }, (v) => (v < 0.15 || v > 0.75 ? C.gold : C.steel));
+  const lames = [[0.99, 1.04], [1.02, 1.07], [1.05, 1.1], [1.08, 1.13]].map(([y0, y1]) =>
+    surface(3, seg(t, 44, 24), (v, u, o) => { torsoAt(y0 + v * (y1 - y0), u * TAU, H, ARJUNA.depth, 0.026 - 0.01 * v, o); }, (v) => (v < 0.3 ? C.gold : C.steel)));
+  const bead = (pts: V3[], r: number) => limb(pts, pts.map((_, i): Radii => { const k = i === 0 || i === pts.length - 1 ? 0.7 : 1; return [r * k, r * k]; }), seg(t, 16, 8), seg(t, 8, 6), C.steel);
+  const ridges = [
+    bead([1.14, 1.22, 1.3, 1.38, 1.45].map((y) => onArjuna(y, Math.PI, 0.016)), 0.008),
+    bead([-1.1, -0.55, 0, 0.55, 1.1].map((a) => onArjuna(1.228 + 0.03 * (a / 1.1) ** 2, a, 0.018)), 0.007),
+    bead([1.235, 1.32, 1.41].map((y) => onArjuna(y, 0, 0.016)), 0.006),
   ];
-  // The yoke over his shoulders closes the plate's top, from its rim up and in under the neck guard.
-  const rim = new THREE.Vector3();
-  const yoke = surface(seg(t, 4, 2), seg(t, 40, 22), (v, u, o) => {
-    torsoAt(1.47, u * TAU, H, 1.08, 0.014, rim);
-    o.set(0.004 + Math.cos(u * TAU) * 0.08, 1.488, Math.sin(u * TAU) * 0.076).sub(rim).multiplyScalar(v).add(rim);
-    o.y += Math.sin(v * Math.PI) * 0.01;
-  }, (v) => (v < 0.2 ? C.gold : C.silver));
-  const lames = [[0.985, 1.04, 0.018], [1.03, 1.08, 0.016], [1.07, 1.115, 0.015]].map(([y0, y1, g]) =>
-    torso(y0, y1, H, 1.08, g, 3, seg(t, 40, 22), (v) => (v < 0.3 ? C.gold : C.silver)));
-  chest.add(part([plate, yoke, ...lames, ...disc], M.metal, 'arjuna-armour'));
+  chest.add(part([plate, yoke, ...lames, ...ridges], M.steel, 'arjuna-armour'));
+  // The channavira: two gold straps crossed over his chest and his back, a gold boss on each crossing.
+  const front = onArjuna(1.27, 0, 0.025);
+  const back = onArjuna(1.27, Math.PI, 0.025);
+  const boss = (p: V3) => place(tint(new THREE.CylinderGeometry(0.034, 0.034, 0.01, seg(t, 20, 12)), C.gold), p.x, p.y, p.z, 0, 0, Math.PI / 2);
+  chest.add(part([
+    strap(1, 0.019, t), strap(-1, 0.023, t), boss(front), boss(back),
+    place(tint(ellipsoid(0.006, 0.015, 0.015, 8, 6), C.ruby), front.x + 0.006, front.y, front.z),
+    place(tint(ellipsoid(0.006, 0.013, 0.013, 8, 6), C.paleGold), back.x - 0.006, back.y, back.z),
+  ], M.metal, 'arjuna-channavira'));
 
   // The head, which turns: face, hair, the tall kirita with its jewel bands and front plate, and earrings.
   const headGroup = new THREE.Group();
@@ -669,14 +755,15 @@ function buildArjuna(M: Mats, arms: RiderArms, t: Tier): Rider {
   ];
   headGroup.add(part([...face.skin, ...face.dark], M.matte, 'arjuna-face'), part(hairCap, M.matte, 'arjuna-hair'), part(kirita, M.metal, 'arjuna-crown'));
 
-  sway.add(part(skin, M.matte, 'arjuna-skin'), part(locks, M.matte, 'arjuna-locks'), part(silk, M.silk, 'arjuna-silk'), part(gold, M.metal, 'arjuna-gold'), chest, headGroup);
+  sway.add(part(skin, M.matte, 'arjuna-skin'), part(locks, M.matte, 'arjuna-locks'), part(silk, M.silk, 'arjuna-silk'), part(gold, M.metal, 'arjuna-gold'),
+    part(pauldrons, M.steel, 'arjuna-pauldrons'), chest, headGroup);
 
   // The sash's two ends, from the knot at the back of his hip.
   const ends: Cloth[] = [];
   for (const [z, len, ph] of [[0.08, 0.14, 4], [0.14, 0.12, 5]] as const) {
     const c = clothEnd(M, C.saffron, 3, len, [0.03, 0.005], [0.024, 0.004], 0, 'arjuna-sash-tip');
     sway.add(c.root);
-    ends.push(cloth(c, vec(-0.165, 0.95, z), -0.08, ph));
+    ends.push(cloth(c, vec(-0.165, 0.895, z), -0.08, ph, SASH_REACH));
   }
   return { group, head: headGroup, chest, cloth: ends, sway };
 }
@@ -724,6 +811,8 @@ const HEAD_EASE = 0.45;
 const BREATH = 0.009;
 /** Arjuna's weight shifts over 14 s: a roll of at most SHIFT rad about his feet. */
 const SHIFT = 0.014;
+/** A sash end never leans forward of this (rad): hanging from its knot behind the hip, it clears the dhoti or kilt below. */
+const SASH_REACH = -0.02;
 /** The cloth's springs, per unit inertia, stepped at most CLOTH_STEP s at a time. */
 const CLOTH_K = 30;
 const CLOTH_C = 9.3;
@@ -751,14 +840,18 @@ function animate(k: Rider, a: Rider, time: number, dt: number, speed: number, ya
   for (let i = 0; i < a.cloth.length; i++) swing(a.cloth[i], wind, flow, flutter, out, time, h, steps);
 }
 
-/** Each joint's springs chase the change of angle from the segment above: the segments' own angles grow down the chain. */
+/**
+ * Each joint's springs chase the change of angle from the segment above: the segments' own angles grow down the chain. No
+ * segment leans further forward than the cloth's reach: its target stops there, and so does the segment itself.
+ */
 function swing(c: Cloth, wind: number, flow: number, flutter: number, out: number, time: number, h: number, steps: number): void {
   const n = c.joints.length;
   let above = 0;
   let aboveSide = 0;
+  let lean = 0;
   for (let j = 0; j < n; j++) {
     const w = (j + 1) / n;
-    const angle = c.base + wind * (0.3 + 0.3 * w) + flow * (0.7 + 0.3 * w) + flutter * w * Math.sin(time * 6 + c.phase + 1.3 * j);
+    const angle = Math.min(c.reach, c.base + wind * (0.3 + 0.3 * w) + flow * (0.7 + 0.3 * w) + flutter * w * Math.sin(time * 6 + c.phase + 1.3 * j));
     const side = out * (0.6 + 0.4 * w);
     const rel = angle - above;
     const relSide = side - aboveSide;
@@ -769,6 +862,12 @@ function swing(c: Cloth, wind: number, flow: number, flutter: number, out: numbe
       c.ang[j] += c.vel[j] * h;
       c.sideVel[j] += ((relSide - c.side[j]) * CLOTH_K - c.sideVel[j] * CLOTH_C) * h;
       c.side[j] += c.sideVel[j] * h;
+    }
+    lean += c.ang[j];
+    if (lean > c.reach) {
+      c.ang[j] -= lean - c.reach;
+      if (c.vel[j] > 0) c.vel[j] = 0;
+      lean = c.reach;
     }
   }
   pose(c);
