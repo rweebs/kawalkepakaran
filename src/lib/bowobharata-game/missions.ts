@@ -92,8 +92,9 @@ const BASE: Omit<Lakon, 'marker' | 'records' | 'softTime' | 'decoyLimit'> = {
 
 /** Indexed by chapter: the prologue, then parva 1 to 8. */
 const LAKON: Lakon[] = [
-  // The prologue: eight arrows from the spawn round to the tower. The copy on the L7→L8 line is the Mata lesson, and
-  // the volley planned near L5 lands 7.1 m beside the L5→L6 line.
+  // The prologue: eight arrows from the spawn round to the tower. The copy on the L7→L8 line is the Mata lesson. The
+  // teaching volley is planned on the L4→L5 leg, 6 m short of (−70, 66), and lands 2.6 s later 7.1 m beside the route
+  // just past L6, ahead of the chariot and 18 m or more from its hull at any pace, so it always lands (never absorbed).
   {
     ...BASE,
     marker: null,
@@ -101,7 +102,7 @@ const LAKON: Lakon[] = [
     softTime: null,
     decoyLimit: null,
     decoys: [xz(-66, 12)],
-    volleyNear: { near: xz(-82, 52), r: 10, at: xz(-77, 36) },
+    volleyNear: { near: xz(-70, 66), r: 6, at: xz(-91, 17) },
     hints: true,
   },
   // Parva 1: the lures sit 6.5–7.6 m off the A→B line; the haze lies on it.

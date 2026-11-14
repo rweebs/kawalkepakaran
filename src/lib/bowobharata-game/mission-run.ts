@@ -98,7 +98,8 @@ export const SCORE = { real: 100, filed: 50, rewrite: -50, calm: 100, perSecond:
 const GRACE = MISSION_TIMING.grace;
 
 type Out = { run: RunState; events: GameEvent[] };
-type Step = { run: RunState; events: GameEvent[]; decoys: Decoy[] };
+/** A frame's outcome. `decoys` is the frame's own list when no copy was touched: no list is rebuilt for nothing. */
+type Step = { run: RunState; events: GameEvent[]; decoys: readonly Decoy[] };
 type Target = { kind: 'pickup' | 'gate' | 'reach' | 'post' | 'marker'; id: string; at: XZ; real: boolean; heading?: number; width?: number };
 
 export function startRun(def: MissionDef): RunState {
@@ -207,11 +208,18 @@ function stepReach(run: RunState, f: RunFrame, s: Extract<StepDef, { kind: 'reac
   return { run: { ...run, stopT }, events: [] };
 }
 
+/** Whether the hull's middle passes within decoyR of this open copy this frame. */
+const touched = (d: Decoy, f: RunFrame) =>
+  d.state === 'open' && sweptHit(f.midPrev, f.mid, d.at, MISSION_TIMING.decoyR);
+
 function stepCopies(run: RunState, f: RunFrame): Step {
   let cur = run;
   const events: GameEvent[] = [];
+  let any = false;
+  for (let k = 0; k < f.decoys.length && !any; k++) any = touched(f.decoys[k], f);
+  if (!any) return { run: cur, events, decoys: f.decoys };
   const decoys = f.decoys.map((d) => {
-    if (d.state !== 'open' || !sweptHit(f.midPrev, f.mid, d.at, MISSION_TIMING.decoyR)) return d;
+    if (!touched(d, f)) return d;
     if (f.sight) {
       cur = addScore({ ...cur, filed: cur.filed + 1 }, SCORE.filed);
       events.push({ type: 'filed' });
@@ -264,7 +272,7 @@ function stepIntro(run: RunState, f: RunFrame): Out {
 
 export function stepRun(run: RunState, frame: RunFrame): Step {
   const f = Number.isFinite(frame.dt) && frame.dt > 0 ? frame : { ...frame, dt: 0 };
-  const plain = (o: Out): Step => ({ ...o, decoys: [...f.decoys] });
+  const plain = (o: Out): Step => ({ ...o, decoys: f.decoys });
   switch (run.phase) {
     case 'roam': {
       const m = run.def.marker;

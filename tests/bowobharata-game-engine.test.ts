@@ -100,13 +100,13 @@ function pressureFaults(prev: GameState, next: GameState, w: World): { faults: s
     landed++;
     const lands = v.t0 + v.flight;
     const copy = next.decoys.find((d) => d.id === v.id);
-    const at = (x: { at: { x: number; z: number } }) => x.at.x === v.to.x && x.at.z === v.to.z;
-    const placed = copy && at(copy) && copy.born === lands && copy.life === VOLLEY.decoyLife;
+    const landsAt = (x: { at: { x: number; z: number } }) => x.at.x === v.to.x && x.at.z === v.to.z;
+    const placed = copy && landsAt(copy) && copy.born === lands && copy.life === VOLLEY.decoyLife;
     if (v.decoy && !placed) faults.push(`${at}: volley ${v.id} landed without its copy`);
     const offRoute = !route || polylineDist(v.to, route) >= VOLLEY.routeClear;
     if (v.decoy && copy && offRoute && copy.state !== 'open') faults.push(`${at}: volley ${v.id}'s copy is not open`);
     const haze = next.clouds.find((c) => c.id === v.id);
-    const hazed = haze && at(haze) && haze.born === lands && haze.life === VOLLEY.cloudLife;
+    const hazed = haze && landsAt(haze) && haze.born === lands && haze.life === VOLLEY.cloudLife;
     if (v.cloud !== !!hazed) faults.push(`${at}: volley ${v.id} (cloud ${v.cloud}) left ${haze ? 'haze' : 'no haze'}`);
   }
   const open = next.decoys.filter((d) => d.life !== null && d.state === 'open').length;
@@ -114,9 +114,16 @@ function pressureFaults(prev: GameState, next: GameState, w: World): { faults: s
   return { faults, landed };
 }
 
+/** One frame of `input`, its pressure faults added to `faults`. */
+function checkedStep(s: GameState, input: FrameInput, w: World, faults: string[]): GameState {
+  const next = advance(s, input, DT, w).state;
+  faults.push(...pressureFaults(s, next, w).faults);
+  return next;
+}
+
 /**
  * A bot from def.start until `done` or `limit` seconds of frames (DT each): one bot per run. Every frame is checked
- * against the pressure rules; `each` sees every state.
+ * against the pressure rules; `hold` may then rework the state the next frame starts from, and `each` sees it.
  */
 function runBot(
   ch: number,
@@ -125,6 +132,7 @@ function runBot(
   opts: Partial<AutoOpts> | undefined,
   limit: number,
   each?: (s: GameState) => void,
+  hold?: (s: GameState) => GameState,
 ): BotRun {
   const def = defOf(ch);
   let s = startChapter(def, def.start, seed, w);
@@ -139,7 +147,7 @@ function runBot(
     const checked = pressureFaults(s, r.state, w);
     faults.push(...checked.faults);
     landed += checked.landed;
-    s = r.state;
+    s = hold ? hold(r.state) : r.state;
     each?.(s);
     time += DT;
     events.push(...r.events);
@@ -151,6 +159,13 @@ function runBot(
 }
 
 const count = (events: readonly GameEvent[], type: GameEvent['type']) => events.filter((e) => e.type === type).length;
+
+/** A first-time player: slower, a 0.4 s reaction. CARELESS ignores the lures; CAREFUL keeps the dodge and sight. */
+const CARELESS: Partial<AutoOpts> = { speedCap: 0.6, reaction: 0.4, useSight: false, avoidDecoys: false };
+const CAREFUL: Partial<AutoOpts> = { speedCap: 0.6, reaction: 0.4 };
+/** The limits: the autopilot within 0.6·softTime (240 s without one), a first-time player within softTime (300 s). */
+const autoLimit = (ch: number) => (defOf(ch).softTime === null ? 240 : 0.6 * defOf(ch).softTime!);
+const firstLimit = (ch: number) => defOf(ch).softTime ?? 300;
 
 /**
  * Done within `limit` s with no bump and no fail, the ranks never touched, at most one rewrite taken, and every
@@ -240,14 +255,34 @@ describe('every lakon can be won under pressure', () => {
   }, BOT_TIMEOUT);
 
   it.each(CHAPTERS)('chapter %i: a first-time player who ignores lures finishes within softTime, never muddied', (ch) => {
-    const soft = defOf(ch).softTime;
-    const limit = soft ?? 300;
-    const firstTime = { speedCap: 0.6, reaction: 0.4, useSight: false, avoidDecoys: false };
     for (const seed of SEEDS) {
-      const r = runBot(ch, seed, desktop, firstTime, limit);
+      const r = runBot(ch, seed, desktop, CARELESS, firstLimit(ch));
       expect(r.events.filter((e) => e.type === 'failed' && e.reason === 'muddied')).toEqual([]);
-      expectWon(r, limit);
+      expectWon(r, firstLimit(ch));
     }
+  }, BOT_TIMEOUT);
+
+  it.each(CHAPTERS)('chapter %i: a careful first-time player (the dodge and sight on) finishes within softTime', (ch) => {
+    for (const seed of SEEDS) expectWon(runBot(ch, seed, desktop, CAREFUL, firstLimit(ch)), firstLimit(ch));
+  }, BOT_TIMEOUT);
+
+  it('with the clamour held at 4.5 (a volley each 4.5 s, with haze) both personas win every lakon, lures off route', () => {
+    const held = (s: GameState): GameState =>
+      s.run.phase === 'active' && s.riuh.value < 4.5 ? { ...s, riuh: { ...s.riuh, value: 4.5 } } : s;
+    let volleys = 0;
+    let landed = 0;
+    for (const ch of CHAPTERS) {
+      for (const seed of [1, 2]) {
+        const auto = runBot(ch, seed, desktop, undefined, autoLimit(ch), undefined, held);
+        expectWon(auto, autoLimit(ch));
+        const first = runBot(ch, seed, desktop, CARELESS, firstLimit(ch), undefined, held);
+        expectWon(first, firstLimit(ch));
+        volleys += count(auto.events, 'volley') + count(first.events, 'volley');
+        landed += auto.landed + first.landed;
+      }
+    }
+    expect(volleys).toBeGreaterThanOrEqual(60);
+    expect(landed).toBeGreaterThanOrEqual(40);
   }, BOT_TIMEOUT);
 
   it.each([0, 1])('phones (700 per side): the autopilot finishes chapter %i', (ch) => {
@@ -367,67 +402,111 @@ describe('the autopilot meets the lures', () => {
 });
 
 describe('prologue pacing', () => {
-  it.each(SEEDS)(
-    'seed %i: no record raises the clamour; the scripted volley lands at (−77, 36) 2.6 s after the car first comes ' +
-      'within 10 m of (−82, 52); no other volley comes before 20 s',
-    (seed) => {
-      const w = desktop;
-      const def = defOf(0);
-      const near = def.scripted.volleyNear!;
-      let s = startChapter(def, def.start, seed, w);
-      const bot = createBot();
-      let firstNear: number | null = null;
-      let landedAt: number | null = null;
-      const scripted: Volley[] = [];
-      const early: GameEvent[] = [];
-      const faults: string[] = [];
-      let records = 0;
-      for (let k = 0; k < 240 / DT && s.run.phase !== 'done'; k++) {
-        const r = advance(s, bot(s, w), DT, w);
-        const next = r.state;
-        faults.push(...pressureFaults(s, next, w).faults);
-        for (const e of r.events) {
-          if (e.type === 'recorded') {
-            records++;
-            expect(next.riuh.value, `record ${e.id}`).toBeLessThanOrEqual(s.riuh.value);
-          }
-          if (e.type !== 'volley') continue;
-          const v = next.volleys.find((x) => x.id === e.id)!;
-          if (v.to.x === near.at.x && v.to.z === near.at.z) scripted.push(v);
-          else if (next.run.t < MISSION_TIMING.firstVolley) early.push(e);
+  /**
+   * The prologue from its start with one bot, checked frame by frame: no record raises the clamour; the scripted volley
+   * is planned once, on the frame the car first comes within r of `near`, and lands 2.6 s later at `at` (never
+   * absorbed: 8.5 m or more from every hull circle's centre), leaving its open copy; no other volley comes before 20 s;
+   * the pressure rules hold throughout.
+   */
+  function pacing(opts: Partial<AutoOpts> | undefined, seed: number) {
+    const w = desktop;
+    const def = defOf(0);
+    const near = def.scripted.volleyNear!;
+    let s = startChapter(def, def.start, seed, w);
+    const bot = createBot(opts);
+    let firstNear: number | null = null;
+    let landedAt: number | null = null;
+    let gap = NaN;
+    const scripted: Volley[] = [];
+    const early: GameEvent[] = [];
+    const faults: string[] = [];
+    let records = 0;
+    for (let k = 0; k < 300 / DT && s.run.phase !== 'done'; k++) {
+      const r = advance(s, bot(s, w), DT, w);
+      const next = r.state;
+      faults.push(...pressureFaults(s, next, w).faults);
+      for (const e of r.events) {
+        if (e.type === 'recorded') {
+          records++;
+          expect(next.riuh.value, `record ${e.id}`).toBeLessThanOrEqual(s.riuh.value);
         }
-        if (firstNear === null && next.run.phase === 'active' && dist(next.car, near.near) <= near.r) firstNear = next.run.t;
-        const one = scripted[0];
-        if (one && landedAt === null && next.volleys.some((x) => x.id === one.id && x.state === 'landed')) {
-          landedAt = next.run.t;
-          expect(next.decoys.find((d) => d.id === one.id)).toEqual({
-            id: one.id, at: near.at, born: one.t0 + one.flight, life: VOLLEY.decoyLife, state: 'open', mimic: false,
-          });
-        }
-        s = next;
+        if (e.type !== 'volley') continue;
+        const v = next.volleys.find((x) => x.id === e.id)!;
+        if (v.to.x === near.at.x && v.to.z === near.at.z) scripted.push(v);
+        else if (next.run.t < MISSION_TIMING.firstVolley) early.push(e);
       }
-      expect(s.run.phase).toBe('done');
-      expect(records).toBe(8);
-      expect(scripted).toHaveLength(1);
-      expect(firstNear).not.toBeNull();
-      const v = scripted[0];
-      expect(v.planned).toBe(firstNear);
-      expect(v.decoy).toBe(true);
-      expect(v.t0 + v.flight - v.planned).toBeCloseTo(2.6, 9);
-      expect(landedAt).not.toBeNull();
-      expect(landedAt! - firstNear!).toBeGreaterThanOrEqual(2.6 - 1e-9);
-      expect(landedAt! - firstNear!).toBeLessThan(2.6 + DT);
-      expect(early).toEqual([]);
-      expect(faults).toEqual([]);
-    },
-    BOT_TIMEOUT,
-  );
+      if (firstNear === null && next.run.phase === 'active' && dist(next.car, near.near) <= near.r) firstNear = next.run.t;
+      const one = scripted[0];
+      if (one && landedAt === null && next.run.t >= one.t0 + one.flight) {
+        // Its landing frame: landed, not absorbed, well clear of the hull, and its copy is out.
+        expect(next.volleys.find((x) => x.id === one.id)?.state).toBe('landed');
+        landedAt = next.run.t;
+        gap = Math.min(...hullCircles(next.car.x, next.car.z, next.car.yaw).map((c) => dist(c, near.at)));
+        expect(next.decoys.find((d) => d.id === one.id)).toEqual({
+          id: one.id, at: near.at, born: one.t0 + one.flight, life: VOLLEY.decoyLife, state: 'open', mimic: false,
+        });
+      }
+      s = next;
+    }
+    expect(s.run.phase).toBe('done');
+    expect(records).toBe(8);
+    expect(scripted).toHaveLength(1);
+    expect(firstNear).not.toBeNull();
+    const v = scripted[0];
+    expect(v.planned).toBe(firstNear);
+    expect(v.decoy).toBe(true);
+    expect(v.t0 + v.flight - v.planned).toBeCloseTo(2.6, 9);
+    expect(landedAt).not.toBeNull();
+    expect(landedAt! - firstNear!).toBeGreaterThanOrEqual(2.6 - 1e-9);
+    expect(landedAt! - firstNear!).toBeLessThan(2.6 + DT);
+    expect(gap).toBeGreaterThanOrEqual(VOLLEY.absorbR + 1.5);
+    expect(early).toEqual([]);
+    expect(faults).toEqual([]);
+  }
+
+  const lands = 'the teaching volley lands (never absorbed) 2.6 s after the car first comes within 6 m of (−70, 66)';
+
+  it.each(SEEDS)(`the autopilot, seed %i: no record raises the clamour; ${lands}; no other volley before 20 s`, (seed) => {
+    pacing(undefined, seed);
+  }, BOT_TIMEOUT);
+
+  it.each(SEEDS)(`a first-time player who ignores lures, seed %i: ${lands}`, (seed) => pacing(CARELESS, seed), BOT_TIMEOUT);
+
+  it.each([0.3, 0.4, 0.5, 0.6, 0.7, 0.8])(`at speedCap %s, careless and careful: ${lands}`, (speedCap) => {
+    pacing({ speedCap, reaction: 0.4, useSight: false, avoidDecoys: false }, 1);
+    pacing({ speedCap, reaction: 0.4 }, 1);
+  }, BOT_TIMEOUT);
 });
 
 describe('the clamour and the volleys in the engine', () => {
   const phone = createWorld({ mobile: true, warriors: 700 });
   /** Far from parva 1's start, its route and every collider: the corner of the field toward the north-west grove. */
   const FAR = { x: -60, z: -110 };
+
+  it('a frame with nothing in flight rebuilds no volley, copy or haze list: each is kept by reference', () => {
+    // Active, at rest on parva 1's start: its four copies and two hazes are out, no volley flies, nothing is taken or spent.
+    const s = toActive(1);
+    expect(s.volleys).toEqual([]);
+    expect([s.decoys.length, s.clouds.length]).toEqual([4, 2]);
+    const next = step(s, IDLE);
+    expect(next.run.phase).toBe('active');
+    expect(next.run.t).toBeGreaterThan(s.run.t);
+    expect(next.volleys).toBe(s.volleys);
+    expect(next.decoys).toBe(s.decoys);
+    expect(next.clouds).toBe(s.clouds);
+    // The same while the clamour climbs, and in roam.
+    const loud = step({ ...next, run: { ...next.run, t: 30 }, riuh: { ...next.riuh, value: 0.5 } }, IDLE);
+    expect(loud.riuh.value).toBeGreaterThan(0.5);
+    expect(loud.volleys).toBe(next.volleys);
+    expect(loud.decoys).toBe(next.decoys);
+    expect(loud.clouds).toBe(next.clouds);
+    const roam = startChapter(defOf(1), TOWER_EXIT, 1, desktop);
+    const later = step(roam, IDLE);
+    expect(later.run.phase).toBe('roam');
+    expect(later.volleys).toBe(roam.volleys);
+    expect(later.decoys).toBe(roam.decoys);
+    expect(later.clouds).toBe(roam.clouds);
+  });
 
   it('a volley that lands within 7 m of the chariot is absorbed: one event, and no copy or haze', () => {
     let s = toActive(1);
@@ -559,8 +638,10 @@ describe('the clamour and the volleys in the engine', () => {
   it('after a time fail at riuh 4 with a volley in the air, a retry calms the clamour and clears what volleys left', () => {
     const w = desktop;
     let s = startChapter(defOf(1), defOf(1).start, 1, w);
-    for (let k = 0; k < 120 / DT && s.run.step === 0; k++) s = step(s, autopilot(s, w), w);
+    const faults: string[] = [];
+    for (let k = 0; k < 120 / DT && s.run.step === 0; k++) s = checkedStep(s, autopilot(s, w), w, faults);
     expect(s.run.step).toBe(1);
+    expect(faults).toEqual([]);
     const t = 121;
     const air: Volley = { ...scriptedVolley(FAR, t - 1.5, s.nextId, w), state: 'air' };
     const at = { x: FAR.x, z: FAR.z + 8 };
@@ -663,7 +744,11 @@ describe('the clamour and the volleys in the engine', () => {
       run: { ...s0.run, t: 50 },
       riuh: { value: 2.5, floorT: 50, quietT: 50, frozen: false },
       level: 2,
-      decoys: [{ id: 99, at: { x: m.x + f.x, z: m.z + f.z }, born: 0, life: null, state: 'open', mimic: false }],
+      // The copy met comes second in the list: every copy is looked at, not just the first.
+      decoys: [
+        { id: 98, at: FAR, born: 0, life: null, state: 'open', mimic: false },
+        { id: 99, at: { x: m.x + f.x, z: m.z + f.z }, born: 0, life: null, state: 'open', mimic: false },
+      ],
     };
     expect(zonesAt(base.car)).toEqual({ watched: false, shelter: false });
     const filed: GameEvent[] = [];
@@ -703,19 +788,21 @@ describe('the clamour and the volleys in the engine', () => {
     const w = desktop;
     let s = startChapter(defOf(1), defOf(1).start, 1, w);
     const states: GameState[] = [];
+    const faults: string[] = [];
     for (let k = 0; k < 120 / DT && s.run.phase !== 'outro'; k++) {
       states.push(s);
-      s = step(s, autopilot(s, w), w);
+      s = checkedStep(s, autopilot(s, w), w, faults);
     }
     expect(s.run.phase).toBe('outro');
     // Ten frames before the delivery, the clamour set to 1 or to 1.5; both ride on to the outro the same way.
     const from = states[states.length - 10];
     const deliver = (value: number) => {
       let x: GameState = { ...from, riuh: { ...from.riuh, value } };
-      while (x.run.phase === 'active') x = step(x, autopilot(x, w), w);
+      while (x.run.phase === 'active') x = checkedStep(x, autopilot(x, w), w, faults);
       return x.run.score;
     };
     expect(deliver(1) - deliver(1.5)).toBe(100);
+    expect(faults).toEqual([]);
   });
 
   it('in roam the clamour stays 0 and no volley comes, even in a watch zone', () => {
@@ -745,11 +832,17 @@ describe('the clamour and the volleys in the engine', () => {
   it('volleys follow the level: from run.t 20 the first after half the gap, then one a gap, each off the route', () => {
     let s = toActive(1);
     s = { ...s, run: { ...s.run, t: 19 }, riuh: { ...s.riuh, value: 2.5, quietT: 1e9 } };
-    const log: { t: number; e: GameEvent; route: readonly { x: number; z: number }[] }[] = [];
+    // Each volley as it stands on the frame of its event, with the route it was planned off.
+    const log: { t: number; v: Volley; route: readonly { x: number; z: number }[] }[] = [];
     for (let k = 0; k < 20 / DT; k++) {
       const r = advance(s, IDLE, DT, desktop);
       s = r.state;
-      for (const e of r.events) if (e.type === 'volley') log.push({ t: s.run.t, e, route: s.route!.points });
+      for (const e of r.events) {
+        if (e.type !== 'volley') continue;
+        const v = r.state.volleys.find((y) => y.id === e.id);
+        expect(v, `volley ${e.id} on its event frame`).toBeDefined();
+        log.push({ t: s.run.t, v: v!, route: s.route!.points });
+      }
     }
     // Level 2: a gap of 8 s, the first after 4 s once run.t reaches 20.
     expect(s.level).toBe(2);
@@ -761,14 +854,51 @@ describe('the clamour and the volleys in the engine', () => {
       expect(times[k] - times[k - 1]).toBeGreaterThanOrEqual(8 - 1e-9);
       expect(times[k] - times[k - 1]).toBeLessThan(8 + 2 * DT);
     }
-    for (const x of log) {
-      const v = s.volleys.find((y) => y.id === (x.e.type === 'volley' ? x.e.id : -1));
-      if (v) {
-        expect(v.decoy).toBe(true);
-        expect(v.cloud).toBe(false);
-        expect(polylineDist(v.to, x.route)).toBeGreaterThanOrEqual(VOLLEY.routeClear);
-      }
+    for (const { t, v, route } of log) {
+      expect(v.planned).toBe(t);
+      expect(v.state).toBe('warn');
+      expect(v.decoy).toBe(true);
+      expect(v.cloud).toBe(false);
+      expect(polylineDist(v.to, route)).toBeGreaterThanOrEqual(VOLLEY.routeClear);
     }
+  });
+
+  it('when the level falls to 0 the schedule stops; a new rise waits half a gap again', () => {
+    let s = toActive(1);
+    s = { ...s, run: { ...s.run, t: 30 }, riuh: { ...s.riuh, value: 2.5, quietT: 1e9 }, level: 2 };
+    for (let k = 0; k < 6 / DT && s.nextVolley === null; k++) s = step(s, IDLE);
+    expect(s.nextVolley).toBeCloseTo(30 + 4, 0);
+    // Calmed to 0 (as a delivery or a shelter does): nothing is due any more.
+    s = step({ ...s, riuh: { ...s.riuh, value: 0, floorT: s.run.t } }, IDLE);
+    expect(s.level).toBe(0);
+    expect(s.nextVolley).toBeNull();
+    // Back at level 2 well past the old due time: the first volley still waits half the gap (4 s).
+    s = step({ ...s, run: { ...s.run, t: 40 }, riuh: { ...s.riuh, value: 2.5, quietT: 1e9 } }, IDLE);
+    const from = s.run.t;
+    expect(s.nextVolley).toBeCloseTo(from + 4, 9);
+    const log: GameEvent[] = [];
+    for (let k = 0; k < 3.9 / DT; k++) s = step(s, IDLE, desktop, log);
+    expect(types(log)).not.toContain('volley');
+  });
+
+  it('a scheduled volley and the scripted one on the same frame take the next two ids', () => {
+    // The prologue, active at run.t 30 and level 2 with a volley due, the chariot rolling into the trigger circle.
+    const def = defOf(0);
+    const near = def.scripted.volleyNear!;
+    let s = toActive(0);
+    const yaw = s.car.yaw;
+    const f = forward(yaw);
+    const back = near.r + 0.1;
+    const car = { ...initChariot(near.near.x - f.x * back, near.near.z - f.z * back, yaw), vx: 6 * f.x, vz: 6 * f.z };
+    s = { ...s, car, run: { ...s.run, t: 30 }, riuh: { ...s.riuh, value: 2.5, quietT: 1e9 }, level: 2, nextVolley: 30 };
+    const r = advance(s, IDLE, DT, desktop);
+    const ids = r.events.flatMap((e) => (e.type === 'volley' ? [e.id] : []));
+    expect(ids).toEqual([s.nextId, s.nextId + 1]);
+    expect(r.state.nextId).toBe(s.nextId + 2);
+    expect(r.state.scriptedPlanned).toBe(true);
+    expect(r.state.volleys.map((v) => v.id)).toEqual(ids);
+    // The scheduled one first, then the scripted one at its spot.
+    expect(r.state.volleys[1].to).toEqual(near.at);
   });
 
   it('from level 3 the volleys carry haze', () => {
@@ -790,18 +920,21 @@ describe('the clamour and the volleys in the engine', () => {
       s = { ...s, run: { ...s.run, t: 50 }, riuh: { ...s.riuh, value: 4.2, quietT: 50 } };
       const states: GameState[] = [];
       const planned: Volley[] = [];
+      const faults: string[] = [];
       for (let k = 0; k < 600; k++) {
         const auto = autopilot(s, desktop);
         const steer = auto.drive.steer + 0.3 * Math.sin(k / 17);
         const r = advance(s, { ...auto, drive: { ...auto.drive, steer } }, DT, desktop);
+        faults.push(...pressureFaults(s, r.state, desktop).faults);
         s = r.state;
         for (const e of r.events) if (e.type === 'volley') planned.push(s.volleys.find((v) => v.id === e.id)!);
         states.push(s);
       }
-      return { states, planned };
+      return { states, planned, faults };
     };
     const a = run(2);
     const b = run(2);
+    expect(a.faults).toEqual([]);
     expect(a.planned.length).toBeGreaterThanOrEqual(2);
     for (let k = 0; k < 600; k += 37) expect(b.states[k]).toEqual(a.states[k]);
     expect(b.states[599]).toEqual(a.states[599]);
@@ -822,7 +955,13 @@ describe('hints', () => {
     const def = defOf(0);
     let s = startChapter(def, def.start, seed, w);
     const bot = createBot();
-    const copy = def.scripted.decoys[0];
+    /** The nearest open copy in front of the hull's middle (its whole front half-plane), the one a copy hint is about. */
+    const nearestCopyAhead = (s: GameState) => {
+      const m = hullMid(s.car);
+      const f = forward(s.car.yaw);
+      const ahead = s.decoys.filter((d) => d.state === 'open' && (d.at.x - m.x) * f.x + (d.at.z - m.z) * f.z >= 0);
+      return Math.min(...ahead.map((d) => dist(m, d.at)));
+    };
     const log: GameEvent[] = [];
     const fired: { key: HintKey; clock: number; copy: number }[] = [];
     const shown: { clock: number; hint: HintKey | null }[] = [];
@@ -843,7 +982,7 @@ describe('hints', () => {
       }
       s = step(s, { ...auto, drive }, w, log);
       for (const e of log.splice(0)) {
-        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, copy: dist(hullMid(s.car), copy) });
+        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, copy: nearestCopyAhead(s) });
         if (e.type === 'outroStart') end = s.clock + HINT_SECONDS;
       }
       shown.push({ clock: s.clock, hint: hudOf(s, w).hint });
@@ -868,9 +1007,11 @@ describe('hints', () => {
       expect(on.length).toBeGreaterThan(0);
       for (const v of on) expect(v.hint, `${f.key} at ${v.clock.toFixed(2)}`).toBe(f.key);
     });
-    // The copy counts as ahead in the whole front half-plane, so rewrites comes near 30 m out.
+    // The copy counts as ahead in the whole front half-plane, within 30 m. The first copy met is the teaching volley's:
+    // it lands 7 m beside the route past L6, about 20 m ahead of the chariot, so rewrites comes as it lands, before the
+    // lesson copy on the L7→L8 line, which is still more than 30 m off.
     const rewrites = fired.find((f) => f.key === 'rewrites')!;
-    expect(rewrites.copy).toBeGreaterThan(28);
+    expect(rewrites.copy).toBeGreaterThan(15);
     expect(rewrites.copy).toBeLessThanOrEqual(30);
   }, BOT_TIMEOUT);
 

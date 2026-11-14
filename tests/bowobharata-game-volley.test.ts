@@ -397,14 +397,14 @@ describe('landingOk', () => {
     expect(landingOk(at, east, W, null)).toBe(false);
   });
 
-  it("passes the prologue's scripted volley at (−77, 36) with the prologue's routed polyline", { timeout: 30_000 }, () => {
+  it("passes the prologue's scripted volley at (−91, 17) with the prologue's routed polyline", { timeout: 30_000 }, () => {
     const def = missionFor(0, []);
     const nav = buildNav(COLS);
     const stops = def.steps.flatMap((s) => (s.kind === 'collect' ? s.items.map((p) => p.at) : s.kind === 'reach' ? [s.at] : []));
     const pts: XZ[] = [SPAWN, ...stops];
     const line = pts.slice(1).flatMap((to, k) => routeTo(nav, COLS, pts[k], to)!);
     const at = def.scripted.volleyNear!.at;
-    expect(at).toEqual(xz(-77, 36));
+    expect(at).toEqual(xz(-91, 17));
     const v = scriptedVolley(at, 0, 1, W);
     expect(landingOk(v.to, v.u, W, line)).toBe(true);
   });
