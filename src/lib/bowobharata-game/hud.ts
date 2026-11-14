@@ -1,9 +1,12 @@
-// The HUD snapshot: what the island shows while driving, read from the engine state. Counts, timers and speeds only:
-// no name, title, date or other fact. Pure.
+// The HUD snapshot: what the island shows while driving, read from the engine state. Counts, timers, speeds, the
+// clamour and the radar's positions only: no name, title, date or other fact. Pure.
 import { clamp, dist } from './geom';
 import { hullMid } from './collide';
+import { speedOf } from './drive';
 import { timeLeft, totalReal, type HintKey, type Phase, type RunState } from './mission-run';
 import type { MissionType } from './missions';
+import { RADAR_PX, bearingOf, radarItems, radarRange, sameRadar, type RadarItem } from './radar';
+import { levelEffects, riuhLevel } from './riuh';
 import { DRIVE } from './tuning';
 import type { GameState, World } from './engine';
 
@@ -28,6 +31,21 @@ export interface HudSnapshot {
   surge: { ready: boolean; frac: number };
   sight: { on: boolean; charge: number };
   hint: HintKey | null;
+  /** The clamour, 0 to 5, as the engine holds it. It moves only in the active lakon: 0 in roam. */
+  riuh: number;
+  /** Its whole level, 0 to 5. */
+  level: number;
+  /**
+   * The share of the radar's inner radius, in from its edge, that the level's static covers: 0, 0.3 at level 4, 0.45 at
+   * level 5. Sight sees through it: with sight on, the radar shows what lies under it.
+   */
+  staticFrac: number;
+  /** What the radar shows, on its RADAR_PX square, in drawing order (radarItems). */
+  radar: RadarItem[];
+  /** The radar's range in metres, at its inner radius: radarRange of the chariot's forward speed. */
+  radarM: number;
+  /** The chariot's heading as a compass bearing in whole degrees: 0 north, 90 east, clockwise. */
+  heading: number;
 }
 
 /**
@@ -35,6 +53,8 @@ export interface HudSnapshot {
  * only while that lesson is the last hint fired): until the chariot meets the copy, and at most SIGHT_LESSON.most s.
  */
 export const HINT_SECONDS = 3.5;
+/** The clamour changes the snapshot once it moves by more than this. */
+const RIUH_SHOWN = 0.05;
 
 /** A ring's fill in hundredths, so equal snapshots compare equal however the fill crept. */
 const fill = (x: number) => Math.round(clamp(x, 0, 1) * 100) / 100;
@@ -72,10 +92,11 @@ function timerOf(run: RunState): number | null {
   return left === null ? null : Math.max(0, Math.ceil(left - 1e-9));
 }
 
-/** The world is unused until the radar (Task 33) reads it. */
+/** The snapshot of this frame; the world gives the radar its ranks and shelters. */
 export function hudOf(s: GameState, w: World): HudSnapshot {
   const { run, car, sight } = s;
   const shown = s.hintsShown;
+  const level = riuhLevel(s.riuh.value);
   return {
     phase: run.phase,
     chapter: run.def.chapter,
@@ -89,10 +110,19 @@ export function hudOf(s: GameState, w: World): HudSnapshot {
     surge: { ready: car.cooldown <= 0, frac: fill(1 - car.cooldown / DRIVE.boostCooldown) },
     sight: { on: sight.on, charge: fill(sight.charge) },
     hint: shown.length > 0 && (s.clock - s.hintAt < HINT_SECONDS || s.hintCopy !== null) ? shown[shown.length - 1] : null,
+    riuh: s.riuh.value,
+    level,
+    staticFrac: levelEffects(level).radarStatic,
+    radar: radarItems(s, w, RADAR_PX),
+    radarM: radarRange(speedOf(car)),
+    heading: bearingOf(car.yaw),
   };
 }
 
-/** Whether the two snapshots are the same, field for field (the fills are already in hundredths). */
+/**
+ * Whether the two snapshots look the same, field for field (the fills are already in hundredths): the clamour within
+ * RIUH_SHOWN, the radar's range in whole metres, and its items as sameRadar has them (no move of a pixel or more).
+ */
 export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
   return (
     a.phase === b.phase &&
@@ -108,7 +138,13 @@ export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
     a.surge.frac === b.surge.frac &&
     a.sight.on === b.sight.on &&
     a.sight.charge === b.sight.charge &&
-    a.hint === b.hint
+    a.hint === b.hint &&
+    Math.abs(a.riuh - b.riuh) <= RIUH_SHOWN &&
+    a.level === b.level &&
+    a.staticFrac === b.staticFrac &&
+    Math.round(a.radarM) === Math.round(b.radarM) &&
+    a.heading === b.heading &&
+    sameRadar(a.radar, b.radar)
   );
 }
 

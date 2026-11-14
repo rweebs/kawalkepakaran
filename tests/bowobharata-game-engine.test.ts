@@ -27,7 +27,8 @@ import {
   type World,
 } from '../src/lib/bowobharata-game/engine';
 import { assistSteer, autopilot, createBot, type AutoOpts } from '../src/lib/bowobharata-game/autopilot';
-import { HINT_SECONDS, hudOf, sameHud } from '../src/lib/bowobharata-game/hud';
+import { HINT_SECONDS, hudOf, sameHud, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
+import { RADAR_PX, radarItems, radarRange } from '../src/lib/bowobharata-game/radar';
 
 const DT = 1 / 30;
 const SEEDS = [1, 2, 3];
@@ -2080,6 +2081,94 @@ describe('HUD snapshot', () => {
     expect(sameHud(a, { ...a, objective: 'tower' })).toBe(false);
     expect(sameHud(a, { ...a, surge: { ...a.surge, frac: 0.42 } })).toBe(false);
     expect(sameHud(a, { ...a, sight: { ...a.sight, charge: 0.98 } })).toBe(false);
+  });
+
+  /** The state with the clamour at `value`. */
+  const loud = (s: GameState, value: number): GameState => ({ ...s, riuh: { ...s.riuh, value } });
+
+  it('the clamour, its whole level and the static of that level; none in roam', () => {
+    const s = toActive(1);
+    expect(hudOf(s, desktop)).toMatchObject({ riuh: 0, level: 0, staticFrac: 0 });
+    expect(hudOf(loud(s, 2.5), desktop)).toMatchObject({ riuh: 2.5, level: 2, staticFrac: 0 });
+    expect(hudOf(loud(s, 3.99), desktop)).toMatchObject({ riuh: 3.99, level: 3, staticFrac: 0 });
+    expect(hudOf(loud(s, 4.2), desktop)).toMatchObject({ riuh: 4.2, level: 4, staticFrac: 0.3 });
+    expect(hudOf(loud(s, 5), desktop)).toMatchObject({ riuh: 5, level: 5, staticFrac: 0.45 });
+    // A real rise: at rest in the ranks' watch zone, 7 m clear of the Kurawa block, the snapshot follows the engine
+    // up to the grace's cap of 2.
+    let r = step({ ...s, car: initChariot(24, 20, 0) }, IDLE);
+    expect(zonesAt(r.car).watched).toBe(true);
+    for (let k = 0; k < 20 / DT && r.riuh.value < 2; k++) r = step(r, IDLE);
+    expect(hudOf(r, desktop)).toMatchObject({ riuh: r.riuh.value, level: 2, staticFrac: 0 });
+    const roam = startChapter(defOf(1), TOWER_EXIT, 1, desktop);
+    expect(roam.run.phase).toBe('roam');
+    expect(hudOf(roam, desktop)).toMatchObject({ riuh: 0, level: 0, staticFrac: 0 });
+  });
+
+  it('the radar: its items, its range from the forward speed, and the heading as a compass bearing', () => {
+    let s = toActive(1);
+    expect(hudOf(s, desktop).radarM).toBe(70);
+    for (let k = 0; k < 60; k++) s = step(s, input({ throttle: 1 }));
+    const h = hudOf(s, desktop);
+    expect(RADAR_PX).toBe(148);
+    expect(h.radar).toEqual(radarItems(s, desktop, RADAR_PX));
+    expect(h.radar.filter((i) => i.kind === 'record')).toHaveLength(2);
+    expect(h.radar.filter((i) => i.kind === 'tower')).toHaveLength(1);
+    expect(h.radarM).toBe(radarRange(speedOf(s.car)));
+    expect(h.radarM).toBeGreaterThan(90);
+    // Whole degrees from north, clockwise; the drive does not wrap the yaw.
+    const facing = (yaw: number) => hudOf({ ...s, car: { ...s.car, yaw } }, desktop).heading;
+    expect(facing(Math.PI / 2)).toBe(0);
+    expect(facing(0)).toBe(90);
+    expect(facing(-Math.PI / 2)).toBe(180);
+    expect(facing(Math.PI)).toBe(270);
+    expect(facing(Math.PI / 2 - (30 * Math.PI) / 180)).toBe(30);
+    expect(facing(Math.PI / 2 + (0.3 * Math.PI) / 180)).toBe(0);
+    expect(facing(Math.PI / 2 + (0.7 * Math.PI) / 180)).toBe(359);
+    expect(facing(-4 * Math.PI)).toBe(90);
+    expect(facing(5 * Math.PI)).toBe(270);
+  });
+
+  it('sameHud: false when the clamour moves by more than 0.05, the level, the static, the radar, its metres or the heading change', () => {
+    const s = loud(toActive(1), 2.5);
+    const a = hudOf(s, desktop);
+    expect(sameHud(a, hudOf(s, desktop))).toBe(true);
+    expect(sameHud(a, { ...a, riuh: 2.54 })).toBe(true);
+    expect(sameHud(a, { ...a, riuh: 2.46 })).toBe(true);
+    expect(sameHud(a, { ...a, riuh: 2.56 })).toBe(false);
+    expect(sameHud(a, { ...a, riuh: 2.44 })).toBe(false);
+    expect(sameHud(a, { ...a, level: 3 })).toBe(false);
+    expect(sameHud(a, { ...a, staticFrac: 0.3 })).toBe(false);
+    expect(sameHud(a, { ...a, heading: (a.heading + 1) % 360 })).toBe(false);
+    expect(sameHud(a, { ...a, radarM: a.radarM + 0.2 })).toBe(true);
+    expect(sameHud(a, { ...a, radarM: a.radarM + 1 })).toBe(false);
+    // The radar: its count, a kind, a position by 1 px or more, but not less.
+    const moved = (dx: number, dy: number): HudSnapshot => ({ ...a, radar: a.radar.map((i, k) => (k === 0 ? { ...i, x: i.x + dx, y: i.y + dy } : i)) });
+    expect(sameHud(a, moved(0.5, -0.5))).toBe(true);
+    expect(sameHud(a, moved(1, 0))).toBe(false);
+    expect(sameHud(a, moved(0, -1.5))).toBe(false);
+    expect(sameHud(a, { ...a, radar: a.radar.slice(1) })).toBe(false);
+    expect(sameHud(a, { ...a, radar: a.radar.map((i, k) => (k === a.radar.length - 1 ? { ...i, kind: 'post' as const } : i)) })).toBe(false);
+  });
+
+  it('a creeping chariot moves the radar now and then, not every frame, and the radar never freezes', () => {
+    // 1 cm a frame for 600 frames: 6 m, about 5.7 px at rest. The island keeps the snapshot shown while sameHud holds.
+    const base = toActive(1);
+    let shown = hudOf(base, desktop);
+    let renders = 0;
+    let last = shown;
+    for (let k = 1; k <= 600; k++) {
+      last = hudOf({ ...base, car: { ...base.car, x: base.car.x + 0.01 * k } }, desktop);
+      if (sameHud(shown, last)) continue;
+      renders++;
+      shown = last;
+    }
+    expect(renders).toBeGreaterThanOrEqual(4);
+    expect(renders).toBeLessThanOrEqual(6);
+    expect(shown.radar.map((i) => i.kind)).toEqual(last.radar.map((i) => i.kind));
+    shown.radar.forEach((i, k) => {
+      expect(Math.abs(i.x - last.radar[k].x)).toBeLessThan(1);
+      expect(Math.abs(i.y - last.radar[k].y)).toBeLessThan(1);
+    });
   });
 });
 

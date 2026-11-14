@@ -436,7 +436,8 @@ describe('GameHud', () => {
   /** A HUD snapshot of the prologue, 2 of 8 recorded, with any field replaced. */
   const snap = (o: Partial<HudSnapshot> = {}): HudSnapshot => ({
     phase: 'active', chapter: 0, type: 'himpun', objective: 'prologue', done: 2, total: 8, lap: null, timer: null, speedKmh: 31,
-    surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.5 }, hint: null, ...o,
+    surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.5 }, hint: null,
+    riuh: 0, level: 0, staticFrac: 0, radar: [], radarM: 70, heading: 0, ...o,
   });
   interface Opts {
     locale?: Locale; hud?: Partial<HudSnapshot>; touch?: boolean; paused?: boolean; toasts?: HudToast[]; canFullscreen?: boolean; fullscreen?: boolean;
