@@ -4,20 +4,25 @@
   --bg-chart-accent: #e3b341;
   --bg-chart-grid: rgba(203, 213, 225, 0.16);
   --bg-chart-ink: var(--text-secondary, #a3b1c6);
+  --bg-chart-surface: #0b1020;
   margin: 1rem 0;
   min-width: 0;
 }
 .bg-chart figcaption { margin-bottom: 0.4rem; }
 .bg-chart h4 { margin: 0; font-size: 0.95rem; line-height: 1.3; }
 .bg-chart__note { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--bg-chart-ink); }
-.bg-chart svg { display: block; width: 100%; height: auto; }
-.bg-chart svg text { font-size: 11px; fill: var(--bg-chart-ink); }
+.bg-chart__plot { overflow-x: auto; }
+.bg-chart__plot:focus-visible { outline: 2px solid var(--bg-chart-ink); outline-offset: 2px; }
+.bg-chart svg { display: block; width: 100%; min-width: 30rem; height: auto; }
+.bg-chart svg text { font-size: 14px; fill: var(--bg-chart-ink); }
 .bg-chart__grid { stroke: var(--bg-chart-grid); stroke-width: 1; }
 .bg-chart__base { stroke: var(--bg-chart-ink); stroke-width: 1; opacity: 0.6; }
 .bg-col { fill: var(--bg-chart-mark); }
-.bg-dot { fill: var(--bg-chart-mark); stroke: rgb(11, 16, 32); stroke-width: 2; }
+.bg-dot { fill: var(--bg-chart-mark); stroke: var(--bg-chart-surface, #0b1020); stroke-width: 2; }
 .bg-mark { fill: var(--bg-chart-ink); opacity: 0.1; }
 .bg-mark[data-current] { fill: var(--bg-chart-accent); opacity: 0.22; }
+.bg-mark__rule { stroke: var(--bg-chart-accent); stroke-width: 2; }
+.bg-chart svg text.bg-mark__label[data-current] { font-weight: 700; }
 .bg-chart__table { margin-top: 0.5rem; font-size: 0.8rem; color: var(--bg-chart-ink); }
 .bg-chart__table summary { cursor: pointer; padding: 0.4rem 0; min-height: 1.5rem; }
 .bg-chart__table table { width: 100%; border-collapse: collapse; margin-top: 0.25rem; }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderToString } from 'react-dom/server';
-import { BarList, Columns, StatTiles, TimeStrip, type Mark, type TableLabels } from '../src/components/bowobharata-game/charts';
+import { readFileSync } from 'node:fs';
+import { BarList, COLUMNS, Columns, StatTiles, TimeStrip, stripHeight, type Mark, type TableLabels } from '../src/components/bowobharata-game/charts';
 
 const table: TableLabels = { show: 'Show as table', key: 'Item', value: 'Count' };
 const count = (html: string, s: string) => html.split(s).length - 1;
@@ -73,14 +74,16 @@ describe('Columns', () => {
   });
   it('marks the current band and keeps overlapping labels on different rows', () => {
     const html = renderToString(<Columns id="c" locale="id" title="T" unit="day" bins={days(7)} marks={marks} table={table} />);
-    expect(count(html, 'data-current')).toBe(1);
-    expect(count(html, 'class="bg-mark"')).toBe(2);
+    expect(count(html, 'class="bg-mark" x')).toBe(2);
+    expect(count(html, 'data-current=""')).toBe(3);
+    expect(html).toMatch(/<rect class="bg-mark"[^>]*data-current/);
+    expect(html).toMatch(/<line class="bg-mark__rule"[^>]*data-current/);
     const ys = [...html.matchAll(/class="bg-mark__label"[^>]* y="([\d.]+)"/g)].map((m) => m[1]);
     expect(new Set(ys).size).toBe(2);
   });
   it('labels few month ticks on a long month axis', () => {
     const html = renderToString(<Columns id="c" locale="id" title="T" unit="month" bins={months(32)} table={table} />);
-    const ticks = [...html.matchAll(/<text[^>]*y="154"[^>]*>/g)];
+    const ticks = [...html.matchAll(new RegExp(`<text[^>]*y="${COLUMNS.tickY}"[^>]*>`, 'g'))];
     expect(ticks.length).toBeGreaterThan(0);
     expect(ticks.length).toBeLessThanOrEqual(8);
     expect(count(html, '<tr>')).toBe(33);
@@ -91,6 +94,25 @@ describe('Columns', () => {
     expect(html).toContain('>1 Jun<');
     expect(html).toContain('>8<');
     expect(html).not.toContain('>9<');
+  });
+  it('caps a column at the slot minus the 2 unit gap', () => {
+    const html = renderToString(<Columns id="c" locale="id" title="T" unit="month" bins={months(32)} table={table} />);
+    const w = Math.round(((COLUMNS.right - COLUMNS.left) / 32 - 2) * 10) / 10;
+    expect(html).toContain(`width="${w}"`);
+    const wide = renderToString(<Columns id="c" locale="id" title="T" unit="day" bins={days(7)} table={table} />);
+    expect(wide).toContain('width="24"');
+  });
+  it('names months on a short month axis, with the year only on January', () => {
+    const bins = [{ key: '2025-12', n: 1 }, { key: '2026-01', n: 2 }, { key: '2026-02', n: 3 }, { key: '2026-03', n: 1 }];
+    const html = renderToString(<Columns id="c" locale="en" title="T" unit="month" bins={bins} table={table} />);
+    for (const t of ['>Dec<', '>Jan 2026<', '>Feb<', '>Mar<']) expect(html).toContain(t);
+  });
+  it('gives a non-empty bin at least 2 units of height and draws none for zero', () => {
+    const bins = [{ key: '2026-06-01', n: 1 }, { key: '2026-06-02', n: 0 }, { key: '2026-06-03', n: 1000 }];
+    const html = renderToString(<Columns id="c" locale="en" title="T" unit="day" bins={bins} table={table} />);
+    expect(count(html, 'class="bg-col"')).toBe(2);
+    const hs = [...html.matchAll(/class="bg-col"[^>]* height="([\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(Math.min(...hs)).toBeGreaterThanOrEqual(6);
   });
   it('renders empty bins without NaN', () => {
     clean(renderToString(<Columns id="c" locale="id" title="T" unit="month" bins={[]} marks={marks} undated={0} table={table} />));
@@ -105,10 +127,20 @@ describe('TimeStrip', () => {
   const html = renderToString(<TimeStrip id="s" locale="id" title="T" span={span} marks={marks} lanes={lanes} table={table} />);
   it('draws a dot per date, clamped to the span, and the current mark', () => {
     expect(count(html, 'class="bg-dot"')).toBe(5);
-    expect(count(html, 'data-current')).toBe(1);
-    expect(html).toContain('viewBox="0 0 640 84"');
+    expect(count(html, 'data-current')).toBe(3);
+    expect(html).toContain(`viewBox="0 0 640 ${stripHeight(2)}"`);
+    expect(html).toContain('cx="4"');
+    expect(html).toContain('cx="636"');
     expect(html).toContain('>2024<');
     clean(html);
+  });
+  it('lists every date in the table, in date order, keyed by lane', () => {
+    expect(count(html, '<tr>')).toBe(5 + 1);
+    const body = html.slice(html.indexOf('<tbody>'));
+    expect(body.indexOf('1 Jan 2020')).toBeLessThan(body.indexOf('1 Mar 2024'));
+    expect(body.indexOf('1 Mar 2024')).toBeLessThan(body.indexOf('9 Sep 2026'));
+    expect(body).toContain('<td>A</td>');
+    expect(body).toContain('<td>B</td>');
   });
   it('renders without lanes or dates', () => {
     clean(renderToString(<TimeStrip id="s" locale="en" title="T" span={{ from: '2026-01-01', to: '2026-01-01' }} marks={[]} lanes={[]} table={table} />));
@@ -129,5 +161,30 @@ describe('accessibility', () => {
       expect(h).toContain('>Count<');
     }
     expect(htmls[1]).toContain('role="img" aria-labelledby="b-t"');
+  });
+});
+
+describe('chart css', () => {
+  const css = readFileSync('src/styles/bowobharata-game-charts.css', 'utf8');
+  const rule = (sel: string) => new RegExp(`${sel.replace(/[.[\]]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+  it('keeps the tile grid, the bar shape and the 2 px row gap', () => {
+    expect(css).toContain('minmax(7.5rem, 1fr)');
+    expect(css).toContain('0 4px 4px 0');
+    expect(rule('.bg-bars')).toContain('gap: 2px');
+  });
+  it('sizes svg text at 14 or more and scrolls the plot sideways instead of shrinking it', () => {
+    const size = Number(/svg text \{[^}]*font-size: (\d+)px/.exec(css)![1]);
+    expect(size).toBeGreaterThanOrEqual(14);
+    expect(rule('.bg-chart__plot')).toContain('overflow-x: auto');
+    const svg = rule('.bg-chart svg');
+    expect(svg).toContain('width: 100%');
+    expect(svg).toContain('min-width: 30rem');
+  });
+  it('wraps each svg in a focusable labelled region', () => {
+    const html = renderToString(<Columns id="c" locale="id" title="T" unit="day" bins={days(3)} table={table} />);
+    expect(html).toContain('class="bg-chart__plot" tabindex="0" role="region" aria-labelledby="c-t"');
+  });
+  it('strokes dots with the surface token', () => {
+    expect(rule('.bg-dot')).toContain('var(--bg-chart-surface');
   });
 });

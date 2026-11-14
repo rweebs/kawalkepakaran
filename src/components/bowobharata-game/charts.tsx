@@ -3,7 +3,7 @@
 // twin that carries every value. Series colour goes on marks only; all text is ink.
 import '../../styles/bowobharata-game-charts.css';
 import type { Locale } from '../../i18n';
-import { dayNumber, monthIndex, monthTicks, niceMax, r1, xOf } from '../../lib/bowobharata-game/chart-math';
+import { dayNumber, monthIndex, monthTicks, niceMax, r1, utcDate, xOf } from '../../lib/bowobharata-game/chart-math';
 import type { Bin, Count } from '../../lib/bowobharata-game/report-types';
 
 export interface TableLabels { show: string; key: string; value: string }
@@ -11,13 +11,12 @@ export interface Tile { label: string; value: number; note?: string }
 export interface Mark { from: string; to: string; label: string; current: boolean }
 export interface Lane { label: string; dates: readonly string[] }
 
-const DAY_MS = 86_400_000;
-const utc = (iso: string): Date => new Date(dayNumber(iso) * DAY_MS);
 const tag = (l: Locale) => (l === 'en' ? 'en-US' : 'id-ID');
 const fmt = (l: Locale, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(tag(l), { ...o, timeZone: 'UTC' });
+const dayLabel = (l: Locale, iso: string) => fmt(l, { day: 'numeric', month: 'short', year: 'numeric' }).format(utcDate(iso));
 
 /** Rows for the table twin. */
-function Table({ labels, rows }: { labels: TableLabels; rows: readonly (readonly [string, number])[] }) {
+function Table({ labels, rows }: { labels: TableLabels; rows: readonly (readonly [string, string | number])[] }) {
   return (
     <details className="bg-chart__table">
       <summary>{labels.show}</summary>
@@ -29,6 +28,11 @@ function Table({ labels, rows }: { labels: TableLabels; rows: readonly (readonly
       </table>
     </details>
   );
+}
+
+/** The SVG's scroll wrapper: on a phone the chart keeps its legible width and scrolls sideways inside its own frame. */
+function Plot({ id, children }: { id: string; children: React.ReactNode }) {
+  return <div className="bg-chart__plot" tabIndex={0} role="region" aria-labelledby={`${id}-t`}>{children}</div>;
 }
 
 function Figure({ id, kind, title, note, children }: { id: string; kind: 'bars' | 'columns' | 'strip'; title: string; note?: string; children: React.ReactNode }) {
@@ -69,7 +73,7 @@ export function BarList({ id, title, note, rows, limit, other, table }: {
           <li key={i}>
             <span className="bg-bars__label">{r.label}</span>
             <span className="bg-bars__track" aria-hidden="true">
-              <span className="bg-bars__bar" style={{ width: `${max > 0 ? r1((100 * r.n) / max) : 0}%` }} />
+              {r.n > 0 && <span className="bg-bars__bar" style={{ width: `${r1((100 * r.n) / max)}%` }} />}
             </span>
             <b className="bg-bars__n">{String(r.n)}</b>
           </li>
@@ -82,13 +86,19 @@ export function BarList({ id, title, note, rows, limit, other, table }: {
 }
 
 const W = 640;
+/** Text is 14 user units; a label's width is estimated at 8 units a character. */
+const CHAR = 8;
+/** The two baselines for mark labels; a label whose band overlaps the one before drops to the second. */
+const ROW_Y = [13, 28] as const;
+/** Columns' plot box in viewBox units, exported so tests can derive positions. */
+export const COLUMNS = { height: 164, left: 34, right: W - 8, top: 36, base: 140, tickY: 140 + 17 } as const;
 /** A mark's label goes on the first of two rows whose last band it does not overlap (or whose last label it clears), so overlapping bands keep both labels legible. */
 function labelRows(items: readonly { x: number; w: number; text: string }[]): number[] {
   const ends: number[] = [-Infinity, -Infinity];
   return items.map((it) => {
     let row = ends.findIndex((e) => e <= it.x);
     if (row < 0) row = ends[0] <= ends[1] ? 0 : 1;
-    ends[row] = Math.max(it.x + it.w, it.x + it.text.length * 6.5 + 6);
+    ends[row] = Math.max(it.x + it.w, it.x + it.text.length * CHAR + 6);
     return row;
   });
 }
@@ -99,40 +109,47 @@ function MarkBands({ bands, top, bottom }: { bands: readonly Band[]; top: number
   return (
     <>
       {bands.map((b, i) => (
-        <rect key={i} className="bg-mark" x={r1(b.x)} y={top} width={r1(b.w)} height={r1(bottom - top)} data-current={b.mark.current ? '' : undefined} />
+        <g key={i}>
+          <rect className="bg-mark" x={r1(b.x)} y={top} width={r1(b.w)} height={r1(bottom - top)} data-current={b.mark.current ? '' : undefined} />
+          {b.mark.current && <line className="bg-mark__rule" x1={r1(b.x)} x2={r1(b.x + b.w)} y1={top} y2={top} data-current="" />}
+        </g>
       ))}
     </>
   );
 }
-function MarkLabels({ bands, rowY }: { bands: readonly Band[]; rowY: readonly number[] }) {
+function MarkLabels({ bands }: { bands: readonly Band[] }) {
   const rows = labelRows(bands.map((b) => ({ x: b.x, w: b.w, text: b.mark.label })));
   return (
     <>
       {bands.map((b, i) => {
-        const late = b.x + b.mark.label.length * 6.5 > W - 4;
+        const late = b.x + b.mark.label.length * CHAR > W - 4;
         return (
-          <text key={i} className="bg-mark__label" x={r1(late ? b.x + b.w - 2 : b.x + 2)} y={rowY[rows[i]]} textAnchor={late ? 'end' : 'start'}>{b.mark.label}</text>
+          <text key={i} className="bg-mark__label" x={r1(late ? b.x + b.w - 2 : b.x + 2)} y={ROW_Y[rows[i]]} textAnchor={late ? 'end' : 'start'} data-current={b.mark.current ? '' : undefined}>{b.mark.label}</text>
         );
       })}
     </>
   );
 }
 
+/**
+ * Columns over time. `bins` must be in ascending key order. `undatedNote` is required whenever `undated` is set (without it
+ * the count of undated rows would go unsaid); the screens always pass both.
+ */
 export function Columns({ id, locale, title, note, unit, bins, marks, undated, undatedNote, table }: {
   id: string; locale: Locale; title: string; note?: string; unit: 'day' | 'month'; bins: readonly Bin[]; marks?: readonly Mark[];
   undated?: number; undatedNote?: (o: { n: number }) => string; table: TableLabels;
 }) {
-  const H = 160;
-  const left = 28, right = W - 8, top = 28, base = 138;
+  const { height: H, left, right, top, base, tickY } = COLUMNS;
   const date = unit === 'day'
-    ? (k: string) => fmt(locale, { day: 'numeric', month: 'short', year: 'numeric' }).format(utc(k))
-    : (k: string) => fmt(locale, { month: 'short', year: 'numeric' }).format(utc(`${k}-01`));
+    ? (k: string) => dayLabel(locale, k)
+    : (k: string) => fmt(locale, { month: 'short', year: 'numeric' }).format(utcDate(`${k}-01`));
   const slotOf = unit === 'day' ? (k: string) => dayNumber(k) : (k: string) => monthIndex(k);
   const first = bins.length ? slotOf(bins[0].key) : 0;
   const count = bins.length ? Math.max(1, slotOf(bins[bins.length - 1].key) - first + 1) : 1;
   const slot = (right - left) / count;
   const peak = niceMax(bins.reduce((m, b) => Math.max(m, b.n), 0));
   const yOf = (n: number) => base - (n / peak) * (base - top);
+  // Half-way gridline only where it is a whole number: a peak of 1 or 5 gets the top line alone, so no label is fractional.
   const grid = peak >= 2 && Number.isInteger(peak / 2) ? [peak / 2, peak] : [peak];
   const barW = Math.max(1, Math.min(24, slot - 2));
   const cx = (s: number) => left + (s + 0.5) * slot;
@@ -151,14 +168,13 @@ export function Columns({ id, locale, title, note, unit, bins, marks, undated, u
       const every = bins.length <= 11 ? 1 : 7;
       bins.forEach((b, i) => {
         if (i % every) return;
-        const d = utc(b.key);
+        const d = utcDate(b.key);
         const dd = String(d.getUTCDate());
         ticks.push({ s: slotOf(b.key) - first, text: i === 0 ? `${dd} ${fmt(locale, { month: 'short' }).format(d)}` : dd });
       });
     } else {
       for (const k of monthTicks(bins[0].key, bins[bins.length - 1].key, 8)) {
-        const d = utc(`${k}-01`);
-        const m = fmt(locale, { month: 'short' }).format(d);
+        const m = fmt(locale, { month: 'short' }).format(utcDate(`${k}-01`));
         ticks.push({ s: monthIndex(k) - first, text: k.endsWith('-01') ? `${m} ${k.slice(0, 4)}` : m });
       }
     }
@@ -166,48 +182,53 @@ export function Columns({ id, locale, title, note, unit, bins, marks, undated, u
 
   return (
     <Figure id={id} kind="columns" title={title} note={note}>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby={`${id}-t`}>
-        <clipPath id={`${id}-clip`}><rect x={0} y={0} width={W} height={base} /></clipPath>
-        <MarkBands bands={bands} top={top} bottom={base} />
-        {grid.map((g) => (
-          <g key={g}>
-            <line className="bg-chart__grid" x1={left} x2={right} y1={r1(yOf(g))} y2={r1(yOf(g))} />
-            <text x={left - 4} y={r1(yOf(g) + 4)} textAnchor="end">{String(g)}</text>
+      <Plot id={id}>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby={`${id}-t`}>
+          <clipPath id={`${id}-clip`}><rect x={0} y={0} width={W} height={base} /></clipPath>
+          <MarkBands bands={bands} top={top} bottom={base} />
+          {grid.map((g) => (
+            <g key={g}>
+              <line className="bg-chart__grid" x1={left} x2={right} y1={r1(yOf(g))} y2={r1(yOf(g))} />
+              <text x={left - 4} y={r1(yOf(g) + 5)} textAnchor="end">{String(g)}</text>
+            </g>
+          ))}
+          <g clipPath={`url(#${id}-clip)`}>
+            {bins.filter((b) => b.n > 0).map((b) => {
+              const h = Math.max(2, base - yOf(b.n));
+              return (
+                <rect key={b.key} className="bg-col" data-key={b.key} x={r1(cx(slotOf(b.key) - first) - barW / 2)} y={r1(base - h)} width={r1(barW)} height={r1(h + 4)} rx={Math.min(4, r1(barW / 2))}>
+                  <title>{`${date(b.key)}: ${b.n}`}</title>
+                </rect>
+              );
+            })}
           </g>
-        ))}
-        <g clipPath={`url(#${id}-clip)`}>
-          {bins.filter((b) => b.n > 0).map((b) => {
-            const h = base - yOf(b.n);
-            return (
-              <rect key={b.key} className="bg-col" data-key={b.key} x={r1(cx(slotOf(b.key) - first) - barW / 2)} y={r1(yOf(b.n))} width={r1(barW)} height={r1(h + 4)} rx={Math.min(4, r1(barW / 2))}>
-                <title>{`${date(b.key)}: ${b.n}`}</title>
-              </rect>
-            );
+          <line className="bg-chart__base" x1={left} x2={right} y1={base} y2={base} />
+          {ticks.map((t, i) => {
+            const x = cx(t.s);
+            const edge = x < left + 18 ? 'start' : x > right - 18 ? 'end' : 'middle';
+            return <text key={i} x={r1(edge === 'start' ? left : edge === 'end' ? right : x)} y={tickY} textAnchor={edge}>{t.text}</text>;
           })}
-        </g>
-        <line className="bg-chart__base" x1={left} x2={right} y1={base} y2={base} />
-        {ticks.map((t, i) => {
-          const x = cx(t.s);
-          const edge = x < left + 14 ? 'start' : x > right - 14 ? 'end' : 'middle';
-          return <text key={i} x={r1(edge === 'start' ? left : edge === 'end' ? right : x)} y={base + 16} textAnchor={edge}>{t.text}</text>;
-        })}
-        <MarkLabels bands={bands} rowY={[10, 22]} />
-      </svg>
+          <MarkLabels bands={bands} />
+        </svg>
+      </Plot>
       {undated !== undefined && undated > 0 && undatedNote && <p className="bg-chart__note">{undatedNote({ n: undated })}</p>}
       <Table labels={table} rows={bins.map((b) => [date(b.key), b.n] as const)} />
     </Figure>
   );
 }
 
+/** TimeStrip's vertical layout in viewBox units: a header for the mark labels, 26 per lane, then the axis and its year labels. */
+export const STRIP = { laneTop: 34, lane: 26, footer: 23 } as const;
+export const stripHeight = (lanes: number) => STRIP.laneTop + STRIP.lane * lanes + STRIP.footer;
+
 export function TimeStrip({ id, locale, title, note, span, marks, lanes, table }: {
   id: string; locale: Locale; title: string; note?: string; span: { from: string; to: string }; marks: readonly Mark[]; lanes: readonly Lane[]; table: TableLabels;
 }) {
-  const H = 40 + 22 * lanes.length;
+  const H = stripHeight(lanes.length);
   const pad = 4, inner = W - 2 * pad;
   const x = (iso: string) => pad + xOf(iso, span, inner);
-  const laneTop = 26;
-  const axis = laneTop + 22 * lanes.length + 2;
-  const full = (iso: string) => fmt(locale, { day: 'numeric', month: 'short', year: 'numeric' }).format(utc(iso));
+  const { laneTop, lane } = STRIP;
+  const axis = laneTop + lane * lanes.length + 2;
 
   const bands: Band[] = marks.flatMap((m) => {
     const a = x(m.from);
@@ -224,32 +245,40 @@ export function TimeStrip({ id, locale, title, note, span, marks, lanes, table }
     if (dayNumber(jan) < dayNumber(span.from) || dayNumber(jan) > dayNumber(span.to) || (y - y0) % stepY) continue;
     years.push({ x: x(jan), text: String(y) });
   }
-  if (!years.length || years[0].x > 40) years.unshift({ x: x(span.from), text: span.from.slice(0, 4) });
+  if (!years.length || years[0].x > 48) years.unshift({ x: x(span.from), text: span.from.slice(0, 4) });
+
+  // The table twin: one row per date, in date order. Its key is the lane, or the date itself when there is one lane.
+  const rows = lanes
+    .flatMap((l) => l.dates.map((d) => ({ d, l: l.label })))
+    .sort((a, b) => dayNumber(a.d) - dayNumber(b.d))
+    .map(({ d, l }) => [lanes.length === 1 ? dayLabel(locale, d) : l, dayLabel(locale, d)] as const);
 
   return (
     <Figure id={id} kind="strip" title={title} note={note}>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby={`${id}-t`}>
-        <MarkBands bands={bands} top={laneTop} bottom={axis} />
-        <line className="bg-chart__base" x1={pad} x2={W - pad} y1={axis} y2={axis} />
-        {years.map((t, i) => (
-          <g key={i}>
-            <line className="bg-chart__grid" x1={r1(t.x)} x2={r1(t.x)} y1={axis} y2={axis + 4} />
-            <text x={r1(t.x)} y={H - 1} textAnchor={i === 0 && t.x < 20 ? 'start' : 'middle'}>{t.text}</text>
-          </g>
-        ))}
-        {lanes.map((l, i) => (
-          <g key={i}>
-            <text x={pad} y={laneTop + 22 * i + 9}>{l.label}</text>
-            {l.dates.map((d, j) => (
-              <circle key={j} className="bg-dot" cx={r1(x(d))} cy={laneTop + 22 * i + 16} r={4}>
-                <title>{full(d)}</title>
-              </circle>
-            ))}
-          </g>
-        ))}
-        <MarkLabels bands={bands} rowY={[10, 22]} />
-      </svg>
-      <Table labels={table} rows={lanes.map((l) => [l.label, l.dates.length] as const)} />
+      <Plot id={id}>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby={`${id}-t`}>
+          <MarkBands bands={bands} top={laneTop} bottom={axis} />
+          <line className="bg-chart__base" x1={pad} x2={W - pad} y1={axis} y2={axis} />
+          {years.map((t, i) => (
+            <g key={i}>
+              <line className="bg-chart__grid" x1={r1(t.x)} x2={r1(t.x)} y1={axis} y2={axis + 4} />
+              <text x={r1(t.x)} y={H - 2} textAnchor={i === 0 && t.x < 24 ? 'start' : 'middle'}>{t.text}</text>
+            </g>
+          ))}
+          {lanes.map((l, i) => (
+            <g key={i}>
+              <text x={pad} y={laneTop + lane * i + 12}>{l.label}</text>
+              {l.dates.map((d, j) => (
+                <circle key={j} className="bg-dot" cx={r1(x(d))} cy={laneTop + lane * i + 20} r={4}>
+                  <title>{dayLabel(locale, d)}</title>
+                </circle>
+              ))}
+            </g>
+          ))}
+          <MarkLabels bands={bands} />
+        </svg>
+      </Plot>
+      <Table labels={table} rows={rows} />
     </Figure>
   );
 }

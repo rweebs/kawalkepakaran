@@ -1,13 +1,16 @@
 // The charts' arithmetic, pure: dates to days and months, a tidy axis maximum, positions on a time span, month ticks.
 // Dates are read as UTC calendar days, so a result never depends on the viewer's time zone.
 
-const DAY_MS = 86_400_000;
+export const DAY_MS = 86_400_000;
 
 /** Days since 1970-01-01 UTC of an ISO day ('YYYY-MM-DD'; a month key counts as its first day). */
 export function dayNumber(iso: string): number {
   const [y, m = 1, d = 1] = iso.split('-').map(Number);
   return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
 }
+
+/** The UTC midnight of an ISO day (or month key, as its first day) as a Date. */
+export const utcDate = (iso: string): Date => new Date(dayNumber(iso) * DAY_MS);
 
 /** year × 12 + month − 1 of a 'YYYY-MM' key (or the month of a longer ISO date). */
 export function monthIndex(key: string): number {
