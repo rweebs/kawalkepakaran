@@ -392,6 +392,78 @@ describe('runtime', () => {
     expect(h.rt.state()!.volleys.map((v) => [v.id, v.state])).toEqual([[92, 'landed']]);
   });
 
+  it('lets the light take an absorbed volley visibly: its arrows fade where they were, no faster than 2 Hz allows, with one pulse', () => {
+    const still: Input = { drive: NO_INPUT, sight: false, skip: true, assist: false };
+    const h = harness({ input: () => still });
+    h.rt.start(0, [], 1);
+    for (let k = 0; k < 120 && h.rt.state()!.run.phase !== 'active'; k++) h.frame();
+    h.frames(30);
+    const now = h.rt.state()!;
+    // Landing 6 m beyond the front hull circle's centre (3.6 m ahead of the car's), half a second on: within 7 m, so the
+    // light takes it. It has been in the air a while; its far side's arrows are out.
+    const f = { x: Math.cos(now.car.yaw), z: -Math.sin(now.car.yaw) };
+    const to = { x: now.car.x + f.x * 9.6, z: now.car.z + f.z * 9.6 };
+    now.volleys = [scriptedVolley(to, now.run.t - 2.1, 95, { colliders: [], zones: [], mobile: false })];
+    const air = h.game.root.getObjectByName('volley-arrows') as THREE.InstancedMesh;
+    const fade = air.geometry.getAttribute('aFade');
+    const drawn = () => {
+      const out = new Map<string, number>();
+      const m = new THREE.Matrix4();
+      for (let i = 0; i < (air.visible ? air.count : 0); i++) {
+        air.getMatrixAt(i, m);
+        const p = new THREE.Vector3().setFromMatrixPosition(m);
+        out.set(`${p.x.toFixed(4)},${p.y.toFixed(4)},${p.z.toFixed(4)}`, fade.getX(i));
+      }
+      return out;
+    };
+    const step = 1 / 60 / 0.25 + 1e-6;
+    let prev = drawn();
+    let taken = -1;
+    let most = 0;
+    for (let k = 1; k <= 60; k++) {
+      const before = h.events.length;
+      h.frame();
+      const cur = drawn();
+      if (types(h.events.slice(before)).includes('absorbed')) taken = k;
+      if (taken > 0) {
+        // From the frame it is taken, its arrows stay where they were and fade.
+        for (const [key, level] of cur) {
+          expect(prev.has(key), `an arrow moved after the light took it, frame ${k}`).toBe(true);
+          expect(level).toBeLessThanOrEqual(prev.get(key)! + 1e-9);
+          expect(prev.get(key)! - level, `frame ${k}`).toBeLessThanOrEqual(step);
+        }
+        for (const [key, level] of prev) if (!cur.has(key)) expect(level, `popped out at frame ${k}`).toBeLessThanOrEqual(step);
+      } else most = Math.max(most, cur.size);
+      prev = cur;
+    }
+    expect(taken).toBeGreaterThan(20);
+    expect(most).toBeGreaterThan(2);
+    expect(h.game.chariot.pulse).toHaveBeenCalledTimes(1);
+    expect(prev.size).toBe(0);
+  });
+
+  it('hides the volleys while it circles, behind a chapter’s intro card and in the finale, and shows them again on start() and retry()', () => {
+    const h = harness();
+    const volleys = () => h.game.root.getObjectByName('volleys')!;
+    h.rt.start(0, [], 1);
+    h.frames(120);
+    expect(volleys().visible).toBe(true);
+    h.rt.orbit();
+    h.frames(3);
+    expect(volleys().visible).toBe(false);
+    h.rt.retry();
+    expect(volleys().visible).toBe(true);
+    h.rt.orbit();
+    h.rt.start(1, SLUGS_1, 1);
+    expect(volleys().visible).toBe(true);
+    h.rt.finale();
+    h.frames(3);
+    expect(volleys().visible).toBe(false);
+    expect(h.game.root.getObjectByName('pickups-play')!.visible).toBe(false);
+    h.rt.start(0, [], 1);
+    expect(volleys().visible).toBe(true);
+  });
+
   it('sends a HUD at most every 0.1 s of real time, and events only when there are some', () => {
     const h = harness();
     h.rt.start(0, [], 1);

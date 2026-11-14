@@ -186,11 +186,13 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     o.onError();
   }
 
+  /** Orbit and the finale: the engine and the layers rest, and the volleys' leftovers are hidden until play resumes. */
   function circleAround(at: XZ, next: Mode): void {
     mode = next;
     around = { x: at.x, z: at.z };
     circled = 0;
     game.setTimeScale(1);
+    volleys.setShown(false);
   }
 
   return {
@@ -206,6 +208,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       // The chapter's first second is not timed: the shaders of what it shows compile then.
       watch.hold();
       pickups.setFinale(false);
+      volleys.setShown(true);
     },
     orbit() {
       if (disposed) return;
@@ -217,6 +220,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       current = retryFromCheckpoint(current, world);
       mode = 'play';
       sinceHud = Infinity;
+      volleys.setShown(true);
     },
     skip() {
       if (disposed || !current) return;

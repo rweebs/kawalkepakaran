@@ -18,6 +18,7 @@ import { openTargets, type Decoy, type Phase, type RunState } from '../mission-r
 import type { MissionDef, PickupDef } from '../missions';
 import { ANCHORS, RECORD_CIRCLE } from '../world';
 import { disposeGroup } from './dispose';
+import { fadeOn, fading, instanced } from './instancing';
 import { brokenRingGeo, decoyFletchGeo, decoyShaftGeo, lotusGeo, merge, realShaftGeo, realTipGeo } from './shapes';
 import type { Layer, SceneGame } from './types';
 
@@ -138,24 +139,6 @@ function pickupsOf(def: MissionDef): PickupDef[] {
 }
 
 /**
- * Lets each instance fade on its own: the geometry's instanced `aFade` (0 to 1) multiplies the material's alpha. Every
- * geometry drawn with such a material carries the attribute.
- */
-function fading<T extends THREE.Material>(mat: T): T {
-  mat.transparent = true;
-  mat.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aFade;\nvarying float vFade;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = aFade;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vFade;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vFade;');
-  };
-  mat.customProgramCacheKey = () => 'pickup-fade';
-  return mat;
-}
-
-/**
  * The lakon's marker: a flattened torus of r MARKER.r lying on the ground, with MARKER.petals flat petals pointing out from
  * it. Both are thinner than twice LIFT, so no part dips into the ground.
  */
@@ -202,21 +185,6 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   const STAMP_SIZE = new THREE.Vector3().setScalar(STAMP.scale);
   const GOLD = new THREE.Color(COLOR.gold);
 
-  function instanced(name: string, geo: THREE.BufferGeometry, mat: THREE.Material, cap: number, parent: THREE.Object3D): THREE.InstancedMesh {
-    const mesh = new THREE.InstancedMesh(geo, mat, cap);
-    mesh.name = name;
-    mesh.count = 0;
-    mesh.visible = false;
-    mesh.frustumCulled = false;
-    parent.add(mesh);
-    return mesh;
-  }
-  /** Gives a geometry its per-instance opacity, or another's to share. */
-  function fadeOn(geo: THREE.BufferGeometry, cap: number, shared?: THREE.InstancedBufferAttribute): THREE.InstancedBufferAttribute {
-    const attr = shared ?? new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
-    geo.setAttribute('aFade', attr);
-    return attr;
-  }
   const lit = (color: string, glow: string, glowK: number, roughness: number, metalness = 0) =>
     fading(new THREE.MeshStandardMaterial({ color, emissive: glow, emissiveIntensity: glowK, roughness, metalness }));
   /** An additive glow: beams (with the shaft texture) and the rings on the ground. Fog off, so it reads across the field. */
@@ -228,16 +196,16 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   const tipGeo = realTipGeo().translate(0, -ENTRY.record, 0);
   const arrowFade = fadeOn(shaftGeo, CAP.records);
   fadeOn(tipGeo, CAP.records, arrowFade);
-  const arrows = instanced('record-arrows', shaftGeo, lit(COLOR.shaft, COLOR.shaftGlow, 0.45, 0.45, 0.15), CAP.records, play);
-  const tips = instanced('record-arrow-tips', tipGeo, lit(COLOR.tip, COLOR.tipGlow, 1.6, 0.3), CAP.records, play);
+  const arrows = instanced(play, 'record-arrows', shaftGeo, lit(COLOR.shaft, COLOR.shaftGlow, 0.45, 0.45, 0.15), CAP.records);
+  const tips = instanced(play, 'record-arrow-tips', tipGeo, lit(COLOR.tip, COLOR.tipGlow, 1.6, 0.3), CAP.records);
 
   // A parva's lontar: the box, and the post it lies on.
   const leafGeo = new THREE.BoxGeometry(LONTAR.w, LONTAR.h, LONTAR.d);
   const postGeo = new THREE.CylinderGeometry(0.045, 0.06, LONTAR.post, 6).translate(0, LONTAR.post / 2, 0);
   const leafFade = fadeOn(leafGeo, CAP.records);
   const postFade = fadeOn(postGeo, CAP.records);
-  const leaves = instanced('lontar', leafGeo, lit(COLOR.leaf, COLOR.leafGlow, 0.4, 0.7), CAP.records, play);
-  const posts = instanced('lontar-posts', postGeo, fading(new THREE.MeshStandardMaterial({ color: COLOR.post, roughness: 0.85, metalness: 0 })), CAP.records, play);
+  const leaves = instanced(play, 'lontar', leafGeo, lit(COLOR.leaf, COLOR.leafGlow, 0.4, 0.7), CAP.records);
+  const posts = instanced(play, 'lontar-posts', postGeo, fading(new THREE.MeshStandardMaterial({ color: COLOR.post, roughness: 0.85, metalness: 0 })), CAP.records);
 
   const halos = Array.from({ length: CAP.records }, () => {
     const s = glowSprite(game.textures.glow, COLOR.halo, HALO.size, 0);
@@ -253,17 +221,17 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   const copyFade = fadeOn(copyGeo, CAP.copies);
   const copyMat = lit(COLOR.copy, COLOR.copyGlow, 0.6, 0.9);
   copyMat.opacity = SHIMMER.base;
-  const copies = instanced('decoys', copyGeo, copyMat, CAP.copies, play);
+  const copies = instanced(play, 'decoys', copyGeo, copyMat, CAP.copies);
 
   // Mata's stamps, fading in and out together with sight.
   const lotusMat = new THREE.MeshBasicMaterial({ color: COLOR.lotus, toneMapped: false, transparent: true, opacity: 0 });
   const ringMat = new THREE.MeshBasicMaterial({ color: COLOR.ring, toneMapped: false, transparent: true, opacity: 0 });
-  const lotus = fxLayer(instanced('stamp-lotus', lotusGeo(), lotusMat, CAP.records, play));
-  const rings = fxLayer(instanced('stamp-ring', brokenRingGeo(), ringMat, CAP.copies, play));
+  const lotus = fxLayer(instanced(play, 'stamp-lotus', lotusGeo(), lotusMat, CAP.records));
+  const rings = fxLayer(instanced(play, 'stamp-ring', brokenRingGeo(), ringMat, CAP.copies));
 
   // The beams over the records, each turned to the camera about the vertical; tinted gold (fading with their records).
   const beamGeo = new THREE.PlaneGeometry(BEAM.w, BEAM.h);
-  const beams = fxLayer(instanced('record-beams', beamGeo, glowMat('#ffffff', 0.8, game.textures.shaft), CAP.records, play));
+  const beams = fxLayer(instanced(play, 'record-beams', beamGeo, glowMat('#ffffff', 0.8, game.textures.shaft), CAP.records));
   beams.renderOrder = 1;
   for (let k = 0; k < CAP.records; k++) beams.setColorAt(k, GOLD); // the colour buffer now, never in a frame
   const beamAt = new Float64Array(CAP.records * 3);
@@ -302,8 +270,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   group.add(towerBeam, recordCircle);
 
   // The finale: 24 clay lamps lit round the tower, each with its flame and its halo.
-  const cups = instanced('lamps', new THREE.CylinderGeometry(0.16, 0.1, 0.09, 10).translate(0, 0.045, 0), new THREE.MeshStandardMaterial({ color: COLOR.clay, roughness: 0.9, metalness: 0 }), LAMPS.count, finale);
-  const flames = instanced('lamp-flames', new THREE.ConeGeometry(0.045, 0.16, 6).translate(0, 0.17, 0), new THREE.MeshBasicMaterial({ color: COLOR.flame, toneMapped: false }), LAMPS.count, finale);
+  const cups = instanced(finale, 'lamps', new THREE.CylinderGeometry(0.16, 0.1, 0.09, 10).translate(0, 0.045, 0), new THREE.MeshStandardMaterial({ color: COLOR.clay, roughness: 0.9, metalness: 0 }), LAMPS.count);
+  const flames = instanced(finale, 'lamp-flames', new THREE.ConeGeometry(0.045, 0.16, 6).translate(0, 0.17, 0), new THREE.MeshBasicMaterial({ color: COLOR.flame, toneMapped: false }), LAMPS.count);
   for (let k = 0; k < LAMPS.count; k++) {
     const a = (k / LAMPS.count) * Math.PI * 2;
     const x = tower.x + LAMPS.r * Math.cos(a);

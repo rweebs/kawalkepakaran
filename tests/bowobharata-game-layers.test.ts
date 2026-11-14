@@ -16,7 +16,7 @@ import { missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
 import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
 import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
 import { hullCircles } from '../src/lib/bowobharata-game/collide';
-import { VOLLEY } from '../src/lib/bowobharata-game/tuning';
+import { DRIVE, VOLLEY } from '../src/lib/bowobharata-game/tuning';
 import { arrowPoint, scriptedVolley, telegraphAt, type Cloud, type Volley } from '../src/lib/bowobharata-game/volley';
 import type { SceneGame } from '../src/lib/bowobharata-game/world/types';
 import { CLEAR, createLandmarks } from '../src/lib/bowobharata-game/world/landmarks3d';
@@ -24,6 +24,7 @@ import { DUST, TUFTS, cellTuft, createGround, inField, ringCells, tuftFade } fro
 import { bindChariot } from '../src/lib/bowobharata-game/world/chariot-bind';
 import { SHIMMER, createPickups, shimmerAt } from '../src/lib/bowobharata-game/world/pickups3d';
 import { createVolleys } from '../src/lib/bowobharata-game/world/volleys3d';
+import { FADE_KEY, fadeOn, fading, instanced } from '../src/lib/bowobharata-game/world/instancing';
 import { disposeGroup } from '../src/lib/bowobharata-game/world/dispose';
 import * as shapes from '../src/lib/bowobharata-game/world/shapes';
 import * as arrows from '../src/lib/bowobharata-game/arrows3d';
@@ -478,9 +479,10 @@ describe('ground detail', () => {
     const src = read('src/lib/bowobharata-game/world/ground3d.ts');
     const from = src.indexOf('  function fadeTufts(');
     expect(from).toBeGreaterThan(0);
-    const body = src.slice(from, src.indexOf('\n  }\n', from));
-    expect(body).not.toMatch(/\bnew\b|=>|\.\.\.|[=(,]\s*[[{]|\.(map|filter|slice|concat|flatMap|forEach)\(/);
-    expect(body).not.toMatch(/\b(ringCells|cellTuft|mulberry32|forward|rightOf|placeTufts)\(/);
+    const to = src.indexOf('\n  }\n', from);
+    const body = src.slice(from, to);
+    expect(body).toContain('tuftFade(');
+    expect(frameCodeFaults(body, src.slice(0, from) + src.slice(to), ['ringCells', 'cellTuft', 'mulberry32', 'forward', 'rightOf', 'placeTufts'])).toEqual([]);
     const sync = src.slice(src.indexOf('    sync(s, time) {'));
     expect(sync).toContain('placeTufts(s.car);');
     expect(sync).toContain('fadeTufts(s.car);');
@@ -702,6 +704,68 @@ function walk(dir: string): string[] {
 }
 const read = (f: string) => readFileSync(f, 'utf8');
 
+/**
+ * Every way a frame's code could build something, each named, found in `code` with its comments taken out: `new`, a
+ * closure or spread, an object or array literal (after = ( , ? : or return), a template literal, a copying method,
+ * Array.from or an Object helper; a call to any of `calls` (helpers that build their result); and a call to a closure or
+ * function expression made in `outside` (the rest of the file), which a check of the frame's own text would miss.
+ */
+function frameCodeFaults(code: string, outside: string, calls: readonly string[] = []): string[] {
+  const bare = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const banned: [string, RegExp][] = [
+    ['new', /\bnew\b/],
+    ['closure', /=>/],
+    ['spread', /\.\.\./],
+    ['literal after = ( or ,', /[=(,]\s*[[{]/],
+    ['literal in a ternary', /[?:]\s*[[{]/],
+    ['returned literal', /\breturn\s*[[{]/],
+    ['template literal', /`/],
+    ['copying method', /\.(map|filter|slice|concat|flatMap|reduce|forEach|some|every|find|clone|split|join)\(/],
+    ['Array.from or an Object helper', /\bArray\.from\(|\bArray\(|\bObject\.\w+\(/],
+  ];
+  const faults = banned.filter(([, re]) => re.test(bare)).map(([name]) => name);
+  for (const name of calls) if (new RegExp(`\\b${name}\\(`).test(bare)) faults.push(`calls ${name}`);
+  const closures = [...outside.matchAll(/\b(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^()]*\)|\w+)\s*(?::[^=;]+?)?=>)/g)];
+  for (const [, name] of closures) if (new RegExp(`\\b${name}\\(`).test(bare)) faults.push(`calls the closure ${name}`);
+  return faults;
+}
+
+describe('frame-code check', () => {
+  it('names each way a frame could build something, and passes the code a frame does run', () => {
+    const cases: [string, string][] = [
+      ['new', 'const m = new THREE.Matrix4();'],
+      ['closure', 'list.sort((a, b) => a - b);'],
+      ['spread', 'f(...xs);'],
+      ['literal after = ( or ,', 'const p = { x: 1 };'],
+      ['literal after = ( or ,', 'g(a, [1, 2]);'],
+      ['literal in a ternary', 'const q = ok ? { x } : null;'],
+      ['literal in a ternary', 'const q = ok ? null : [x];'],
+      ['returned literal', 'return { x };'],
+      ['returned literal', 'return [x];'],
+      ['template literal', 'mesh.name = `${n}`;'],
+      ['copying method', 'const v = spot.clone();'],
+      ['copying method', 'const ys = xs.slice(1);'],
+      ['Array.from or an Object helper', 'const a = Array.from(xs);'],
+      ['Array.from or an Object helper', 'const o = Object.assign(p, q);'],
+    ];
+    for (const [name, code] of cases) expect(frameCodeFaults(code, ''), code).toContain(name);
+    expect(frameCodeFaults('const p = arrowPoint(v, k, s, g);', '', ['arrowPoint'])).toEqual(['calls arrowPoint']);
+    expect(frameCodeFaults('n = twice(n);', 'const twice = (k: number): number => k * 2;')).toEqual(['calls the closure twice']);
+    expect(frameCodeFaults('n = half(n);', 'const half = function (k: number) { return k / 2; };')).toEqual(['calls the closure half']);
+    expect(frameCodeFaults('n = one(n);', 'const one = k => k;')).toEqual(['calls the closure one']);
+    // Comments are not code; and what the layers' frames do write passes.
+    expect(frameCodeFaults('// a new { x } `here` => ... return [x]\n/* Array.from(xs) */\nx = 1;', '')).toEqual([]);
+    const fine = [
+      'const v = slotNow[i];',
+      'if (v === null || roam) continue;',
+      'shown[a] = goal < x ? Math.max(goal, x - step) : Math.min(goal, x + step);',
+      'function show(mesh: THREE.InstancedMesh, n: number, fade?: THREE.InstancedBufferAttribute): void {',
+      'columns.setMatrixAt(k, m4.compose(spot.set(x, y, z), turn, size.set(columnW[k], 1, 1)));',
+    ].join('\n');
+    expect(frameCodeFaults(fine, 'const glowMat = (opacity: number) => opacity;')).toEqual([]);
+  });
+});
+
 describe('pickups', () => {
   type Run = GameState['run'];
   /** Whether o is drawn: it and every parent visible. */
@@ -792,7 +856,7 @@ describe('pickups', () => {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       expect(mat.isMeshStandardMaterial, name).toBe(true);
       expect(mat.transparent, name).toBe(true);
-      expect(mat.customProgramCacheKey(), name).toBe('pickup-fade');
+      expect(mat.customProgramCacheKey(), name).toBe(FADE_KEY);
       expect((mesh.geometry.getAttribute('aFade') as THREE.InstancedBufferAttribute).isInstancedBufferAttribute, name).toBe(true);
       const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
       mat.onBeforeCompile(shader as unknown as Parameters<THREE.Material['onBeforeCompile']>[0], undefined as unknown as THREE.WebGLRenderer);
@@ -1568,8 +1632,8 @@ describe('pickups', () => {
     const declared = (text: string) => [...text.matchAll(/\bfunction (\w+)\(/g)].map((m) => m[1]);
     const start = src.indexOf('export function createPickups(');
     expect(start).toBeGreaterThan(0);
-    for (const fn of declared(src.slice(0, start))) expect(['shimmerAt', 'pickupsOf', 'fading', 'markerGeo'], fn).toContain(fn);
-    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['instanced', 'fadeOn', 'slotOf', 'layOut'], fn).toContain(fn);
+    for (const fn of declared(src.slice(0, start))) expect(['shimmerAt', 'pickupsOf', 'markerGeo'], fn).toContain(fn);
+    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['slotOf', 'layOut'], fn).toContain(fn);
     expect(declared(src.slice(to))).toEqual(['dispose']);
     // shimmerAt, the one module-level function a frame runs, is plain arithmetic.
     const shimmer = src.slice(src.indexOf('export function shimmerAt('));
@@ -1692,11 +1756,12 @@ describe('volleys', () => {
       expect(mat.color.getHexString(), name).toBe('d6d9de');
       expect(mat.toneMapped, name).toBe(false);
     }
-    // Each reads its instance's aFade in the shader, as the pickups' records and copies do.
+    // Each reads its instance's aFade in the shader with the pickups' own patch: one program key for both layers.
     const count = (src: string, s: string) => src.split(s).length - 1;
     for (const name of NAMES.slice(0, 4)) {
       const mesh = meshOf(game, name);
       const mat = mesh.material as THREE.Material;
+      expect(mat.customProgramCacheKey(), name).toBe(FADE_KEY);
       expect((mesh.geometry.getAttribute('aFade') as THREE.InstancedBufferAttribute).isInstancedBufferAttribute, name).toBe(true);
       const lib = name.includes('fletching') ? THREE.ShaderLib.basic : THREE.ShaderLib.standard;
       const shader = { uniforms: {}, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
@@ -1741,7 +1806,7 @@ describe('volleys', () => {
     expect(drawnOf(game, 'telegraph-rings')).toBe(1);
   });
 
-  it('draws the column as an amber additive plane 1.2 m wide and 6 m tall, fog off, standing on the landing and turned to the camera', () => {
+  it('draws the column as an amber additive plane 1.2 m wide and 6 m tall, fog off, standing on the ground at the landing, turned to the camera', () => {
     const { game } = fakeGame();
     const layer = createVolleys(game, false);
     const col = meshOf(game, 'telegraph-columns');
@@ -1763,10 +1828,10 @@ describe('volleys', () => {
       const m = poseOf(col, 0);
       const p = new THREE.Vector3().setFromMatrixPosition(m);
       expect(flatDist(p, LAND)).toBeLessThanOrEqual(F32);
-      // From in the ground to well above it.
+      // Standing on the ground at the landing, all 6 m of it above the ground.
       const g = groundHeight(LAND.x, LAND.z);
-      expect(p.y - 3).toBeLessThanOrEqual(g);
-      expect(p.y + 3).toBeGreaterThanOrEqual(g + 4);
+      expect(p.y - 3, 'its foot').toBeCloseTo(g, 4);
+      expect(p.y + 3, 'its top').toBeCloseTo(g + 6, 4);
       const { x, y, z } = basisOf(m);
       expect(y.clone().normalize().angleTo(new THREE.Vector3(0, 1, 0))).toBeLessThan(1e-6);
       expect(Math.abs(angleDiff(Math.atan2(z.x, z.z), Math.atan2(cam.x - p.x, cam.z - p.z)))).toBeLessThan(1e-5);
@@ -1801,7 +1866,7 @@ describe('volleys', () => {
     for (let k = 1; k < widths.length; k++) expect(widths[k]).toBeLessThanOrEqual(widths[k - 1] + 1e-9);
   });
 
-  it('lays the ring, a flat torus of r 2.4 and tube 0.08 in the same amber, over the ground round the landing', () => {
+  it('lays the ring, a torus of r 2.4 with a round tube of 0.08 lying flat, in the same amber, over the ground round the landing', () => {
     const { game } = fakeGame();
     const layer = createVolleys(game, false);
     const ring = meshOf(game, 'telegraph-rings');
@@ -1809,7 +1874,8 @@ describe('volleys', () => {
     const size = ring.geometry.boundingBox!.getSize(new THREE.Vector3());
     expect(size.x).toBeCloseTo(2 * (2.4 + 0.08), 6);
     expect(size.z).toBeCloseTo(2 * (2.4 + 0.08), 6);
-    expect(size.y).toBeLessThanOrEqual(2 * 0.08);
+    // Lying flat, not squashed: the tube is as tall as it is wide.
+    expect(size.y).toBeCloseTo(2 * 0.08, 6);
     const mat = ring.material as THREE.MeshBasicMaterial;
     expect(mat.color.getHexString()).toBe('ffb84a');
     expect(mat.blending).toBe(THREE.AdditiveBlending);
@@ -1821,10 +1887,10 @@ describe('volleys', () => {
       layer.sync(stateAtT(32, [volleyAt(32, { to })]), 32);
       expect(drawnOf(game, 'telegraph-rings')).toBe(1);
       expect(flatDist(placeOf(ring, 0), to)).toBeLessThanOrEqual(F32);
-      // Every vertex a hair over the ground under it, however the ground leans there.
+      // Every vertex clear of the ground under it, however the ground leans there, and none far over it.
       for (const p of vertices(ring, 0)) {
         const h = p.y - groundHeight(p.x, p.z);
-        expect(h).toBeGreaterThan(0);
+        expect(h).toBeGreaterThan(0.04);
         expect(h).toBeLessThan(0.3);
       }
     }
@@ -1956,6 +2022,83 @@ describe('volleys', () => {
     }
   });
 
+  it('fades in the air each arrow the chariot will reach where it lands: driving at 12, 17 and 25 m/s into a patch as it lands, no landed vertex is drawn within 3 m of a hull circle', () => {
+    const dt = 1 / 60;
+    // The arrows' own vertices, shaft and fletching, posed by an instance's matrix without a vector each.
+    const shape = fakeGame();
+    createVolleys(shape.game, false);
+    const verts: number[] = [];
+    for (const name of ['landed-arrows', 'landed-fletching']) {
+      const pos = meshOf(shape.game, name).geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) verts.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+    }
+    const pose = new THREE.Matrix4();
+    /** The least gap from any vertex of instance i to a hull circle's edge, across the ground. */
+    const closest = (mesh: THREE.InstancedMesh, i: number, hull: { x: number; z: number; r: number }[]) => {
+      mesh.getMatrixAt(i, pose);
+      const e = pose.elements;
+      let least = Infinity;
+      for (let v = 0; v < verts.length; v += 3) {
+        const x = e[0] * verts[v] + e[4] * verts[v + 1] + e[8] * verts[v + 2] + e[12];
+        const z = e[2] * verts[v] + e[6] * verts[v + 1] + e[10] * verts[v + 2] + e[14];
+        for (const h of hull) least = Math.min(least, Math.hypot(x - h.x, z - h.z) - h.r);
+      }
+      return least;
+    };
+    const spots = Array.from({ length: 12 }, (_, k) => arrowPoint(V0, k, 1, groundHeight));
+    // Frames off the landing's own instant, so the landing step is the first frame past it.
+    const start = V0.t0 - 0.097;
+    const kLand = Math.ceil((LANDS - start) / dt);
+    let near = 0;
+    let unseen = 0;
+    for (const speed of [12, 17, 25]) {
+      for (const yaw of [0.4, 2.0, -2.6, -1.1]) {
+        for (const side of [-2, 0, 1.5]) {
+          for (const short of [7.05, 8.5, 10, 12]) {
+            const { game } = fakeGame();
+            const layer = createVolleys(game, false);
+            const mesh = meshOf(game, 'landed-arrows');
+            const f = forward(yaw);
+            const r = rightOf(yaw);
+            // At the landing step the front hull circle's centre, 3.6 m ahead of the car's, is `short` m short of the
+            // landing and `side` m to its right: never within 7 m, so the volley lands rather than being taken.
+            const at = { x: LAND.x - f.x * (short + 3.6) + r.x * side, z: LAND.z - f.z * (short + 3.6) + r.z * side };
+            const was = Array<number>(12).fill(0);
+            for (let k = 0; start + k * dt <= LANDS + 1.2; k++) {
+              const t = start + k * dt;
+              const go = (k - kLand) * dt * speed;
+              const c = car(at.x + f.x * go, at.z + f.z * go, yaw, speed);
+              layer.sync(stateAtT(t, [volleyAt(t)], { car: c }), 10 + k * dt);
+              const hull = hullCircles(c.x, c.z, c.yaw);
+              const n = drawnOf(game, 'landed-arrows');
+              if (k === kLand) {
+                expect(volleyAt(t).state).toBe('landed');
+                expect(Math.min(...hull.map((h) => Math.hypot(h.x - LAND.x, h.z - LAND.z)))).toBeGreaterThan(VOLLEY.absorbR);
+                unseen += 12 - n;
+              }
+              const now = Array<number>(12).fill(0);
+              for (let i = 0; i < n; i++) {
+                const p = placeOf(mesh, i);
+                const j = spots.findIndex((s) => Math.hypot(s.x - p.x, s.z - p.z) <= 1e-3);
+                expect(j, 'a standing arrow out of place').toBeGreaterThanOrEqual(0);
+                now[j] = fadeOf(mesh, i);
+                if (hullGap(c, p) >= 6) continue;
+                near++;
+                const why = `${speed} m/s, yaw ${yaw}, side ${side}, ${short} m short: arrow ${j}, ${k - kLand} frames after landing`;
+                expect(closest(mesh, i, hull), why).toBeGreaterThanOrEqual(3);
+              }
+              // Once standing, no arrow changes faster than 2 Hz allows.
+              if (k > kLand) for (let j = 0; j < 12; j++) expect(Math.abs(now[j] - was[j]), `arrow ${j}, frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+              for (let j = 0; j < 12; j++) was[j] = now[j];
+            }
+          }
+        }
+      }
+    }
+    expect(near).toBeGreaterThan(20);
+    expect(unseen).toBeGreaterThan(100);
+  });
+
   it('fades what is in the air, the columns and the rings out over at least 0.25 s once the lakon is not active, and keeps them hidden', () => {
     const dt = 1 / 60;
     for (const phase of ['outro', 'failed', 'done'] as const) {
@@ -1999,17 +2142,98 @@ describe('volleys', () => {
     }
   });
 
-  it('draws nothing of a volley the light takes: it leaves the list as it lands, and nothing of it stands', () => {
-    const { game } = fakeGame();
-    const layer = createVolleys(game, false);
-    const t = flightT(0.97);
-    layer.sync(stateAtT(t, [volleyAt(t)]), t);
-    expect(drawnOf(game, 'volley-arrows')).toBe(12);
-    // Absorbed: gone from s.volleys in the frame it lands; it leaves no copy and no haze either.
-    for (let k = 1; k <= 30; k++) {
-      layer.sync(stateAtT(LANDS + k / 60, []), LANDS + k / 60);
-      for (const name of NAMES) expect(drawnOf(game, name), name).toBe(0);
+  it('eases standing arrows and a volley’s haze out over at least 0.6 s once the lakon is not active, so none stays frozen; the lakon’s own haze stays', () => {
+    const dt = 1 / 60;
+    const volleyHaze: Cloud = { id: 20, at: { x: -30, z: 40 }, r: 6, born: LANDS, life: VOLLEY.cloudLife };
+    const ownHaze: Cloud = { id: 3, at: { x: 40, z: -60 }, r: 6, born: 0, life: null };
+    const landed: Volley = { ...V0, state: 'landed' };
+    // Three seconds after the landing: standing, and the haze mid-life; the run's clock stands still once the lakon ends.
+    const t = LANDS + 3;
+    for (const phase of ['outro', 'failed', 'done'] as const) {
+      const { game } = fakeGame();
+      const layer = createVolleys(game, false);
+      const haze = named<THREE.Points>(game.root, 'haze');
+      const pos = haze.geometry.getAttribute('position');
+      const col = haze.geometry.getAttribute('color');
+      /** The most alpha among the puffs round a cloud (0 when none is drawn). */
+      const puffs = (c: Cloud) => {
+        let most = 0;
+        const n = visibleUp(haze) ? haze.geometry.drawRange.count : 0;
+        for (let i = 0; i < n; i++) if (Math.hypot(pos.getX(i) - c.at.x, pos.getZ(i) - c.at.z) <= c.r) most = Math.max(most, col.getW(i));
+        return most;
+      };
+      const level = () => ({
+        standing: drawnOf(game, 'landed-arrows') > 0 ? fadeOf(meshOf(game, 'landed-arrows'), 0) : 0,
+        haze: puffs(volleyHaze),
+      });
+      const clouds = [volleyHaze, ownHaze];
+      layer.sync(stateAtT(t, [landed], { clouds }), 10);
+      let last = level();
+      expect(last).toEqual({ standing: 1, haze: 1 });
+      expect(drawnOf(game, 'landed-arrows')).toBe(12);
+      let goneAt = NaN;
+      for (let k = 1; k <= 120; k++) {
+        layer.sync(stateAtT(t, [landed], { clouds, phase }), 10 + k * dt);
+        const now = level();
+        for (const key of ['standing', 'haze'] as const) {
+          expect(now[key], `${phase} ${key}, frame ${k}`).toBeLessThanOrEqual(last[key] + 1e-9);
+          expect(last[key] - now[key], `${phase} ${key}, frame ${k}`).toBeLessThanOrEqual(dt / 0.6 + 1e-6);
+        }
+        expect(puffs(ownHaze), `${phase}: the lakon's own haze`).toBe(1);
+        if (now.standing === 0 && now.haze === 0 && Number.isNaN(goneAt)) goneAt = k * dt;
+        if (!Number.isNaN(goneAt)) expect(drawnOf(game, 'landed-arrows'), `${phase}, frame ${k}`).toBe(0);
+        last = now;
+      }
+      expect(goneAt).toBeGreaterThanOrEqual(0.6);
+      expect(goneAt).toBeLessThanOrEqual(0.8);
     }
+  });
+
+  it('lets the light take a volley visibly: absorbed, its arrows fade where they were over at least 0.25 s, then nothing; the pulse is the runtime’s', () => {
+    const { game } = fakeGame();
+    const pulse = vi.fn();
+    game.chariot.pulse = pulse;
+    const layer = createVolleys(game, false);
+    const air = meshOf(game, 'volley-arrows');
+    const dt = 1 / 60;
+    // The chariot at rest, its front hull circle's centre (3.6 m ahead of its own) 6 m short of the landing: within 7 m,
+    // so the light takes the volley. The arrows on the near side are already gone; the far side's are out.
+    const yaw = 0.7;
+    const f = forward(yaw);
+    const c = car(LAND.x - f.x * 9.6, LAND.z - f.z * 9.6, yaw);
+    const drawn = () => {
+      const out = new Map<string, number>();
+      for (let i = 0; i < drawnOf(game, 'volley-arrows'); i++) {
+        const p = placeOf(air, i);
+        out.set(`${p.x.toFixed(4)},${p.y.toFixed(4)},${p.z.toFixed(4)}`, fadeOf(air, i));
+      }
+      return out;
+    };
+    // The scene's clock, a frame at a time throughout.
+    let clock = 10;
+    for (let t = flightT(0.6); t < LANDS; t += dt, clock += dt) layer.sync(stateAtT(t, [volleyAt(t)], { car: c }), clock);
+    let prev = drawn();
+    expect(prev.size).toBeGreaterThan(2);
+    // Absorbed: gone from s.volleys in the frame it lands. It leaves no copy and no haze either.
+    let goneAt = NaN;
+    for (let j = 1; j <= 40; j++, clock += dt) {
+      layer.sync(stateAtT(LANDS + j * dt, [], { car: c }), clock);
+      const now = drawn();
+      for (const [key, level] of now) {
+        expect(prev.has(key), `an arrow moved or came back, frame ${j}`).toBe(true);
+        expect(level).toBeLessThanOrEqual(prev.get(key)! + 1e-9);
+        expect(prev.get(key)! - level, `frame ${j}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      }
+      for (const [key, level] of prev) if (!now.has(key)) expect(level, `${key} popped out at frame ${j}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+      if (now.size === 0 && Number.isNaN(goneAt)) goneAt = j * dt;
+      for (const name of NAMES.slice(2)) expect(drawnOf(game, name), name).toBe(0);
+      prev = now;
+    }
+    expect(goneAt).toBeGreaterThanOrEqual(0.25);
+    expect(goneAt).toBeLessThanOrEqual(0.4);
+    for (const name of NAMES) expect(drawnOf(game, name), name).toBe(0);
+    // The layer never pulses: the runtime does, once per 'absorbed' event.
+    expect(pulse).not.toHaveBeenCalled();
   });
 
   it('draws nothing in roam, nor with nothing in flight or standing: empty lists, and a lakon’s own haze waits for its intro', () => {
@@ -2047,6 +2271,16 @@ describe('volleys', () => {
     expect(mat.transparent).toBe(true);
     expect(mat.depthWrite).toBe(false);
     expect(mat.vertexColors).toBe(true);
+    // A puff fades as it comes from 12 m to 2 m of the camera, so none fills the lens: at Laju's top speed that is at
+    // most 4 a second (a smoothstep's steepest is 1.5 over its band), within the 2 Hz comfort allows.
+    const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.points.vertexShader, fragmentShader: THREE.ShaderLib.points.fragmentShader };
+    mat.onBeforeCompile(shader as unknown as Parameters<THREE.Material['onBeforeCompile']>[0], undefined as unknown as THREE.WebGLRenderer);
+    const band = shader.vertexShader.match(/vNear = smoothstep\(([\d.]+), ([\d.]+), -mvPosition\.z\);/);
+    expect(band).not.toBeNull();
+    const [near, far] = [Number(band![1]), Number(band![2])];
+    expect([near, far]).toEqual([2, 12]);
+    expect((1.5 / (far - near)) * DRIVE.boostTop).toBeLessThanOrEqual(4);
+    expect(shader.fragmentShader).toContain('diffuseColor.a *= vNear;');
     const cloud: Cloud = { id: 9, at: { x: -30, z: 40 }, r: VOLLEY.cloudR, born: 10, life: VOLLEY.cloudLife };
     expect(cloud.r).toBe(6);
     const pos = haze.geometry.getAttribute('position');
@@ -2108,11 +2342,10 @@ describe('volleys', () => {
     }
   });
 
-  it('puts the columns, rings and haze on FX_LAYER, and the solid arrows on the scene’s own layer, as the targets are', () => {
+  it('puts everything on FX_LAYER, the arrows too: the ambient-occlusion and depth passes never read aFade, so a fading arrow there would leave a footprint', () => {
     const { game } = fakeGame();
     createVolleys(game, false);
-    for (const name of ['telegraph-columns', 'telegraph-rings', 'haze']) expect(named(game.root, name).layers.mask, name).toBe(1 << FX_LAYER);
-    for (const name of NAMES.slice(0, 4)) expect(named(game.root, name).layers.mask, name).toBe(1);
+    for (const name of [...NAMES, 'haze']) expect(named(game.root, name).layers.mask, name).toBe(1 << FX_LAYER);
   });
 
   it('draws in 7 calls at most, and in none with nothing out', () => {
@@ -2133,7 +2366,11 @@ describe('volleys', () => {
     const earlier: Volley = { ...scriptedVolley({ x: -60, z: 60 }, PLANNED - 5, 2, WORLD), state: 'landed' };
     layer.sync(stateAtT(t, [volleyAt(t), earlier], { clouds: [cloud] }), t);
     expect(calls()).toBe(7);
-    layer.sync(stateAtT(t, []), t + 1);
+    // All gone from the lists, the one in the air as an absorbed volley goes: the light takes its arrows over 0.3 s (the
+    // arrows and their fletching still drawn), then nothing.
+    layer.sync(stateAtT(t, []), t + 0.05);
+    expect(calls()).toBe(2);
+    for (let k = 1; k <= 8; k++) layer.sync(stateAtT(t, []), t + 0.05 + k * 0.05);
     expect(calls()).toBe(0);
   });
 
@@ -2144,18 +2381,14 @@ describe('volleys', () => {
     expect(from).toBeGreaterThan(0);
     expect(to).toBeGreaterThan(from);
     const frame = src.slice(from, to);
-    expect(frame).not.toMatch(/\bnew\b/);
-    expect(frame).not.toMatch(/=>|\.\.\./);
-    expect(frame).not.toMatch(/[=(,]\s*[[{]/);
-    expect(frame).not.toMatch(/\.(map|filter|slice|concat|flatMap|reduce|forEach|some|every|find)\(/);
     // arrowPoint, hullCircles, forward and rightOf each build an object: a frame works the same sums in place.
-    expect(frame).not.toMatch(/\b(arrowPoint|hullCircles|forward|rightOf)\(/);
+    expect(frameCodeFaults(frame, src.slice(0, from) + src.slice(to), ['arrowPoint', 'hullCircles', 'forward', 'rightOf'])).toEqual([]);
     // So the check reads every function a frame runs: above sync only what runs once, or once a volley; after dispose, none.
     const declared = (text: string) => [...text.matchAll(/\bfunction (\w+)\(/g)].map((m) => m[1]);
     const start = src.indexOf('export function createVolleys(');
     expect(start).toBeGreaterThan(0);
-    for (const fn of declared(src.slice(0, start))) expect(['fading', 'nearFade'], fn).toContain(fn);
-    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['instanced', 'fadeOn', 'claim'], fn).toContain(fn);
+    for (const fn of declared(src.slice(0, start))) expect(['nearFade'], fn).toContain(fn);
+    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['claim'], fn).toContain(fn);
     expect(declared(src.slice(to))).toEqual(['dispose']);
   });
 
@@ -2170,6 +2403,39 @@ describe('volleys', () => {
     expectFreed(game, owned, () => layer.dispose());
     expect(game.root.children).not.toContain(group);
     expect(frames.size).toBe(0);
+  });
+});
+
+describe('instancing', () => {
+  it('makes an instanced mesh empty and hidden under its parent, gives a geometry its per-instance fade or shares one, and patches a material to read it', () => {
+    const parent = new THREE.Group();
+    const geo = new THREE.BoxGeometry();
+    const mat = fading(new THREE.MeshBasicMaterial());
+    const mesh = instanced(parent, 'boxes', geo, mat, 5);
+    expect(mesh.parent).toBe(parent);
+    expect(mesh.name).toBe('boxes');
+    expect(mesh.count).toBe(0);
+    expect(mesh.visible).toBe(false);
+    expect(mesh.frustumCulled).toBe(false);
+    expect(mesh.instanceMatrix.count).toBe(5);
+    const fade = fadeOn(geo, 5);
+    expect(fade.isInstancedBufferAttribute).toBe(true);
+    expect(fade.count).toBe(5);
+    expect(geo.getAttribute('aFade')).toBe(fade);
+    const other = new THREE.BoxGeometry();
+    expect(fadeOn(other, 5, fade)).toBe(fade);
+    expect(other.getAttribute('aFade')).toBe(fade);
+    expect(mat.transparent).toBe(true);
+    expect(mat.customProgramCacheKey()).toBe(FADE_KEY);
+  });
+
+  it('is where pickups3d and volleys3d make their instanced meshes and fades: neither keeps a copy, so both share one fade program', () => {
+    for (const f of ['pickups3d.ts', 'volleys3d.ts']) {
+      const src = read(join('src/lib/bowobharata-game/world', f));
+      expect(src, f).toMatch(/from '\.\/instancing'/);
+      for (const fn of ['instanced', 'fadeOn', 'fading']) expect(src, `${f}: ${fn}`).not.toMatch(new RegExp(`function ${fn}\\b|const ${fn}\\b`));
+      expect(src, f).not.toMatch(/'pickup-fade'|'volley-fade'|attribute float aFade/);
+    }
   });
 });
 
@@ -2227,7 +2493,7 @@ describe('world/ framing (source)', () => {
   const TEXT = /fillText|strokeText|TextGeometry|FontLoader|CSS2DRenderer|CSS3DRenderer/;
 
   it('covers every file of the layers', () => {
-    for (const f of ['types.ts', 'shapes.ts', 'dispose.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts', 'volleys3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
+    for (const f of ['types.ts', 'shapes.ts', 'dispose.ts', 'instancing.ts', 'landmarks3d.ts', 'ground3d.ts', 'chariot-bind.ts', 'pickups3d.ts', 'volleys3d.ts']) expect(FILES).toContain(join(WORLD_DIR, f));
   });
 
   it('the matcher catches each specifier with its closing quote, and lets the allowed ones through', () => {
