@@ -1,0 +1,52 @@
+/* The record map on the chapter-report screens (src/components/bowobharata-game/ReportMap.tsx). The stage keeps the
+   still picture's 16:10 and stays short enough on a phone to scroll past; the legend and panel sit beside it from 52rem
+   and below it on narrower screens. Bright and dim changes ease over 0.6 s, and not at all under reduced motion. */
+.bg-map { display: grid; gap: 0.75rem; min-width: 0; }
+.bg-map > * { min-width: 0; }
+.bg-map__title { margin: 0; font-size: 1rem; }
+.bg-map__body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; align-items: start; }
+@media (min-width: 52rem) {
+  .bg-map__body { grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem); }
+}
+
+.bg-map__stage { position: relative; aspect-ratio: 16 / 10; max-height: 60vh; overflow: hidden; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-md); background: #0b1020; }
+.bg-map__svg, .bg-map__canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.bg-map__svg circle { transition: fill 0.6s ease; }
+.bg-map__svg line { transition: stroke-opacity 0.6s ease; }
+.bg-map__sel { pointer-events: none; }
+.bg-map__canvas { touch-action: none; cursor: grab; }
+.bg-map__canvas--pointer { cursor: pointer; }
+.bg-map__canvas--wait { visibility: hidden; }
+.bg-map__tip { position: absolute; z-index: 2; max-width: min(16rem, 70%); padding: 0.25rem 0.5rem; border: 1px solid var(--bg-glass-border); border-radius: 0.4rem;
+  background: rgba(11, 16, 32, 0.92); font-size: 0.8rem; pointer-events: none; overflow-wrap: anywhere; }
+
+.bg-map__side { display: grid; gap: 0.75rem; align-content: start; }
+.bg-map__legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; color: var(--text-secondary); font-size: 0.82rem; }
+.bg-map__legend li, .bg-map__pair { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; }
+.bg-map__pair { gap: 0.35rem; }
+.bg-map__swatch { display: inline-block; flex: none; width: 0.7rem; height: 0.7rem; border-radius: 50%; }
+.bg-map__swatch--line { width: 1.4rem; height: 3px; border-radius: 2px; }
+.bg-map__swatch--dim { box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.45); }
+
+.bg-map__panel { display: grid; gap: 0.4rem; font-size: 0.88rem; overflow-wrap: anywhere; }
+.bg-map__panel h5 { margin: 0; font-size: 1rem; }
+.bg-map__h { margin: 0; font-weight: 600; }
+.bg-map__kind { margin: 0; color: var(--text-secondary); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.bg-map__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.bg-map__links { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; max-height: 18rem; overflow-y: auto; }
+.bg-map__links li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem 0.5rem; }
+.bg-map__link { min-height: 2rem; padding: 0.2rem 0; border: 0; background: none; color: var(--text-accent); font: inherit; font-weight: 600; text-align: left;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer; overflow-wrap: anywhere; }
+.bg-map__muted { color: var(--text-secondary); font-size: 0.8rem; }
+
+.bg-map__rail { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.bg-map__chip, .bg-map__walk, .bg-map__btn { min-height: 44px; min-width: 44px; padding: 0.35rem 0.85rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-full);
+  background: transparent; color: var(--text-primary); font: inherit; font-size: 0.88rem; cursor: pointer; }
+.bg-map__chip[aria-pressed='true'] { border-color: var(--accent-amber); background: rgba(227, 179, 65, 0.14); }
+.bg-map__walk { border-color: rgba(147, 197, 253, 0.45); }
+.bg-map button:focus-visible, .bg-map [tabindex='-1']:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
+.bg-map__hint, .bg-map__still { margin: 0; color: var(--text-secondary); font-size: 0.82rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-map__svg circle, .bg-map__svg line { transition: none; }
+}
