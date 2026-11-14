@@ -11,8 +11,8 @@ import { countedRows, parvaWindow, type Chapter } from './record';
 import type { Bin, ChapterReport, Count, MapGraph, MapLink, MapLinkKind, MapNode, ReportData, ReportDot } from './report-types';
 
 /** buildGraph reads the rahmatwibowo.net and Fomo stores for nodes the record map drops, so it gets empty ones. */
-const EMPTY_SITE: WatchStore = { source: '', snapshots: [], urls: {} };
-const EMPTY_FOMO: Fomo = {
+export const EMPTY_SITE: WatchStore = { source: '', snapshots: [], urls: {} };
+export const EMPTY_FOMO: Fomo = {
   meta: { judul: '', objek: '', catatan: [], dibuat: null, total: {}, dikecualikan: 0 },
   accounts: [], posts: [], threads: [],
 };
@@ -51,7 +51,7 @@ const isDayOrMonth = (r: TerlaporKronologi): boolean => r.precision === 'day' ||
 function monthBins(rows: readonly TerlaporKronologi[], span?: { from: string; to: string }): { bins: Bin[]; undated: number } {
   const dated = rows.filter(isDayOrMonth);
   const undated = rows.length - dated.length;
-  if (dated.length === 0) return { bins: [], undated };
+  if (dated.length === 0 && !span) return { bins: [], undated };
   const keys = dated.map((r) => (r.iso as string).slice(0, 7)).sort();
   const from = span ? span.from.slice(0, 7) : keys[0];
   const to = span ? span.to.slice(0, 7) : keys[keys.length - 1];
@@ -153,10 +153,10 @@ export function reportData(p: Perkara, chapters: Chapter[]): ReportData {
 
   const dated = rows.filter(isDayOrMonth);
   const firstMonth = dated.map((r) => (r.iso as string).slice(0, 7)).sort()[0];
+  const lastWindowEnd = windows[windows.length - 1]?.to ?? '';
   const rowEnd = (r: TerlaporKronologi): string => (r.precision === 'month' ? lastDayOf(r.iso as string) : (r.iso as string));
   const lastRowEnd = dated.map(rowEnd).sort().pop() ?? '';
-  const lastWindowEnd = windows[windows.length - 1]?.to ?? '';
-  const span = { from: `${firstMonth}-01`, to: lastRowEnd > lastWindowEnd ? lastRowEnd : lastWindowEnd };
+  const span = { from: firstMonth ? `${firstMonth}-01` : windows[0]?.from ?? '', to: lastRowEnd > lastWindowEnd ? lastRowEnd : lastWindowEnd };
   const { bins: months, undated } = monthBins(rows, span);
 
   return {

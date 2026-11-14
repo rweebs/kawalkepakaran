@@ -54,7 +54,7 @@ describe('bowobharata game routes', () => {
     const eIds = new Set(perkara.terlapor.filter((t) => kategoriKey(t.kategori) === 'E').map((t) => t.id));
     expect(eIds.size).toBeGreaterThan(0);
     for (const c of d.chapters) for (const e of c.entries) expect(eIds.has(e.id)).toBe(false);
-    expect(JSON.stringify(d).length).toBeLessThan(200_000);
+    expect(JSON.stringify(d).length).toBeLessThan(175_000);
   });
   it('the island fetches the endpoint and the page has a server fallback and sized posters', () => {
     expect(read('src/components/BowobharataGame.tsx')).toContain('GAME_DATA_SRC');

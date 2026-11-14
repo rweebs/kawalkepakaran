@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PARVAS } from '../src/lib/bowobharata';
-import { kategoriKey, tahapan, type Perkara } from '../src/lib/perkara';
+import { kategoriKey, tahapan, type Perkara, type Terlapor, type TerlaporKronologi } from '../src/lib/perkara';
 import { buildGraph } from '../src/lib/relasi';
-import { buildChapters } from '../src/lib/bowobharata-game/record';
+import { buildChapters, type Chapter, type SanjayaEntry } from '../src/lib/bowobharata-game/record';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
-import { summaryOf } from '../src/lib/bowobharata-game/report-build';
+import { EMPTY_FOMO, EMPTY_SITE, reportData, summaryOf } from '../src/lib/bowobharata-game/report-build';
 import type { Count, MapLinkKind } from '../src/lib/bowobharata-game/report-types';
 
 const p = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
@@ -119,7 +119,7 @@ describe('report: police reports', () => {
 
 describe('report: the map', () => {
   const m = r.map;
-  const full = buildGraph({ source: '', snapshots: [], urls: {} }, p, { meta: { judul: '', objek: '', catatan: [], dibuat: null, total: {}, dikecualikan: 0 }, accounts: [], posts: [], threads: [] }, []);
+  const full = buildGraph(EMPTY_SITE, p, EMPTY_FOMO, []);
   const graphById = new Map(full.nodes.map((n) => [n.id, n]));
   const kinds: MapLinkKind[] = ['in-allegation', 'out-response', 'against', 'member'];
 
@@ -194,5 +194,49 @@ describe('report: summaries', () => {
 describe('report: size', () => {
   it('stays under 60,000 characters of JSON', () => {
     expect(JSON.stringify(r).length).toBeLessThan(60000);
+  });
+});
+
+describe('report: synthetic records', () => {
+  const row = (iso: string, precision: TerlaporKronologi['precision'], jenis = 'Perbuatan'): TerlaporKronologi => ({ tanggal: iso, iso, precision, peristiwa: 'x', jenis });
+  const terlapor = (id: string, rows: TerlaporKronologi[]): Terlapor => ({
+    id, nama: id, kategori: 'A. Terlapor Perorangan', klaster: null, statusIdentitas: null, dugaan: '', pasal: [], pasalUraian: [],
+    somasi: [], aduan: '', laporan: [], kronologis: rows, catatan: [], dokumen: [],
+  });
+  const entry = (t: Terlapor): SanjayaEntry => ({ id: t.id, nama: t.nama, kategori: t.kategori, klaster: null, dugaan: '', pasal: [], laporan: [], rows: t.kronologis, full: true });
+  const build = (rows: TerlaporKronologi[], chapterIndex: number, window: { from: string; to: string } | null) => {
+    const t = terlapor('T-1', rows);
+    const perkara = { terlapor: [t], laporan: [] } as unknown as Perkara;
+    const cs: Chapter[] = chapters.map((c, i) => ({ id: c.id, window: i === chapterIndex ? window : c.window, entries: i === chapterIndex ? [entry(t)] : [] }));
+    return reportData(perkara, cs);
+  };
+  const win = { from: '2026-04-26', to: '2026-04-28' };
+
+  it('sends month and year rows to undated on a day axis, and drops a day row outside the window', () => {
+    const c = build([row('2026-04-27', 'day'), row('2026-04', 'month'), row('2026', 'year'), row('2026-05-09', 'day')], 1, win).chapters[1];
+    expect(c.bins).toEqual([{ key: '2026-04-26', n: 0 }, { key: '2026-04-27', n: 1 }, { key: '2026-04-28', n: 0 }]);
+    expect(c.undated).toBe(2);
+  });
+  it('sends year rows to undated on a month axis', () => {
+    const c = build([row('2026-03-05', 'day'), row('2026-05', 'month'), row('2025', 'year')], 0, null).chapters[0];
+    expect(c.bins).toEqual([{ key: '2026-03', n: 1 }, { key: '2026-04', n: 0 }, { key: '2026-05', n: 1 }]);
+    expect(c.undated).toBe(1);
+  });
+  it('ends the span on the last day of a month row dated after the last window', () => {
+    const rep = build([row('2099-02', 'month')], 9, null);
+    expect(rep.span.to).toBe('2099-02-28');
+    expect(rep.months[rep.months.length - 1]).toEqual({ key: '2099-02', n: 1 });
+  });
+  it('falls back to the first window when no row is dated to a day or month', () => {
+    const rep = build([row('2026', 'year')], 9, null);
+    expect(rep.span.from).toBe(rep.windows[0].from);
+    expect(rep.span.from).not.toContain('undefined');
+    expect(rep.span.to).toBe(rep.windows[rep.windows.length - 1].to);
+    expect(rep.months.length).toBeGreaterThan(0);
+    expect(rep.months.every((b) => b.n === 0)).toBe(true);
+    expect(rep.undated).toBe(1);
+    const empty = reportData({ terlapor: [], laporan: [] } as unknown as Perkara, chapters.map((c) => ({ ...c, entries: [] })));
+    expect(empty.span.from).toBe(empty.windows[0].from);
+    expect(empty.months.length).toBeGreaterThan(0);
   });
 });
