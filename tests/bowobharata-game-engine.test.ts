@@ -496,28 +496,53 @@ describe('prologue pacing', () => {
   }, BOT_TIMEOUT);
 });
 
-describe("the teaching volley in every driver's hands", () => {
-  /** A driver of the sweep: the bot at a speed share and reaction, careless or careful, with Laju never, always or on
-   * straights. */
-  type Surge = 'none' | 'always' | 'straights';
-  type Driver = { speedCap: number; reaction: number; careful: boolean; surge: Surge };
-  const SURGES: readonly Surge[] = ['none', 'always', 'straights'];
-  const SWEEP: Driver[] = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1].flatMap((speedCap) =>
-    [0, 0.4, 0.8, 1].flatMap((reaction) =>
-      [false, true].flatMap((careful) => SURGES.map((surge) => ({ speedCap, reaction, careful, surge }))),
-    ),
-  );
-  /** The drivers held to an upright phone too: the autopilot and the first-time player at speedCap 0.3–0.8. */
-  const firstTime = (d: Driver) => d.reaction === 0.4 && d.speedCap >= 0.3 && d.speedCap <= 0.8;
-  const theAutopilot = (d: Driver) => d.speedCap === 1 && d.reaction === 0 && d.careful;
-  const upright = (d: Driver) => d.surge === 'none' && (firstTime(d) || theAutopilot(d));
-  const name = (d: Driver) =>
-    `speedCap ${d.speedCap}, reaction ${d.reaction}, ${d.careful ? 'careful' : 'careless'}, Laju ${d.surge}`;
+/** A driver of the sweep: the bot at a speed share and reaction, careless or careful, with Laju never, always or on
+ * straights. */
+type Surge = 'none' | 'always' | 'straights';
+type Driver = { speedCap: number; reaction: number; careful: boolean; surge: Surge };
+const SURGES: readonly Surge[] = ['none', 'always', 'straights'];
+const SWEEP: Driver[] = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1].flatMap((speedCap) =>
+  [0, 0.4, 0.8, 1].flatMap((reaction) =>
+    [false, true].flatMap((careful) => SURGES.map((surge) => ({ speedCap, reaction, careful, surge }))),
+  ),
+);
+/** The autopilot, and the first-time player at speedCap 0.3–0.8 (careless and careful), without Laju. */
+const firstTime = (d: Driver) => d.reaction === 0.4 && d.speedCap >= 0.3 && d.speedCap <= 0.8;
+const theAutopilot = (d: Driver) => d.speedCap === 1 && d.reaction === 0 && d.careful;
+const upright = (d: Driver) => d.surge === 'none' && (firstTime(d) || theAutopilot(d));
+const name = (d: Driver) =>
+  `speedCap ${d.speedCap}, reaction ${d.reaction}, ${d.careful ? 'careful' : 'careless'}, Laju ${d.surge}`;
+/** The driver's bot, and its input for a frame: the bot's own, with Laju held as the driver holds it. */
+function driverOf(d: Driver) {
+  const lures = d.careful ? {} : { useSight: false, avoidDecoys: false };
+  const bot = createBot({ speedCap: d.speedCap, reaction: d.reaction, ...lures });
+  return (s: GameState, w: World, aspect = DEFAULT_ASPECT): FrameInput => {
+    const auto = bot(s, w);
+    const straight = Math.abs(auto.drive.steer) < 0.1 && auto.drive.throttle > 0;
+    const boost = d.surge === 'always' || (d.surge === 'straights' && straight);
+    return { ...auto, aspect, drive: { ...auto.drive, boost } };
+  };
+}
 
+/**
+ * The prologue's own line, its way from the spawn through L1…L8 to the tower: a copy within 4.5 m of it lies in the
+ * chariot's way, whatever route the chariot has cached.
+ */
+const PROLOGUE_WAY = (() => {
+  const def = defOf(0);
+  const items = def.steps.flatMap((x) =>
+    x.kind === 'collect' ? x.items.map((i) => i.at) : x.kind === 'reach' ? [x.at] : [],
+  );
+  return [{ x: def.start.x, z: def.start.z }, ...items];
+})();
+const inTheWay = (at: { x: number; z: number }) => polylineDist(at, PROLOGUE_WAY) <= 4.5;
+
+describe("the teaching volley in every driver's hands", () => {
   interface Teaching {
-    /** The scripted volley's planning frames, and how many records were in by then. */
+    /** The scripted volley's planning frames, how many records were in by then, and the chariot's speed then (m/s). */
     planned: number;
     recordedThen: number;
+    speed: number;
     outcome: 'landed' | 'absorbed' | null;
     /** On the frame it came down: the least distance to a hull circle's centre, and where it showed (NDC). */
     gap: number;
@@ -534,16 +559,14 @@ describe("the teaching volley in every driver's hands", () => {
     const at = def.scripted.volleyLine!.at;
     const spot = { x: at.x, y: w.ground(at.x, at.z), z: at.z };
     let s = startChapter(def, def.start, 1, w);
-    const lures = d.careful ? {} : { useSight: false, avoidDecoys: false };
-    const bot = createBot({ speedCap: d.speedCap, reaction: d.reaction, ...lures });
+    const drive = driverOf(d);
     const none = { x: NaN, y: NaN, z: NaN };
-    const out: Teaching = { planned: 0, recordedThen: -1, outcome: null, gap: NaN, ndc: none, shown: 0, frames: 0 };
+    const out: Teaching = {
+      planned: 0, recordedThen: -1, speed: NaN, outcome: null, gap: NaN, ndc: none, shown: 0, frames: 0,
+    };
     let v: Volley | null = null;
     for (let k = 0; k < 40 / DT && !out.outcome; k++) {
-      const auto = bot(s, w);
-      const straight = Math.abs(auto.drive.steer) < 0.1 && auto.drive.throttle > 0;
-      const boost = d.surge === 'always' || (d.surge === 'straights' && straight);
-      const r = advance(s, { ...auto, aspect, drive: { ...auto.drive, boost } }, DT, w);
+      const r = advance(s, drive(s, w, aspect), DT, w);
       const next = r.state;
       for (const e of r.events) {
         if (e.type !== 'volley') continue;
@@ -551,6 +574,7 @@ describe("the teaching volley in every driver's hands", () => {
         if (x.to.x !== at.x || x.to.z !== at.z) continue;
         out.planned++;
         out.recordedThen = next.run.recorded.length;
+        out.speed = Math.hypot(next.car.vx, next.car.vz);
         v = x;
       }
       if (v) {
@@ -576,20 +600,27 @@ describe("the teaching volley in every driver's hands", () => {
 
   it('every driver of the sweep reaches the line once, with L1 open; without Laju it always lands, 8.5 m clear', () => {
     let absorbedWithLaju = 0;
+    let leastWithout = Infinity;
     for (const d of SWEEP) {
       const t = teach(d, DEFAULT_ASPECT);
       expect(t.planned, name(d)).toBe(1);
       expect(t.recordedThen, name(d)).toBe(0);
+      // Setting off forward from the spawn, every driver meets the line at much the same pace.
+      expect(t.speed, name(d)).toBeGreaterThanOrEqual(2.3);
+      expect(t.speed, name(d)).toBeLessThanOrEqual(3.6);
       expect(t.outcome, name(d)).not.toBeNull();
       if (d.surge === 'none') {
         expect(t.outcome, name(d)).toBe('landed');
         expect(t.gap, name(d)).toBeGreaterThanOrEqual(VOLLEY.absorbR + 1.5);
+        leastWithout = Math.min(leastWithout, t.gap);
       } else if (t.outcome === 'absorbed') absorbedWithLaju++;
       // On a wide screen it comes down in front of the camera, within 0.9 of the half-width.
       expect(t.ndc.z, name(d)).toBeGreaterThan(0);
       expect(Math.abs(t.ndc.x), name(d)).toBeLessThanOrEqual(0.9);
     }
     expect(SWEEP).toHaveLength(216);
+    // The least clearance without Laju, as the prologue's comment states it.
+    expect(leastWithout).toBeGreaterThanOrEqual(21.1);
     expect(absorbedWithLaju).toBeLessThanOrEqual(SWEEP.length / 3);
   }, BOT_TIMEOUT);
 
@@ -605,6 +636,47 @@ describe("the teaching volley in every driver's hands", () => {
       expect(t.shown / t.frames, name(d)).toBeGreaterThanOrEqual(0.5);
     }
   }, BOT_TIMEOUT);
+});
+
+describe("the Mata lesson in every driver's hands", () => {
+  it.each([0, 0.4, 0.8, 1])(
+    'reaction %s s: every driver who meets the lesson copy is told of Mata before taking it or coming within 2.2 m',
+    (reaction) => {
+      const def = defOf(0);
+      const lesson = def.scripted.decoys[0];
+      expect(inTheWay(lesson)).toBe(true);
+      expect(inTheWay(def.scripted.volleyLine!.at)).toBe(false);
+      let met = 0;
+      for (const d of SWEEP.filter((x) => x.reaction === reaction)) {
+        let s = startChapter(def, def.start, 1, desktop);
+        const drive = driverOf(d);
+        let near = false;
+        let told = -1;
+        let reached = -1;
+        for (let k = 0; k < 300 / DT && s.run.phase !== 'done'; k++) {
+          const r = advance(s, drive(s, desktop), DT, desktop);
+          const next = r.state;
+          const copy = next.decoys.find((x) => x.life === null)!;
+          const m = hullMid(next.car);
+          const f = forward(next.car.yaw);
+          const front = (lesson.x - m.x) * f.x + (lesson.z - m.z) * f.z >= 0;
+          if (copy.state === 'open' && front && dist(m, lesson) <= 15) near = true;
+          if (told < 0 && r.events.some((e) => e.type === 'hint' && e.key === 'sight')) told = k;
+          // Taken or filed this frame, or the hull's middle within the 2.2 m that takes it.
+          const touched = copy.state === 'taken' || copy.state === 'filed' || dist(m, lesson) <= MISSION_TIMING.decoyR;
+          if (reached < 0 && touched) reached = k;
+          s = next;
+        }
+        expect(s.run.phase, name(d)).toBe('done');
+        if (!near && reached < 0) continue;
+        met++;
+        expect(told, name(d)).toBeGreaterThanOrEqual(0);
+        if (reached >= 0) expect(told, name(d)).toBeLessThan(reached);
+      }
+      expect(met).toBeGreaterThanOrEqual(40);
+    },
+    BOT_TIMEOUT,
+  );
 });
 
 describe('the clamour and the volleys in the engine', () => {
@@ -1093,112 +1165,108 @@ describe('the clamour and the volleys in the engine', () => {
 
 describe('hints', () => {
   /**
-   * The brief's prologue: the bot's steering throughout; after the 8th record the throttle and brake are scripted so the
-   * car comes within 25 m of the tower's centre above 8 m/s, enters the reach circle at 5–7 m/s, then stops. It runs on
-   * HINT_SECONDS past the outro's start so the last hint's time on the HUD is complete. It also notes the frames in
-   * which the lesson copy is out and within 15 m in front of the hull's middle (its approach).
+   * The brief's prologue for one driver: the bot's steering throughout; after the 8th record the throttle and brake are
+   * scripted so the car comes within 25 m of the tower's centre above 8 m/s, enters the reach circle at 5–7 m/s, then
+   * stops. It runs on HINT_SECONDS past the outro's start so the last hint's time on the HUD is complete. Each frame
+   * notes the hint on the HUD and whether the lesson copy is approached: out, in the chariot's way (within 4.5 m of the
+   * prologue's own line) and within 15 m of the hull's middle. The prologue's clamour stays at level 0, so no scheduled
+   * volley comes and a run does not depend on its seed: drivers, not seeds, vary.
    */
-  function scriptedPrologue(seed: number, opts?: Partial<AutoOpts>) {
+  function scriptedPrologue(d: Driver) {
     const w = desktop;
     const def = defOf(0);
-    let s = startChapter(def, def.start, seed, w);
-    const bot = createBot(opts);
+    let s = startChapter(def, def.start, 1, w);
+    const drive = driverOf(d);
     const lesson = def.scripted.decoys[0];
     const front = (s: GameState, at: { x: number; z: number }) => {
       const m = hullMid(s.car);
       const f = forward(s.car.yaw);
       return (at.x - m.x) * f.x + (at.z - m.z) * f.z >= 0;
     };
-    /** The nearest open copy in front of the hull's middle (its whole front half-plane), the one a copy hint is about. */
-    const nearestCopyAhead = (s: GameState) => {
-      const ahead = s.decoys.filter((d) => d.state === 'open' && front(s, d.at));
-      return Math.min(...ahead.map((d) => dist(hullMid(s.car), d.at)));
-    };
-    /** The nearest open copy within 15 m in front that lies in the way: within 4.5 m of the route. */
-    const nearestInWay = (s: GameState) => {
+    /** The nearest open copy in the way within `range` in front of the hull's middle, or null. */
+    const nearestInWay = (s: GameState, range: number) => {
       const m = hullMid(s.car);
-      const inWay = (d: Decoy) => !!s.route && polylineDist(d.at, s.route.points) <= 4.5;
-      const near = s.decoys.filter((d) => d.state === 'open' && front(s, d.at) && dist(m, d.at) <= 15 && inWay(d));
+      const near = s.decoys.filter((x) => x.state === 'open' && front(s, x.at) && dist(m, x.at) <= range && inTheWay(x.at));
       return near.sort((a, b) => dist(m, a.at) - dist(m, b.at))[0] ?? null;
     };
     const log: GameEvent[] = [];
-    const fired: { key: HintKey; clock: number; copy: number; inWay: Decoy | null }[] = [];
-    const shown: { clock: number; hint: HintKey | null }[] = [];
-    /** The clocks of the frames in which the lesson copy is out and within 15 m in front of the hull's middle. */
-    const approach: number[] = [];
+    const fired: { key: HintKey; clock: number; inWay: Decoy | null }[] = [];
+    const frames: { clock: number; hint: HintKey | null; approach: boolean }[] = [];
     let fastNear = false;
     let entry: number | null = null;
     let end = Infinity;
     for (let k = 0; k < 240 / DT && s.clock < end; k++) {
-      const auto = bot(s, w);
-      let drive = auto.drive;
+      const auto = drive(s, w);
+      let pedals = auto.drive;
       if (s.run.recorded.length === 8 && s.run.phase === 'active') {
-        const d = dist(hullMid(s.car), ANCHORS.tower);
+        const dd = dist(hullMid(s.car), ANCHORS.tower);
         const v = Math.hypot(s.car.vx, s.car.vz);
-        if (d > 22) drive = { ...drive, throttle: 1, brake: 0 };
-        else if (d > RECORD_CIRCLE) drive = { ...drive, throttle: v < 5.5 ? 1 : 0, brake: v > 6.5 ? 0.5 : 0 };
-        else drive = { ...drive, throttle: 0, brake: v > 0.05 ? 1 : 0 };
-        if (d <= 25 && v > 8) fastNear = true;
-        if (entry === null && d <= RECORD_CIRCLE) entry = v;
+        if (dd > 22) pedals = { ...pedals, throttle: 1, brake: 0 };
+        else if (dd > RECORD_CIRCLE) pedals = { ...pedals, throttle: v < 5.5 ? 1 : 0, brake: v > 6.5 ? 0.5 : 0 };
+        else pedals = { ...pedals, throttle: 0, brake: v > 0.05 ? 1 : 0 };
+        if (dd <= 25 && v > 8) fastNear = true;
+        if (entry === null && dd <= RECORD_CIRCLE) entry = v;
       }
-      s = step(s, { ...auto, drive }, w, log);
+      s = step(s, { ...auto, drive: pedals }, w, log);
       for (const e of log.splice(0)) {
-        const copy = e.type === 'hint' ? nearestCopyAhead(s) : 0;
-        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, copy, inWay: nearestInWay(s) });
+        const range = e.type === 'hint' && e.key === 'rewrites' ? 30 : 15;
+        if (e.type === 'hint') fired.push({ key: e.key, clock: s.clock, inWay: nearestInWay(s, range) });
         if (e.type === 'outroStart') end = s.clock + HINT_SECONDS;
       }
-      const copy = s.decoys.find((d) => d.life === null)!;
-      if (copy.state === 'open' && front(s, lesson) && dist(hullMid(s.car), lesson) <= 15) approach.push(s.clock);
-      shown.push({ clock: s.clock, hint: hudOf(s, w).hint });
+      const copy = s.decoys.find((x) => x.life === null)!;
+      const approach = copy.state === 'open' && inTheWay(lesson) && dist(hullMid(s.car), lesson) <= 15;
+      frames.push({ clock: s.clock, hint: hudOf(s, w).hint, approach });
     }
-    return { s, fired, shown, fastNear, entry, approach };
+    return { s, fired, frames, fastNear, entry };
   }
 
-  it.each(SEEDS)('the prologue teaches ride, rewrites, steer, sight, slow and stop in order, once each (%i)', (seed) => {
-    const { s, fired, shown, fastNear, entry } = scriptedPrologue(seed);
-    expect(fastNear).toBe(true);
-    expect(entry).not.toBeNull();
-    expect(entry!).toBeGreaterThanOrEqual(5);
-    expect(entry!).toBeLessThanOrEqual(7);
-    // The teaching volley's copy lands beside L2 as the chariot sets off, so rewrites comes before steer (at L3).
-    const order: HintKey[] = ['ride', 'rewrites', 'steer', 'sight', 'slow', 'stop'];
-    expect(fired.map((f) => f.key)).toEqual(order);
-    expect(s.hintsShown).toEqual(order);
-    // Each stays on the HUD until the next replaces it, which is never sooner than HINT_MIN; the last for HINT_SECONDS.
-    fired.forEach((f, k) => {
-      const until = Math.min(fired[k + 1]?.clock ?? Infinity, f.clock + HINT_SECONDS);
-      expect(until - f.clock).toBeGreaterThanOrEqual(HINT_MIN - 1e-9);
-      const on = shown.filter((v) => v.clock >= f.clock && v.clock < until - 1e-9);
-      expect(on.length).toBeGreaterThan(0);
-      for (const v of on) expect(v.hint, `${f.key} at ${v.clock.toFixed(2)}`).toBe(f.key);
-    });
-  }, BOT_TIMEOUT);
+  /** The drivers the order is pinned for: the autopilot, and the first-time player at speedCap 0.3–0.8 either way. */
+  const TAUGHT = SWEEP.filter(upright);
 
-  it.each([
-    ['the autopilot', undefined],
-    ['a first-time player who ignores lures', CARELESS],
-  ] as const)('%s: rewrites before the lesson copy is near; sight on the lesson copy, in the way', (_who, opts) => {
+  it.each(TAUGHT.map((d) => [name(d), d] as const))(
+    '%s: the prologue teaches ride, steer, rewrites, sight, slow and stop in order, once each, steer for its full time',
+    (_name, d) => {
+      const { s, fired, frames, fastNear, entry } = scriptedPrologue(d);
+      expect(fastNear).toBe(true);
+      expect(entry).not.toBeNull();
+      expect(entry!).toBeGreaterThanOrEqual(5);
+      expect(entry!).toBeLessThanOrEqual(7);
+      // The teaching volley's copy lies off the prologue's line, so only the lesson copy brings the copy hints.
+      const order: HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop'];
+      expect(fired.map((f) => f.key)).toEqual(order);
+      expect(s.hintsShown).toEqual(order);
+      // Each stays on the HUD until the next replaces it, which is never sooner than HINT_MIN; the last for HINT_SECONDS.
+      fired.forEach((f, k) => {
+        const until = Math.min(fired[k + 1]?.clock ?? Infinity, f.clock + HINT_SECONDS);
+        expect(until - f.clock).toBeGreaterThanOrEqual(HINT_MIN - 1e-9);
+        const on = frames.filter((v) => v.clock >= f.clock && v.clock < until - 1e-9);
+        expect(on.length).toBeGreaterThan(0);
+        for (const v of on) expect(v.hint, `${f.key} at ${v.clock.toFixed(2)}`).toBe(f.key);
+      });
+      // Nothing cuts steer short: the next hint comes after its full HINT_SECONDS.
+      const steer = fired.findIndex((f) => f.key === 'steer');
+      expect(fired[steer + 1].clock - fired[steer].clock).toBeGreaterThanOrEqual(HINT_SECONDS - 1e-9);
+    },
+    BOT_TIMEOUT,
+  );
+
+  it.each(
+    TAUGHT.filter((d) => theAutopilot(d) || d.speedCap === 0.6).map((d) => [name(d), d] as const),
+  )('%s: rewrites before the lesson copy is near; sight on the lesson copy, in the way, 2 s of it shown', (_name, d) => {
     const def = defOf(0);
-    for (const seed of SEEDS) {
-      const { fired, shown, approach } = scriptedPrologue(seed, opts);
-      expect(approach.length, `seed ${seed}`).toBeGreaterThan(0);
-      const start = approach[0];
-      const last = approach[approach.length - 1] + DT;
-      // rewrites on the first copy ahead (within 30 m), before the lesson copy comes within 15 m.
-      const rewrites = fired.find((f) => f.key === 'rewrites')!;
-      expect(rewrites.copy).toBeLessThanOrEqual(30);
-      expect(rewrites.clock, `seed ${seed}`).toBeLessThan(start);
-      // sight only for a copy in the way: here the lesson copy, the nearest such copy within 15 m in front.
-      const sight = fired.find((f) => f.key === 'sight')!;
-      expect(sight.inWay?.at, `seed ${seed}`).toEqual(def.scripted.decoys[0]);
-      // Its time on the HUD overlaps the lesson copy's approach by 2 s or more.
-      const next = fired[fired.indexOf(sight) + 1]?.clock ?? Infinity;
-      const until = Math.min(next, sight.clock + HINT_SECONDS);
-      const overlap = Math.max(0, Math.min(until, last) - Math.max(sight.clock, start));
-      expect(overlap, `seed ${seed}`).toBeGreaterThanOrEqual(2);
-      const during = shown.filter((x) => x.clock >= sight.clock && x.clock < until - 1e-9);
-      for (const v of during) expect(v.hint).toBe('sight');
-    }
+    const { fired, frames } = scriptedPrologue(d);
+    const near = frames.filter((f) => f.approach);
+    expect(near.length).toBeGreaterThan(0);
+    // rewrites on a copy in the way within 30 m ahead (the lesson copy), before it first comes within 15 m.
+    const rewrites = fired.find((f) => f.key === 'rewrites')!;
+    expect(rewrites.inWay?.at).toEqual(def.scripted.decoys[0]);
+    expect(rewrites.clock).toBeLessThan(near[0].clock);
+    // sight while the lesson copy is the nearest copy in the way within 15 m in front.
+    const sight = fired.find((f) => f.key === 'sight')!;
+    expect(sight.inWay?.at).toEqual(def.scripted.decoys[0]);
+    // Frame by frame, sight on the HUD while the lesson copy is out, in the way and within 15 m: 2 s or more.
+    const shown = frames.filter((f) => f.hint === 'sight' && f.approach).length * DT;
+    expect(shown).toBeGreaterThanOrEqual(2);
   }, BOT_TIMEOUT);
 
   it('a hint due within HINT_MIN of the last waits in the queue, then fires even after its moment', () => {

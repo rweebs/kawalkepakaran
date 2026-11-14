@@ -430,7 +430,7 @@ describe('lures sit off the route', () => {
     expect(polylineDist(DEFS[0].scripted.decoys[0], leg)).toBeLessThanOrEqual(2.5);
   });
 
-  it("the teaching volley's line crosses the corridor between the ranks just ahead of the spawn: none goes round it", () => {
+  it("the teaching volley's line spans the corridor between the ranks just ahead of the spawn, met on setting off", () => {
     const { a, b } = DEFS[0].scripted.volleyLine!;
     const line = lakonLine(0);
     // It crosses the routed prologue once, on the first leg, 0.4 m ahead of the hull's middle at rest on the spawn.
@@ -440,7 +440,9 @@ describe('lures sit off the route', () => {
     expect(crossesSegment(a, b, lakonLegs(0)[0].path![0], pickups(DEFS[0])[0].at)).toBe(true);
     const mid = { x: SPAWN.x + 1.6 * forward(SPAWN.yaw).x, z: SPAWN.z + 1.6 * forward(SPAWN.yaw).z };
     expect(segPointDist(mid, a, b)).toBeCloseTo(0.4, 9);
-    // Each end lies inside one of the two army zones, which the guard keeps every chariot out of.
+    // Each end lies inside one of the two army zones, which the guard keeps every chariot out of: a chariot setting off
+    // forward from the spawn meets the line. (The corridor is open at its north mouth: one that first reverses up it
+    // can go round.)
     const armies = COLS.filter((c) => c.figure);
     for (const end of [a, b]) expect(Math.min(...armies.map((c) => distToCollider(end, c)))).toBeLessThan(0);
   });

@@ -465,10 +465,13 @@ function stepCamera(s: GameState, before: GameState['shot'], dt: number, aspect:
 const HINT = {
   /** steer: the next target's bearing off the heading. */
   steerOff: 25,
-  /** rewrites and sight: a copy this near, in front of the hull's middle; for sight it must also lie in the way. */
+  /** rewrites and sight: a copy in the way this near, in front of the hull's middle. */
   copyNear: 30,
   copyClose: 15,
-  /** sight: in the way means within this of the route (volley copies keep 5 m off it). */
+  /**
+   * In the way means within this of the lakon's own line (lakonWay), which no driving moves. The prologue's lesson copy
+   * lies within it; its teaching volley's copy lies beyond it, so that copy brings no hint.
+   */
   copyInWay: 4.5,
   /** slow and stop: this near the open reach circle's edge, above these speeds. */
   slowNear: 25,
@@ -548,12 +551,30 @@ function sharpTurnAhead(s: GameState): boolean {
   return turnsAhead(pts, p.along).some(sharp);
 }
 
-/** An open copy within HINT.copyClose in front of the hull's middle, in the way: within HINT.copyInWay of the route. */
-const closeInWay = (s: GameState, d: Decoy) =>
-  d.state === 'open' &&
-  ahead(s.car, d.at, HINT.copyClose) &&
-  !!s.route &&
-  polylineDist(d.at, s.route.points) <= HINT.copyInWay;
+const WAYS = new WeakMap<MissionDef, readonly XZ[]>();
+/**
+ * The lakon's own line: from its start through its targets in step order (each record as listed, each reach centre,
+ * each day's centre, each lap post, then the record after the laps). It is fixed by the lakon alone, so neither a
+ * cached route nor the way a chariot swings moves it. Worked out once per lakon.
+ */
+function lakonWay(def: MissionDef): readonly XZ[] {
+  let way = WAYS.get(def);
+  if (way) return way;
+  const points: XZ[] = [{ x: def.start.x, z: def.start.z }];
+  for (const st of def.steps) {
+    if (st.kind === 'collect') points.push(...st.items.map((i) => i.at));
+    else if (st.kind === 'reach') points.push(st.at);
+    else if (st.kind === 'course') points.push(...st.days.map((d) => d.at));
+    else points.push(...st.posts.map((p) => p.at), st.then.at);
+  }
+  way = points;
+  WAYS.set(def, way);
+  return way;
+}
+
+/** An open copy within `range` in front of the hull's middle, in the way: within HINT.copyInWay of the lakon's line. */
+const copyInWay = (s: GameState, d: Decoy, range: number) =>
+  d.state === 'open' && ahead(s.car, d.at, range) && polylineDist(d.at, lakonWay(s.run.def)) <= HINT.copyInWay;
 
 /** The prologue's lessons come only in an active lakon that teaches; the surge and the drift from chapter 1 on. */
 const lesson = (s: GameState) => s.run.def.hints && s.run.phase === 'active';
@@ -562,8 +583,8 @@ const fromChapterOne = (s: GameState) => s.run.def.chapter >= 1 && drivable(s.ru
 const HINT_RULES: Readonly<Record<HintKey, (s: GameState) => boolean>> = {
   ride: (s) => lesson(s),
   steer: (s) => lesson(s) && targetOff(s) > HINT.steerOff * DEG,
-  rewrites: (s) => lesson(s) && s.decoys.some((d) => d.state === 'open' && ahead(s.car, d.at, HINT.copyNear)),
-  sight: (s) => lesson(s) && !s.sight.on && s.decoys.some((d) => closeInWay(s, d)),
+  rewrites: (s) => lesson(s) && s.decoys.some((d) => copyInWay(s, d, HINT.copyNear)),
+  sight: (s) => lesson(s) && !s.sight.on && s.decoys.some((d) => copyInWay(s, d, HINT.copyClose)),
   slow: (s) => lesson(s) && reachEdge(s) <= HINT.slowNear && pace(s.car) > HINT.slowSpeed,
   stop: (s) => lesson(s) && reachEdge(s) <= 0 && pace(s.car) > HINT.stopSpeed,
   surge: (s) => fromChapterOne(s) && straightAhead(s) >= HINT.straight,
