@@ -1,0 +1,40 @@
+/* The chapter reports' charts (src/components/bowobharata-game/charts.tsx). They sit on the game's dark glass panel. */
+.bg-chart {
+  --bg-chart-mark: #9085e9;
+  --bg-chart-accent: #e3b341;
+  --bg-chart-grid: rgba(203, 213, 225, 0.16);
+  --bg-chart-ink: var(--text-secondary, #a3b1c6);
+  margin: 1rem 0;
+  min-width: 0;
+}
+.bg-chart figcaption { margin-bottom: 0.4rem; }
+.bg-chart h4 { margin: 0; font-size: 0.95rem; line-height: 1.3; }
+.bg-chart__note { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--bg-chart-ink); }
+.bg-chart svg { display: block; width: 100%; height: auto; }
+.bg-chart svg text { font-size: 11px; fill: var(--bg-chart-ink); }
+.bg-chart__grid { stroke: var(--bg-chart-grid); stroke-width: 1; }
+.bg-chart__base { stroke: var(--bg-chart-ink); stroke-width: 1; opacity: 0.6; }
+.bg-col { fill: var(--bg-chart-mark); }
+.bg-dot { fill: var(--bg-chart-mark); stroke: rgb(11, 16, 32); stroke-width: 2; }
+.bg-mark { fill: var(--bg-chart-ink); opacity: 0.1; }
+.bg-mark[data-current] { fill: var(--bg-chart-accent); opacity: 0.22; }
+.bg-chart__table { margin-top: 0.5rem; font-size: 0.8rem; color: var(--bg-chart-ink); }
+.bg-chart__table summary { cursor: pointer; padding: 0.4rem 0; min-height: 1.5rem; }
+.bg-chart__table table { width: 100%; border-collapse: collapse; margin-top: 0.25rem; }
+.bg-chart__table th, .bg-chart__table td { text-align: left; padding: 0.2rem 0.5rem 0.2rem 0; border-bottom: 1px solid var(--bg-chart-grid); overflow-wrap: anywhere; }
+.bg-chart__table td:last-child, .bg-chart__table th:last-child { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; }
+
+/* Stat tiles */
+.bg-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.5rem; margin: 0.75rem 0; }
+.bg-tile { min-width: 0; padding: 0.6rem 0.75rem; border: 1px solid var(--bg-glass-border, rgba(203, 213, 225, 0.16)); border-radius: var(--radius-md, 10px); }
+.bg-tile dt { margin: 0; font-size: 0.8rem; color: var(--text-secondary, #a3b1c6); overflow-wrap: anywhere; }
+.bg-tile dd { margin: 0.15rem 0 0; font-size: 0.8rem; color: var(--text-secondary, #a3b1c6); }
+.bg-tile dd b { display: block; font-size: 1.6rem; line-height: 1.15; font-weight: 600; color: var(--text-primary, #f1f5f9); }
+
+/* Bar lists: HTML, so a long pasal label wraps */
+.bg-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.bg-bars li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.5rem; align-items: center; padding: 0.15rem 0; }
+.bg-bars__label { grid-column: 1 / -1; font-size: 0.85rem; line-height: 1.3; overflow-wrap: anywhere; }
+.bg-bars__track { display: block; height: 10px; }
+.bg-bars__bar { display: block; height: 100%; min-width: 2px; background: var(--bg-chart-mark); border-radius: 0 4px 4px 0; }
+.bg-bars__n { font-size: 0.85rem; font-variant-numeric: tabular-nums; color: var(--bg-chart-ink); }
