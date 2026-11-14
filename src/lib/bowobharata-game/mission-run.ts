@@ -1,10 +1,11 @@
 // The rules of one lakon as a pure state machine driven by frames: roam to the marker, the intro, then the steps
-// (collect, reach), the copies, the fail checks, checkpoints and the ending. No physics, no clock, no randomness; state
-// is immutable. Course, laps and the letter come with Task 31, until then stepRun throws on those step kinds.
-import { dist, type XZ } from './geom';
+// (collect, reach, a course of days and gates, laps over posts), the copies, the fail checks, checkpoints and the ending.
+// No physics, no clock, no randomness; state is immutable. A gate, a day's line or a post is passed when the hull's
+// middle crosses it within the frame.
+import { angleDiff, dist, rightOf, yawOf, type XZ } from './geom';
 import type { ChariotState } from './drive';
-import { sweptHit } from './collide';
-import { realTargets, type MissionDef, type PickupDef, type StepDef } from './missions';
+import { crossesSegment, sweptHit } from './collide';
+import { realTargets, type GateDef, type MissionDef, type StepDef } from './missions';
 import { MISSION_TIMING } from './tuning';
 
 export type Phase = 'roam' | 'intro' | 'active' | 'outro' | 'failed' | 'done';
@@ -38,10 +39,17 @@ export interface RunState {
   t: number;
   step: number;
   recorded: string[];
+  /** The course's days passed: the next day is days[dayIndex]. */
   dayIndex: number;
+  /** The rewrite gates ridden through: each goes into the record once. */
+  taken: string[];
+  /** The run.t at which the lap under way began at P1; null before P1 is first crossed. */
   lapStart: number | null;
+  /** The post to cross next, by index (0 is P1). */
   lapPost: number;
+  /** Each finished lap's seconds, in order. */
   laps: number[];
+  /** Whether two laps have matched (or the laps ran out): the record after them is open. */
   matched: boolean;
   stopT: number;
   /** Seconds added to the lakon's time limit by a retry; reset when a new leg begins. */
@@ -96,15 +104,22 @@ export const SCORE = { real: 100, filed: 50, rewrite: -50, calm: 100, perSecond:
 
 /** Fail checks wait for this run time (the grace); rewrites taken earlier never count. */
 const GRACE = MISSION_TIMING.grace;
+/** Coming this near (m) to the centre of the day after the next one passes the next one, if its line was ridden round. */
+const DAY_NEAR = 6;
+/** On a day of two rewrites the way through is the outer lane, between the gates' outer ends and the line's: its middle. */
+const LANE_IN = MISSION_TIMING.gateGap / 2 + MISSION_TIMING.gateWidth;
+const LANE = (LANE_IN + MISSION_TIMING.dayLineHalf) / 2;
 
 type Out = { run: RunState; events: GameEvent[] };
 /** A frame's outcome. `decoys` is the frame's own list when no copy was touched: no list is rebuilt for nothing. */
 type Step = { run: RunState; events: GameEvent[]; decoys: readonly Decoy[] };
 type Target = { kind: 'pickup' | 'gate' | 'reach' | 'post' | 'marker'; id: string; at: XZ; real: boolean; heading?: number; width?: number };
+type Course = Extract<StepDef, { kind: 'course' }>;
+type Laps = Extract<StepDef, { kind: 'laps' }>;
 
 export function startRun(def: MissionDef): RunState {
   return {
-    def, phase: def.marker ? 'roam' : 'intro', phaseT: 0, t: 0, step: 0, recorded: [], dayIndex: 0, lapStart: null,
+    def, phase: def.marker ? 'roam' : 'intro', phaseT: 0, t: 0, step: 0, recorded: [], dayIndex: 0, taken: [], lapStart: null,
     lapPost: 0, laps: [], matched: false, stopT: 0, extraTime: 0, legT: 0, leg: 0, decoysTaken: 0, filed: 0, score: 0, fails: 0,
     failReason: null, whole: true, checkpoint: null,
   };
@@ -144,27 +159,29 @@ export function checkpoint(run: RunState, car: { x: number; z: number; yaw: numb
 }
 
 /**
- * Back to the checkpoint's car at the current step. What was recorded, scored and filed stays (nothing scores twice), as
- * do the fails; the copies taken are forgiven, the clamour drops to 1 at most, and the clock gets 60 s if it had less.
+ * Back to the checkpoint's car at the current step, and on a course to the checkpoint's day, so the days ahead of the car
+ * are ridden again. What was recorded, scored and filed stays (nothing scores twice), as do the fails and the rewrite
+ * gates taken; the copies taken are forgiven, the clamour drops to 1 at most, and the clock gets 60 s if it had less.
  */
 export function restore(run: RunState): { run: RunState; car: { x: number; z: number; yaw: number }; riuh: number } {
   const cp = run.checkpoint;
   if (!cp) throw new Error('restore: no checkpoint');
-  const base: RunState = { ...run, phase: 'active', phaseT: 0, stopT: 0, decoysTaken: 0, failReason: null };
+  const base: RunState = { ...run, phase: 'active', phaseT: 0, stopT: 0, decoysTaken: 0, failReason: null, dayIndex: cp.dayIndex };
   const left = timeLeft(base);
   const extraTime = left === null ? base.extraTime : base.extraTime + Math.ceil(Math.max(0, MISSION_TIMING.retryMinSeconds - left) * 1000) / 1000;
   return { run: { ...base, extraTime }, car: { ...cp.car }, riuh: Math.min(cp.riuh, 1) };
 }
 
-function unsupported(s: StepDef): never {
-  throw new Error(`mission-run: step kind '${s.kind}' is not built yet (Task 31)`);
-}
-
 const stepOf = (run: RunState): StepDef | undefined => run.def.steps[run.step];
 
-/** Closes the current step: a checkpoint, or the outro (with the calm and time bonuses) when it was the last one. */
+/**
+ * Closes the current step: a checkpoint, or the outro (with the calm and time bonuses) when it was the last one. The
+ * letter is delivered when the step closed was the reach at the gate.
+ */
 function finishStep(run: RunState, f: RunFrame): Out {
+  const closed = stepOf(run);
   const events: GameEvent[] = [{ type: 'stepDone', step: run.step }];
+  if (closed?.kind === 'reach' && closed.place === 'gate') events.push({ type: 'letter' });
   const next: RunState = { ...run, step: run.step + 1, stopT: 0 };
   const newLeg = run.def.legTimes?.some((l) => l.fromStep === next.step) ?? false;
   const legged: RunState = newLeg ? { ...next, legT: 0, leg: next.leg + 1, extraTime: 0 } : next;
@@ -179,13 +196,14 @@ function finishStep(run: RunState, f: RunFrame): Out {
   return { run: { ...out, phase: 'outro', phaseT: 0 }, events: [...events, { type: 'outroStart' }] };
 }
 
-function recordTarget(run: RunState, item: PickupDef, points: number): { run: RunState; event: GameEvent } {
+/** Records a pickup or a real gate: its event counts it among the lakon's real targets. */
+function recordTarget(run: RunState, item: { id: string; card: number }, points: number): { run: RunState; event: GameEvent } {
   const recorded = [...run.recorded, item.id];
   const event: GameEvent = { type: 'recorded', id: item.id, card: item.card, n: recorded.length, total: totalReal(run.def) };
   return { run: addScore({ ...run, recorded }, points), event };
 }
 
-function stepCollect(run: RunState, f: RunFrame, items: readonly PickupDef[]): Out {
+function stepCollect(run: RunState, f: RunFrame, items: readonly { id: string; at: XZ; card: number }[]): Out {
   let cur = run;
   const events: GameEvent[] = [];
   for (const item of items) {
@@ -206,6 +224,152 @@ function stepReach(run: RunState, f: RunFrame, s: Extract<StepDef, { kind: 'reac
   const stopT = holding ? run.stopT + f.dt : 0;
   if (stopT >= s.stopFor) return finishStep({ ...run, stopT: 0 }, f);
   return { run: { ...run, stopT }, events: [] };
+}
+
+/** A segment across a day's or a post's line: its two ends. */
+interface Span {
+  a: XZ;
+  b: XZ;
+}
+
+/**
+ * A course worked out once (a course step belongs to one lakon): each day's line (dayLineHalf m each way) and gate spans,
+ * where the course leads on each day (its real gate's centre, or on a day of two rewrites the middle of the outer lane
+ * the chariot turns least to reach, coming over the day before: the line the bot rides, and the route the player is
+ * shown), and each real gate as a target of its own, for a day ridden past without it.
+ */
+interface CourseGeom {
+  lines: Span[];
+  spans: Span[][];
+  aims: Target[];
+  gates: (Target | null)[][];
+}
+const COURSES = new WeakMap<Course, CourseGeom>();
+
+/** The point `lateral` m to the right of `at` across `heading`. */
+function across(at: XZ, heading: number, lateral: number): XZ {
+  const r = rightOf(heading);
+  return { x: at.x + r.x * lateral, z: at.z + r.z * lateral };
+}
+
+/** How far (radians) a chariot at `from` riding along `yaw` must turn to head for `to`. */
+const turnTo = (from: XZ, yaw: number, to: XZ) => Math.abs(angleDiff(yawOf({ x: to.x - from.x, z: to.z - from.z }), yaw));
+
+function courseGeom(def: MissionDef, s: Course): CourseGeom {
+  const known = COURSES.get(s);
+  if (known) return known;
+  const half = MISSION_TIMING.dayLineHalf;
+  // Where the chariot comes from, and its way: the start, then each day's aim along that day's heading.
+  let from: XZ = { x: def.start.x, z: def.start.z };
+  let way = def.start.yaw;
+  const aims: Target[] = [];
+  s.days.forEach((d, k) => {
+    const real = d.gates.find((g) => g.real);
+    const id = `day${k + 1}`;
+    if (real) {
+      aims.push({ kind: 'gate', id, at: across(d.at, d.heading, real.offset), real: true, heading: d.heading, width: real.width });
+    } else {
+      // The nearer lane: the one the chariot turns least to reach. On a straight it is the side the chariot is on; round
+      // a corner, the outside one.
+      const right = across(d.at, d.heading, LANE);
+      const left = across(d.at, d.heading, -LANE);
+      const at = turnTo(from, way, right) <= turnTo(from, way, left) ? right : left;
+      aims.push({ kind: 'gate', id, at, real: false, heading: d.heading, width: half - LANE_IN });
+    }
+    from = aims[k].at;
+    way = d.heading;
+  });
+  const geom: CourseGeom = {
+    lines: s.days.map((d) => ({ a: across(d.at, d.heading, -half), b: across(d.at, d.heading, half) })),
+    spans: s.days.map((d) => d.gates.map((g) => ({ a: across(d.at, d.heading, g.offset - g.width / 2), b: across(d.at, d.heading, g.offset + g.width / 2) }))),
+    aims,
+    gates: s.days.map((d) =>
+      d.gates.map((g: GateDef): Target | null =>
+        g.real ? { kind: 'gate', id: g.id, at: across(d.at, d.heading, g.offset), real: true, heading: d.heading, width: g.width } : null,
+      ),
+    ),
+  };
+  COURSES.set(s, geom);
+  return geom;
+}
+
+const crossed = (f: RunFrame, s: Span) => crossesSegment(f.midPrev, f.mid, s.a, s.b);
+
+/** Whether every real gate of the course is recorded. */
+function allGates(run: RunState, s: Course): boolean {
+  for (const d of s.days) for (const g of d.gates) if (g.real && !run.recorded.includes(g.id)) return false;
+  return true;
+}
+
+/**
+ * A course. Any real gate crossed, from either side and on any day, is recorded once; any rewrite gate crossed is taken
+ * once, a rewrite into the record that counts toward the fail from the grace on, as a copy taken without sight does.
+ * Crossing the next day's line passes it, and so does coming near the centre of the day after it. The course is done once
+ * every day is passed with every real gate recorded.
+ */
+function stepCourse(run: RunState, f: RunFrame, s: Course): Out {
+  const geom = courseGeom(run.def, s);
+  let cur = run;
+  const events: GameEvent[] = [];
+  for (let k = 0; k < s.days.length; k++) {
+    const { gates } = s.days[k];
+    for (let j = 0; j < gates.length; j++) {
+      const g = gates[j];
+      if (!crossed(f, geom.spans[k][j])) continue;
+      if (g.real) {
+        if (cur.recorded.includes(g.id)) continue;
+        const r = recordTarget(cur, g, SCORE.real);
+        cur = r.run;
+        events.push({ type: 'gate', real: true, day: k + 1 }, r.event);
+      } else if (!cur.taken.includes(g.id)) {
+        const decoysTaken = cur.t >= GRACE ? cur.decoysTaken + 1 : cur.decoysTaken;
+        cur = addScore({ ...cur, taken: [...cur.taken, g.id], decoysTaken }, SCORE.rewrite);
+        events.push({ type: 'gate', real: false, day: k + 1 }, { type: 'rewriteTaken' });
+      }
+    }
+  }
+  const i = cur.dayIndex;
+  const after = s.days[i + 1];
+  if ((i < s.days.length && crossed(f, geom.lines[i])) || (after && dist(f.mid, after.at) <= DAY_NEAR)) {
+    cur = { ...cur, dayIndex: i + 1 };
+  }
+  if (cur.dayIndex >= s.days.length && allGates(cur, s)) {
+    const fin = finishStep(cur, f);
+    return { run: fin.run, events: [...events, ...fin.events] };
+  }
+  return { run: cur, events };
+}
+
+/** The lap posts' spans, postWidth m wide across each post's heading. */
+const LAP_SPANS = new WeakMap<Laps, Span[]>();
+function lapSpans(s: Laps): Span[] {
+  let spans = LAP_SPANS.get(s);
+  if (!spans) {
+    const half = MISSION_TIMING.postWidth / 2;
+    spans = s.posts.map((p) => ({ a: across(p.at, p.heading, -half), b: across(p.at, p.heading, half) }));
+    LAP_SPANS.set(s, spans);
+  }
+  return spans;
+}
+
+/**
+ * Laps. The posts are crossed in order; P1 starts the first lap and closes each one, timed on run.t. A lap matches the
+ * one before it when they differ by lapMatch of the one before at most; after maxLaps laps they match whatever the
+ * times. Once they match, the record after them is open, and recording it closes the step.
+ */
+function stepLaps(run: RunState, f: RunFrame, s: Laps): Out {
+  if (run.matched) return stepCollect(run, f, [s.then]);
+  const k = run.lapPost;
+  if (!crossed(f, lapSpans(s)[k])) return { run, events: [] };
+  const lapPost = (k + 1) % s.posts.length;
+  if (k !== 0) return { run: { ...run, lapPost }, events: [] };
+  if (run.lapStart === null) return { run: { ...run, lapStart: run.t, lapPost }, events: [] };
+  const seconds = run.t - run.lapStart;
+  const before = run.laps.at(-1);
+  const laps = [...run.laps, seconds];
+  const matched =
+    (before !== undefined && Math.abs(seconds - before) <= MISSION_TIMING.lapMatch * before) || laps.length >= MISSION_TIMING.maxLaps;
+  return { run: { ...run, laps, lapStart: run.t, lapPost, matched }, events: [{ type: 'lap', n: laps.length, seconds, matched }] };
 }
 
 /** Whether the hull's middle passes within decoyR of this open copy this frame. */
@@ -241,14 +405,27 @@ function failReason(run: RunState): FailReason | null {
   return null;
 }
 
+/** The open step's rules for this frame. */
+function stepStep(run: RunState, f: RunFrame, s: StepDef): Out {
+  switch (s.kind) {
+    case 'collect':
+      return stepCollect(run, f, s.items);
+    case 'reach':
+      return stepReach(run, f, s);
+    case 'course':
+      return stepCourse(run, f, s);
+    case 'laps':
+      return stepLaps(run, f, s);
+  }
+}
+
 function stepActive(run: RunState, f: RunFrame): Step {
   const copies = stepCopies({ ...run, t: run.t + f.dt, legT: run.legT + f.dt }, f);
   const events = [...copies.events];
   let cur = copies.run;
   const s = stepOf(cur);
   if (s) {
-    if (s.kind !== 'collect' && s.kind !== 'reach') unsupported(s);
-    const r = s.kind === 'collect' ? stepCollect(cur, f, s.items) : stepReach(cur, f, s);
+    const r = stepStep(cur, f, s);
     cur = r.run;
     events.push(...r.events);
   }
@@ -295,14 +472,20 @@ export function stepRun(run: RunState, frame: RunFrame): Step {
   }
 }
 
+/** What a step records: its pickups, its real gates, or the record after its laps. */
+function recordsOf(s: StepDef): readonly { id: string; card: number }[] {
+  if (s.kind === 'collect') return s.items;
+  if (s.kind === 'course') return s.days.flatMap((d) => d.gates.filter((g) => g.real));
+  if (s.kind === 'laps') return [s.then];
+  return [];
+}
+
 /** The skip: records every open real target and goes to the outro; the run is no longer whole. */
 export function autoRecord(run: RunState): Out {
   let cur = run;
   const events: GameEvent[] = [];
   for (const s of run.def.steps) {
-    if (s.kind === 'reach') continue;
-    if (s.kind !== 'collect') unsupported(s);
-    for (const item of s.items) {
+    for (const item of recordsOf(s)) {
       if (cur.recorded.includes(item.id)) continue;
       const r = recordTarget(cur, item, 0);
       cur = r.run;
@@ -313,6 +496,22 @@ export function autoRecord(run: RunState): Out {
   return { run: { ...cur, step: run.def.steps.length, phase: 'outro', phaseT: 0, whole: false, failReason: null }, events };
 }
 
+/**
+ * The lap post of the m-th crossing from the lakon's start (1-based): P1 opens each lap, so its id names the lap it
+ * opens, and every other post the lap it belongs to.
+ */
+function postTarget(s: Laps, m: number): Target {
+  const n = s.posts.length;
+  const k = (m - 1) % n;
+  const p = s.posts[k];
+  return { kind: 'post', id: `P${k + 1}-${Math.floor((m - 1) / n) + 1}`, at: p.at, real: true, heading: p.heading, width: MISSION_TIMING.postWidth };
+}
+
+/**
+ * What the lakon leads to now, first the one the route goes to. A course: where it leads on each day ahead, then any real
+ * gate ridden past and still open. Laps: the next post and the one after it, then, once the laps match, the record after
+ * them.
+ */
 export function openTargets(run: RunState): Target[] {
   if (run.phase === 'roam') {
     const m = run.def.marker;
@@ -325,5 +524,16 @@ export function openTargets(run: RunState): Target[] {
     return s.items.filter((i) => !run.recorded.includes(i.id)).map((i) => ({ kind: 'pickup', id: i.id, at: i.at, real: true }));
   }
   if (s.kind === 'reach') return [{ kind: 'reach', id: `reach${run.step}`, at: s.at, real: true }];
-  return unsupported(s);
+  if (s.kind === 'course') {
+    const geom = courseGeom(run.def, s);
+    const out = geom.aims.slice(run.dayIndex);
+    for (let k = 0; k < Math.min(run.dayIndex, s.days.length); k++) {
+      for (const g of geom.gates[k]) if (g && !run.recorded.includes(g.id)) out.push(g);
+    }
+    return out;
+  }
+  if (run.matched) return run.recorded.includes(s.then.id) ? [] : [{ kind: 'pickup', id: s.then.id, at: s.then.at, real: true }];
+  const n = s.posts.length;
+  const done = run.lapStart === null ? 0 : run.laps.length * n + (run.lapPost === 0 ? n : run.lapPost);
+  return [postTarget(s, done + 1), postTarget(s, done + 2)];
 }

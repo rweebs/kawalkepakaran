@@ -378,8 +378,10 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/data-play=\{playing3d \? 'on' : undefined\}/);
   });
 
-  it('turns the six toast events into at most two toasts of 4 s each, through toastText', () => {
-    expect(src).toContain("new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall'])");
+  it('turns the nine toast events into at most two toasts of 4 s each, through toastText', () => {
+    expect(src).toContain(
+      "new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap'])",
+    );
     expect(src).toContain('const TOAST_MAX = 2;');
     expect(src).toContain('const TOAST_MS = 4000;');
     expect(src).toMatch(/toastText\(e, locale, flowRef\.current\.chapter, cardOf\)/);

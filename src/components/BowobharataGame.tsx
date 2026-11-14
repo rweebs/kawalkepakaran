@@ -32,7 +32,7 @@ const COUNT = PARVAS.length + 2;
 /** The screens on which the scene stands still; it also stands still while the game is paused. */
 const STILL_SCREENS: readonly Screen[] = ['recorded', 'sanjaya', 'lost'];
 /** The lakon events that show a toast; toastText gives each its line. */
-const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall']);
+const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap']);
 /** Toasts on screen at once, and how long each stays (ms). */
 const TOAST_MAX = 2;
 const TOAST_MS = 4000;

@@ -264,6 +264,29 @@ describe('bowobharata-game copy', () => {
     expect(GAME_COPY.en.finaleClose).toBe('All of it was aimed at one person: Rahmat Wibowo.');
   });
 
+  it('the objectives and the toasts cover every lakon type, with the same keys in both locales', () => {
+    for (const l of LOCALES) {
+      expect(Object.keys(GAME_COPY[l].objectives).sort()).toEqual(['collect', 'course', 'gate', 'laps', 'prologue', 'roam', 'stop', 'tower']);
+      expect(Object.keys(GAME_COPY[l].toasts).sort()).toEqual(
+        ['checkpoint', 'filed', 'gate', 'lap', 'letter', 'ranks', 'recorded', 'recordedPrologue', 'rewrite', 'wall'],
+      );
+    }
+  });
+
+  it('the course, lap and lap-toast lines are built from their counts and seconds, in both locales', () => {
+    const { id, en } = GAME_COPY;
+    for (const c of [id, en]) {
+      expect(c.objectives.course({ done: 4, total: 9 })).toContain('4/9');
+      expect(c.objectives.laps({ n: 3 })).toMatch(/\b3\b/);
+      expect(c.toasts.lap({ n: 3, seconds: 52, matched: false })).toMatch(/\b3\b/);
+      expect(c.toasts.lap({ n: 3, seconds: 52, matched: true })).not.toBe(c.toasts.lap({ n: 3, seconds: 52, matched: false }));
+      for (const s of [c.objectives.gate, c.toasts.gate, c.toasts.letter]) expect(s).not.toMatch(/\d/);
+    }
+    // Seconds to one decimal, with the decimal comma in Indonesian.
+    expect(id.toasts.lap({ n: 1, seconds: 49.96, matched: false })).toBe('Putaran 1 · 50,0 detik');
+    expect(en.toasts.lap({ n: 1, seconds: 49.96, matched: false })).toBe('Lap 1 · 50.0 s');
+  });
+
   it('finaleTotals is built from the numbers, in both locales', () => {
     for (const l of LOCALES) {
       const text = GAME_COPY[l].finaleTotals(totals).join('\n');

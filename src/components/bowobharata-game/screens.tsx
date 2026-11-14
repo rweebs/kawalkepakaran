@@ -402,8 +402,7 @@ export function FallbackPlay({ locale, chapterIndex, cards, prologue, taken, onT
 /** A toast on the HUD: its line, from toastText, and a key that stays with it while it shows. */
 export interface HudToast { id: number; text: string }
 
-/** The objective line of a snapshot, counts only; null where there is none (the gate, course and lap lines come with
- * Task 31). */
+/** The objective line of a snapshot, counts only; null where there is none. */
 function objectiveLine(hud: HudSnapshot, locale: Locale): string | null {
   const o = GAME_COPY[locale].objectives;
   switch (hud.objective) {
@@ -415,6 +414,12 @@ function objectiveLine(hud: HudSnapshot, locale: Locale): string | null {
       return o.collect({ done: hud.done, total: hud.total });
     case 'tower':
       return o.tower;
+    case 'gate':
+      return o.gate;
+    case 'course':
+      return o.course({ done: hud.done, total: hud.total });
+    case 'laps':
+      return o.laps({ n: hud.lap ?? 1 });
     case 'stop':
       return o.stop;
     default:
@@ -782,6 +787,13 @@ export function toastText(
       return t.checkpoint;
     case 'wall':
       return t.wall;
+    // A real gate's toast is its record's.
+    case 'gate':
+      return e.real ? null : t.gate;
+    case 'letter':
+      return t.letter;
+    case 'lap':
+      return t.lap({ n: e.n, seconds: e.seconds, matched: e.matched });
     default:
       return null;
   }

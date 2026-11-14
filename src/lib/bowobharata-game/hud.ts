@@ -16,6 +16,7 @@ export interface HudSnapshot {
   objective: ObjectiveKey;
   done: number;
   total: number;
+  /** The lap under way while a lap course is ridden, from 1; null otherwise. */
   lap: number | null;
   /**
    * Whole seconds left on the lakon or its leg, rounded up (ceil(timeLeft(run) − 1e-9)) and never below 0, from the
@@ -53,8 +54,15 @@ function objectiveOf(s: GameState): ObjectiveKey {
     case 'course':
       return 'course';
     case 'laps':
-      return 'laps';
+      // Once two laps match, what is left of the step is its record.
+      return run.matched ? 'collect' : 'laps';
   }
+}
+
+/** The lap under way (1 before P1 is first crossed) while the laps are ridden, from the intro on; otherwise null. */
+function lapOf(run: RunState): number | null {
+  if (run.phase !== 'intro' && run.phase !== 'active') return null;
+  return run.def.steps[run.step]?.kind === 'laps' && !run.matched ? run.laps.length + 1 : null;
 }
 
 /** The time left on the lakon or its leg, from the intro on; none in roam or when there is no timer. */
@@ -75,7 +83,7 @@ export function hudOf(s: GameState, w: World): HudSnapshot {
     objective: objectiveOf(s),
     done: run.recorded.length,
     total: totalReal(run.def),
-    lap: null,
+    lap: lapOf(run),
     timer: timerOf(run),
     speedKmh: Math.round(Math.hypot(car.vx, car.vz) * 3.6),
     surge: { ready: car.cooldown <= 0, frac: fill(1 - car.cooldown / DRIVE.boostCooldown) },

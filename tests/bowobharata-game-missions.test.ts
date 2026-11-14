@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { PARVAS, parvaEvents } from '../src/lib/bowobharata';
 import { PAVILION } from '../src/lib/bowobharata/stage-math';
-import { dist, forward, polylineDist, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
+import { dist, forward, nextRand, polylineDist, rightOf, segPointDist, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import {
   ANCHORS,
+  GATE_CIRCLE,
   SPAWN,
   TOWER_EXIT,
   clearance,
@@ -20,9 +21,11 @@ import {
   objectivePoints,
   reachCircles,
   realTargets,
+  type DayDef,
   type GateDef,
   type MissionDef,
   type PickupDef,
+  type StepDef,
 } from '../src/lib/bowobharata-game/missions';
 import { MISSION_TIMING } from '../src/lib/bowobharata-game/tuning';
 
@@ -35,15 +38,41 @@ const DEFS: MissionDef[] = CHAPTERS.map((i) => missionFor(i, slugsOf(i)));
 const xz = (x: number, z: number): XZ => ({ x, z });
 
 function pickups(def: MissionDef): PickupDef[] {
-  return def.steps.flatMap((s) => (s.kind === 'collect' ? s.items : []));
+  return def.steps.flatMap((s) => (s.kind === 'collect' ? s.items : s.kind === 'laps' ? [s.then] : []));
 }
 
-/** The objectives in order: each record of a collect step, then each reach centre. */
+/** The lakon's course step: its days. */
+function daysOf(def: MissionDef): DayDef[] {
+  const s = def.steps.find((x): x is Extract<StepDef, { kind: 'course' }> => x.kind === 'course');
+  if (!s) throw new Error(`chapter ${def.chapter} has no course`);
+  return s.days;
+}
+
+/** The lakon's lap step. */
+function lapsOf(def: MissionDef): Extract<StepDef, { kind: 'laps' }> {
+  const s = def.steps.find((x): x is Extract<StepDef, { kind: 'laps' }> => x.kind === 'laps');
+  if (!s) throw new Error(`chapter ${def.chapter} has no laps`);
+  return s;
+}
+
+/** A gate's ends, or a post's, across `heading` at `at`: `offset` m along rightOf(heading), `width` m wide. */
+function ends(at: XZ, heading: number, offset: number, width: number): XZ[] {
+  const r = rightOf(heading);
+  return [offset - width / 2, offset + width / 2].map((o) => ({ x: at.x + r.x * o, z: at.z + r.z * o }));
+}
+const gateEnds = (d: DayDef): XZ[] => d.gates.flatMap((g) => ends(d.at, d.heading, g.offset, g.width));
+
+/**
+ * The objectives in order: each record of a collect step, each reach centre, each day centre of a course, and a lap
+ * course twice round through the post centres back to P1, then the record after it.
+ */
 function stops(def: MissionDef): XZ[] {
   return def.steps.flatMap((s) => {
     if (s.kind === 'collect') return s.items.map((p) => p.at);
     if (s.kind === 'reach') return [s.at];
-    throw new Error(`no ${s.kind} step before Task 31`);
+    if (s.kind === 'course') return s.days.map((d) => d.at);
+    const round = s.posts.map((p) => p.at);
+    return [...round, ...round, round[0], s.then.at];
   });
 }
 
@@ -93,18 +122,25 @@ const GATHER: Row[] = [
   [6, xz(60, -62), [xz(100, -62), xz(80, 40)]],
   [8, xz(-34, 64), [xz(-10, 118), xz(58, 98)]],
 ];
-/** The stand-ins of chapters 2, 4, 5 and 7, until Task 31. */
-const STAND_INS: Row[] = [
-  [2, xz(-100, -10), [xz(-100, -10), xz(0, -80)]],
-  [
-    4,
-    xz(-70, 58),
-    [xz(-70, 25), xz(-70, -25), xz(-70, -50), xz(-50, -95), xz(0, -95), xz(25, -95), xz(70, -50), xz(70, 0), xz(25, 40)],
-  ],
-  [5, xz(-84, -10), [xz(-75, 30)]],
-  [7, xz(115, -20), [xz(64, 46), xz(0, 72)]],
+/** Parva 4's 18 days: each centre and heading, as the brief lists them. */
+const P4_DAYS: [XZ, number][] = [
+  ...[25, 0, -25, -50, -75].map((z): [XZ, number] => [xz(-70, z), Math.PI / 2]),
+  ...[-50, -25, 0, 25, 50].map((x): [XZ, number] => [xz(x, -95), 0]),
+  ...[-75, -50, -25, 0, 25].map((z): [XZ, number] => [xz(70, z), -Math.PI / 2]),
+  ...[50, 25, 0].map((x): [XZ, number] => [xz(x, 40), Math.PI]),
 ];
-const PINNED = new Map([...GATHER, ...STAND_INS].map(([i, marker, records]) => [i, { marker, records }] as const));
+/** Parva 5's lap posts, P1 to P5. */
+const P5_POSTS = [xz(-92, 18), xz(-128, -6), xz(-116, -48), xz(-80, -56), xz(-66, -22)];
+/** Parva 7's storm: days 2 and 4 hold the real gates at the brief's points; days 1 and 3 are placed on the storm's way. */
+const P7_DAYS = [xz(93, 12), xz(64, 46), xz(32, 70), xz(0, 72)];
+/** Antar, the courses and the laps: each marker and its objectives in order (see stops), before the tower. */
+const OTHERS: Row[] = [
+  [2, xz(-100, -10), [xz(-100, -10), xz(115, -20), xz(0, -80)]],
+  [4, xz(-70, 58), P4_DAYS.map(([at]) => at)],
+  [5, xz(-84, -10), [...P5_POSTS, ...P5_POSTS, P5_POSTS[0], xz(-75, 30)]],
+  [7, xz(115, -20), P7_DAYS],
+];
+const PINNED = new Map([...GATHER, ...OTHERS].map(([i, marker, records]) => [i, { marker, records }] as const));
 
 /** A gather-and-deliver lakon: one collect step with these records in order, then the tower. */
 function expectGather(def: MissionDef, marker: XZ | null, records: XZ[]): void {
@@ -174,6 +210,15 @@ describe('the lakon table', () => {
     for (const i of [1, 3, 6, 8]) expectFacingFirstRecord(DEFS[i]);
   });
 
+  it('parva 2, 4 and 5 start at their markers facing their first objective away from it: the gate, day 1 (π/2), P1', () => {
+    for (const [i, aim] of [[2, ANCHORS.gate], [4, xz(-70, 25)], [5, P5_POSTS[0]]] as const) {
+      const { start, marker } = DEFS[i];
+      expect([start.x, start.z]).toEqual([marker!.x, marker!.z]);
+      expect(start.yaw).toBeCloseTo(yawOf({ x: aim.x - marker!.x, z: aim.z - marker!.z }), 12);
+    }
+    expect(DEFS[4].start.yaw).toBeCloseTo(Math.PI / 2, 12);
+  });
+
   it('parva 7 starts at the gate facing due west, straight out of the opening, 2 m clear', () => {
     const { start } = DEFS[7];
     expect(start).toEqual({ x: 115, z: -20, yaw: Math.PI });
@@ -230,7 +275,7 @@ describe('the lakon table', () => {
 });
 
 describe('real records are exactly the parva events', () => {
-  it.each(PARVA_CHAPTERS)('parva %i: one lontar per event slug, carded in the event order', (i) => {
+  it.each(PARVA_CHAPTERS)('parva %i: one lontar or real gate per event slug, carded in the event order', (i) => {
     const slugs = slugsOf(i);
     const def = DEFS[i];
     expect(
@@ -238,12 +283,17 @@ describe('real records are exactly the parva events', () => {
         .map((t) => t.slug)
         .sort(),
     ).toEqual([...slugs].sort());
-    expect(realTargets(def)).toEqual(expect.arrayContaining(pickups(def).map(({ id, slug }) => ({ id, slug }))));
+    const gates = def.steps.flatMap((s) => (s.kind === 'course' ? s.days.flatMap((d) => d.gates) : []));
+    const real = gates.filter((g) => g.real);
+    expect(realTargets(def)).toEqual(expect.arrayContaining([...pickups(def), ...real].map(({ id, slug }) => ({ id, slug }))));
     expect(new Set(realTargets(def).map((t) => t.id)).size).toBe(slugs.length);
     for (const p of pickups(def)) {
       expect(p.visual).toBe('lontar');
       expect(p.card).toBe(slugs.indexOf(p.slug!));
     }
+    for (const g of real) expect(g.card).toBe(slugs.indexOf(g.slug!));
+    // A rewrite gate carries no slug and no card.
+    for (const g of gates.filter((x) => !x.real)) expect([g.slug, g.card]).toEqual([null, -1]);
   });
 
   it('counts 2, 2, 4, 9, 1, 2, 2 and 2, and refuses a list of the wrong length', () => {
@@ -263,36 +313,219 @@ describe('real records are exactly the parva events', () => {
   });
 });
 
-describe('types or stand-ins', () => {
-  it('chapters 0, 1, 3, 6 and 8 are their own type', () => {
-    for (const i of [0, 1, 3, 6, 8]) {
+describe('all chapters', () => {
+  it('no def has standIn; each chapter is its own type', () => {
+    for (const i of CHAPTERS) {
+      expect(Object.keys(DEFS[i])).not.toContain('standIn');
       expect(DEFS[i].type).toBe(CHAPTER_TYPES[i]);
-      expect(DEFS[i].standIn).toBe(false);
     }
   });
 
-  it('chapters 2, 4, 5 and 7 gather and deliver as stand-ins until Task 31', () => {
+  it('softTime, the legs of chapter 2 and decoyLimit, chapter by chapter', () => {
+    expect(DEFS.map((d) => d.softTime)).toEqual([null, 120, null, 150, 210, null, 120, 120, null]);
+    expect(DEFS[2].legTimes).toEqual([
+      { fromStep: 0, seconds: 75 },
+      { fromStep: 2, seconds: 90 },
+    ]);
+    for (const i of CHAPTERS) if (i !== 2) expect(DEFS[i].legTimes).toBeNull();
+    expect(DEFS.map((d) => d.decoyLimit)).toEqual([null, 3, 3, 3, 3, null, 3, 3, null]);
+    for (const d of DEFS) expect(d.riuh).toEqual({ start: 0, frozen: false, volleys: true });
+  });
+
+  it('parva 2, 4, 5 and 7 hand out fresh data too', () => {
     for (const i of [2, 4, 5, 7]) {
-      expect(DEFS[i].type).toBe('himpun');
-      expect(DEFS[i].standIn).toBe(true);
+      const a = missionFor(i, slugsOf(i));
+      const b = missionFor(i, slugsOf(i));
+      expect(a).toEqual(b);
+      a.steps.forEach((s, k) => expect(s).not.toBe(b.steps[k]));
+      // Scribbling over one result leaves the next call untouched.
+      for (const s of a.steps) {
+        if (s.kind === 'course') {
+          for (const d of s.days) {
+            d.at.x = 999;
+            d.gates[0].real = !d.gates[0].real;
+          }
+        }
+        if (s.kind === 'laps') {
+          s.posts[0].at.x = 999;
+          s.then.at.x = 999;
+        }
+        if (s.kind === 'reach') s.at.x = 999;
+        if (s.kind === 'collect') s.items[0].at.x = 999;
+      }
+      expect(missionFor(i, slugsOf(i))).toEqual(b);
+    }
+  });
+});
+
+describe('parva 2, Antar: the letter to the gate, then the record to the tower', () => {
+  const def = DEFS[2];
+  const slugs = slugsOf(2);
+
+  it('the letter at the camp marker, the Hastinapura gate (r 5, 1.5 s), the record at the north end, the tower', () => {
+    expect(def.marker).toEqual(xz(-100, -10));
+    expect(def.steps).toHaveLength(4);
+    expect(def.steps[0]).toEqual({
+      kind: 'collect',
+      items: [{ id: 'A', at: xz(-100, -10), slug: slugs[0], visual: 'lontar', card: 0 }],
+    });
+    expect(def.steps[1]).toEqual({ kind: 'reach', at: xz(115, -20), r: 5, stopFor: 1.5, place: 'gate' });
+    expect(def.steps[1]).toMatchObject({ at: ANCHORS.gate, r: GATE_CIRCLE, stopFor: MISSION_TIMING.gateStopFor });
+    expect(def.steps[2]).toEqual({
+      kind: 'collect',
+      items: [{ id: 'B', at: xz(0, -80), slug: slugs[1], visual: 'lontar', card: 1 }],
+    });
+    expect(def.steps[3]).toEqual(TOWER_REACH);
+  });
+
+  it('the gate stands in the opening of the gate landmark: its circle keeps 5 m from both pylons', () => {
+    const pylons = COLS.filter((c) => c.id.startsWith('gate-pylon'));
+    expect(pylons).toHaveLength(2);
+    expect(clearance(ANCHORS.gate, pylons)).toBeCloseTo(5, 9);
+    expect(clearance(ANCHORS.gate, COLS)).toBeCloseTo(5, 9);
+  });
+});
+
+describe('parva 4, Lintasan: 18 days', () => {
+  const def = DEFS[4];
+  const days = () => daysOf(def);
+
+  it('18 days at the brief’s centres and headings; the days with a real gate are REAL_DAYS_P4', () => {
+    expect(days()).toHaveLength(18);
+    days().forEach((d, k) => {
+      expect(d.at).toEqual(P4_DAYS[k][0]);
+      expect(d.heading).toBeCloseTo(P4_DAYS[k][1], 12);
+    });
+    const real = days().flatMap((d, k) => (d.gates.some((g) => g.real) ? [k + 1] : []));
+    expect(real).toEqual([...REAL_DAYS_P4]);
+    expect(days()[0].gates.filter((g) => g.real)).toHaveLength(1);
+    expect(days()[1].gates.some((g) => g.real)).toBe(false);
+  });
+
+  it('two gates a day, 6 m wide at ±4.5 m with a 3 m gap; a real day holds one real gate, the rest two rewrites', () => {
+    for (const d of days()) {
+      expect(d.gates.map((g) => g.offset)).toEqual([-4.5, 4.5]);
+      for (const g of d.gates) expect(g.width).toBe(MISSION_TIMING.gateWidth);
+      const [l, r] = d.gates;
+      expect(r.offset - r.width / 2 - (l.offset + l.width / 2)).toBeCloseTo(MISSION_TIMING.gateGap, 12);
+      expect(d.gates.filter((g) => g.real).length).toBeLessThanOrEqual(1);
     }
   });
 
-  it.each(STAND_INS)('stand-in %i: its own marker, its records in order, then the tower', (i, marker, records) => {
-    expectGather(DEFS[i], marker, records);
+  it('the real gates carry the 9 slugs in timeline order; the side of each comes from nextRand, seed 404', () => {
+    const slugs = slugsOf(4);
+    let a = 404;
+    REAL_DAYS_P4.forEach((day, k) => {
+      const r = nextRand(a);
+      a = r.a;
+      const gate = days()[day - 1].gates.find((g) => g.real)!;
+      expect(gate.offset).toBe(r.v < 0.5 ? -4.5 : 4.5);
+      expect([gate.slug, gate.card, gate.mimic]).toEqual([slugs[k], k, false]);
+    });
   });
 
-  it('stand-ins 2, 4 and 5 start at their markers facing the next record: parva 2 past the one at its marker, parva 4 at π/2', () => {
-    for (const i of [2, 4, 5]) expectFacingFirstRecord(DEFS[i]);
-    expect(DEFS[4].start.yaw).toBeCloseTo(Math.PI / 2, 12);
+  it('no rewrite gate mimics gold before day 4; from day 4 on every one does', () => {
+    days().forEach((d, k) => {
+      for (const g of d.gates) if (!g.real) expect(g.mimic, `day ${k + 1}`).toBe(k + 1 >= 4);
+    });
   });
 
-  it('the stand-ins keep their row: parva 2 rides on 165 s with no leg timers', () => {
-    const four = [2, 4, 5, 7].map((i) => DEFS[i]);
-    expect(four.map((d) => d.softTime)).toEqual([165, 210, null, 120]);
-    expect(four.map((d) => d.legTimes)).toEqual([null, null, null, null]);
-    expect(four.map((d) => d.decoyLimit)).toEqual([3, 3, null, 3]);
-    for (const d of four) expect(d.riuh).toEqual({ start: 0, frozen: false, volleys: true });
+  it('day centres along the course stand at least 22 m apart; every gate end is 20 m inside the field and 2 m clear', () => {
+    const ds = days();
+    for (let k = 1; k < ds.length; k++) expect(dist(ds[k - 1].at, ds[k].at)).toBeGreaterThanOrEqual(22);
+    for (const p of ds.flatMap(gateEnds)) {
+      expect(inPlay(p, 20)).toBe(true);
+      expect(clearance(p, COLS)).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
+describe('parva 7, Lintasan: the storm', () => {
+  const def = DEFS[7];
+  const slugs = slugsOf(7);
+
+  it('4 days and 8 gates, 2 of them real: balasan-berulang-di-threads on day 2, meluncurkan-kawal-abil-sudarman on day 4', () => {
+    const days = daysOf(def);
+    expect(days).toHaveLength(4);
+    expect(days.flatMap((d) => d.gates)).toHaveLength(8);
+    expect(days.map((d) => d.gates.filter((g) => g.real).map((g) => g.slug))).toEqual([
+      [],
+      ['balasan-berulang-di-threads'],
+      [],
+      ['meluncurkan-kawal-abil-sudarman'],
+    ]);
+    expect(slugs).toEqual(['balasan-berulang-di-threads', 'meluncurkan-kawal-abil-sudarman']);
+    for (const d of days) {
+      expect(d.gates.map((g) => g.offset).sort((p, q) => p - q)).toEqual([-4.5, 4.5]);
+      for (const g of d.gates) expect(g.width).toBe(MISSION_TIMING.gateWidth);
+    }
+  });
+
+  it('days 2 and 4 at the stand-in’s records; day 1 on the storm’s line from the marker, day 3 between days 2 and 4', () => {
+    const days = daysOf(def).map((d) => d.at);
+    expect(days).toEqual(P7_DAYS);
+    expect([days[1], days[3]]).toEqual([xz(64, 46), xz(0, 72)]);
+    const storm = [def.marker!, xz(103, -3), xz(78, 30), days[1]];
+    expect(polylineDist(days[0], storm)).toBeLessThanOrEqual(2);
+    for (const k of ['x', 'z'] as const) {
+      expect(days[2][k]).toBeGreaterThanOrEqual(Math.min(days[1][k], days[3][k]));
+      expect(days[2][k]).toBeLessThanOrEqual(Math.max(days[1][k], days[3][k]));
+    }
+    const line = [def.marker!, ...days];
+    for (let k = 1; k < line.length; k++) expect(dist(line[k - 1], line[k])).toBeGreaterThanOrEqual(22);
+  });
+
+  it('each day faces from the point before it to the point after it: the marker first, the tower last', () => {
+    const days = daysOf(def);
+    const line = [def.marker!, ...days.map((d) => d.at), ANCHORS.tower];
+    days.forEach((d, k) => {
+      const prev = line[k];
+      const next = line[k + 2];
+      expect(d.heading).toBeCloseTo(yawOf({ x: next.x - prev.x, z: next.z - prev.z }), 12);
+    });
+  });
+
+  it('every gate end is 20 m inside the field and 2 m clear; 6 haze points; the clamour starts at 0', () => {
+    for (const p of daysOf(def).flatMap(gateEnds)) {
+      expect(inPlay(p, 20)).toBe(true);
+      expect(clearance(p, COLS)).toBeGreaterThanOrEqual(2);
+    }
+    expect(def.scripted.clouds).toHaveLength(6);
+    expect(def.riuh.start).toBe(0);
+  });
+});
+
+describe('parva 5, Uji ulang: two laps that match', () => {
+  const def = DEFS[5];
+
+  it('5 posts round a loop of 208 ± 10 m, each facing from the post before it to the post after it', () => {
+    const { posts } = lapsOf(def);
+    expect(posts.map((p) => p.at)).toEqual(P5_POSTS);
+    let loop = 0;
+    posts.forEach((p, k) => {
+      const prev = posts[(k + posts.length - 1) % posts.length].at;
+      const next = posts[(k + 1) % posts.length].at;
+      expect(p.heading).toBeCloseTo(yawOf({ x: next.x - prev.x, z: next.z - prev.z }), 12);
+      loop += dist(p.at, next);
+    });
+    expect(Math.abs(loop - 208)).toBeLessThanOrEqual(10);
+  });
+
+  it('post ends, 8 m apart, keep 2 m clear and stand 20 m inside the field', () => {
+    for (const p of lapsOf(def).posts) {
+      for (const e of ends(p.at, p.heading, 0, MISSION_TIMING.postWidth)) {
+        expect(clearance(e, COLS)).toBeGreaterThanOrEqual(2);
+        expect(inPlay(e, 20)).toBe(true);
+      }
+    }
+  });
+
+  it('the record after the laps is benchmark-lima-situs, between P1 and the tower; no timer, no limit, the clamour free', () => {
+    expect(lapsOf(def).then).toEqual({ id: 'A', at: xz(-75, 30), slug: 'benchmark-lima-situs', visual: 'lontar', card: 0 });
+    expect(def.steps).toHaveLength(2);
+    expect(def.steps[1]).toEqual(TOWER_REACH);
+    expect(def.riuh.frozen).toBe(false);
+    expect([def.softTime, def.decoyLimit]).toEqual([null, null]);
   });
 });
 
@@ -405,13 +638,35 @@ describe('every lakon can be ridden', () => {
     [0, 220, 270],
     [1, 265, 335],
     [3, 360, 455],
+    [4, 490, 560],
+    [5, 450, 560],
     [6, 250, 315],
+    [7, 220, 250],
     [8, 230, 290],
   ];
   it.each(LENGTHS)('chapter %i: the ride from the marker to the tower is %i–%i m', (i, lo, hi) => {
     const len = lakonLength(i);
     expect(len).toBeGreaterThanOrEqual(lo);
     expect(len).toBeLessThanOrEqual(hi);
+  });
+
+  it('parva 2: the letter’s leg, camp to gate, is 195–250 m; the record’s, gate to the north end to the tower, 235–300 m', () => {
+    const [toLetter, toGate, toRecord, toTower] = lakonLegs(2).map((l) => pathLength(l.path ?? []));
+    expect(toLetter).toBeCloseTo(0, 9);
+    expect(toLetter + toGate).toBeGreaterThanOrEqual(195);
+    expect(toLetter + toGate).toBeLessThanOrEqual(250);
+    expect(toRecord + toTower).toBeGreaterThanOrEqual(235);
+    expect(toRecord + toTower).toBeLessThanOrEqual(300);
+  });
+
+  it('parva 5 counts the approach, two laps through the post centres back to P1, the record and the tower', () => {
+    expect(lakonLegs(5)).toHaveLength(1 + 2 * 5 + 2);
+    expect(lakonLegs(5).map((l) => l.to).slice(-2)).toEqual([xz(-75, 30), TOWER]);
+  });
+
+  it.each(CHAPTERS)('chapter %i: no lakon goes outside the spec’s 220–560 m', (i) => {
+    expect(lakonLength(i)).toBeGreaterThanOrEqual(220);
+    expect(lakonLength(i)).toBeLessThanOrEqual(560);
   });
 });
 

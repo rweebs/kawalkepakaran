@@ -355,11 +355,30 @@ describe('toastText', () => {
     }
   });
 
+  it('a rewrite gate, the letter and each lap give their lines, in both locales; a real gate leaves the toast to its record', () => {
+    for (const l of LOCALES) {
+      const t = GAME_COPY[l].toasts;
+      const none = () => null;
+      expect(toastText({ type: 'gate', real: false, day: 2 }, l, 4, none)).toBe(t.gate);
+      expect(toastText({ type: 'gate', real: true, day: 1 }, l, 4, none)).toBeNull();
+      expect(toastText({ type: 'letter' }, l, 2, none)).toBe(t.letter);
+      for (const matched of [false, true]) {
+        const lap: GameEvent = { type: 'lap', n: 2, seconds: 51.27, matched };
+        expect(toastText(lap, l, 5, none)).toBe(t.lap({ n: 2, seconds: 51.27, matched }));
+      }
+    }
+    expect(toastText({ type: 'lap', n: 2, seconds: 51.27, matched: false }, 'id', 5, () => null)).toBe('Putaran 2 · 51,3 detik');
+    expect(toastText({ type: 'lap', n: 2, seconds: 51.27, matched: false }, 'en', 5, () => null)).toBe('Lap 2 · 51.3 s');
+    const matched = (l: Locale) => toastText({ type: 'lap', n: 2, seconds: 51.27, matched: true }, l, 5, () => null)!;
+    expect(matched('id').startsWith('Putaran 2 · 51,3 detik · ')).toBe(true);
+    expect(matched('en').startsWith('Lap 2 · 51.3 s · ')).toBe(true);
+  });
+
   it('the events that are not toasts give null', () => {
     const quiet: GameEvent[] = [
       { type: 'introStart' }, { type: 'introEnd' }, { type: 'bump', speed: 4 }, { type: 'absorbed' }, { type: 'stepDone', step: 0 },
       { type: 'level', level: 2 }, { type: 'hint', key: 'ride' }, { type: 'volley', id: 1 }, { type: 'outroStart' },
-      { type: 'failed', reason: 'time' }, { type: 'done', score: 300, whole: true },
+      { type: 'failed', reason: 'time' }, { type: 'done', score: 300, whole: true }, { type: 'gate', real: true, day: 1 },
     ];
     for (const e of quiet) expect(toastText(e, 'id', 1, cardOf(1, 'id')), e.type).toBeNull();
   });
@@ -523,19 +542,34 @@ describe('GameHud', () => {
     expect(gameHud({ locale: 'en', fullscreen: true })).toMatch(/<button[^>]*aria-pressed="true"[^>]*>Full screen<\/button>/);
   });
 
-  it('each objective has its line; the ones without copy yet show none, and the frame line stays', () => {
+  it('each objective has its line, none for none, and the frame line stays', () => {
     for (const l of LOCALES) {
       const o = GAME_COPY[l].objectives;
       const line: Partial<Record<ObjectiveKey, string>> = {
-        roam: o.roam, prologue: o.prologue({ done: 2, total: 8 }), collect: o.collect({ done: 2, total: 8 }), tower: o.tower, stop: o.stop,
+        roam: o.roam, prologue: o.prologue({ done: 2, total: 8 }), collect: o.collect({ done: 2, total: 8 }), tower: o.tower,
+        gate: o.gate, course: o.course({ done: 2, total: 8 }), laps: o.laps({ n: 1 }), stop: o.stop,
       };
       for (const key of OBJECTIVES) {
         const html = gameHud({ locale: l, hud: { objective: key } });
         expect(html, key).toContain(esc(GAME_COPY[l].hudFrame));
         const want = line[key];
-        if (want) expect(element(html, 'class="bg-objective"'), key).toContain(esc(want));
-        else expect(html, key).not.toContain('bg-objective__line');
+        if (key === 'none') expect(html, key).not.toContain('bg-objective__line');
+        else expect(element(html, 'class="bg-objective__line"'), key).toBe(`<p class="bg-objective__line">${esc(want!)}</p>`);
       }
+    }
+  });
+
+  it('the gate, the course with its count and the laps with the lap number, in both locales', () => {
+    for (const l of LOCALES) {
+      const o = GAME_COPY[l].objectives;
+      const line = (hud: Partial<HudSnapshot>) => element(gameHud({ locale: l, hud }), 'class="bg-objective__line"');
+      expect(line({ objective: 'gate', type: 'antar', done: 1, total: 2 })).toContain(esc(o.gate));
+      expect(line({ objective: 'course', type: 'lintasan', done: 3, total: 9 })).toContain(esc(o.course({ done: 3, total: 9 })));
+      expect(o.course({ done: 3, total: 9 })).toContain('3/9');
+      expect(line({ objective: 'laps', type: 'uji', lap: 2 })).toContain(esc(o.laps({ n: 2 })));
+      expect(o.laps({ n: 2 })).toMatch(/\b2\b/);
+      // No lap number yet reads as the first lap.
+      expect(line({ objective: 'laps', type: 'uji', lap: null })).toContain(esc(o.laps({ n: 1 })));
     }
   });
 
@@ -544,7 +578,10 @@ describe('GameHud', () => {
     const titles = PARVAS.flatMap((p) => parvaEvents(p)).flatMap((e) => [e.title, localizeEvent(e, 'en').title]);
     expect(titles).toHaveLength(2 * game.events.flat().length);
     const types: MissionType[] = ['himpun', 'antar', 'lintasan', 'uji'];
-    const quiet: GameEvent[] = [{ type: 'filed' }, { type: 'rewriteTaken' }, { type: 'held' }, { type: 'checkpoint' }, { type: 'wall' }];
+    const quiet: GameEvent[] = [
+      { type: 'filed' }, { type: 'rewriteTaken' }, { type: 'held' }, { type: 'checkpoint' }, { type: 'wall' },
+      { type: 'gate', real: false, day: 3 }, { type: 'letter' }, { type: 'lap', n: 2, seconds: 48.6, matched: true },
+    ];
     let rendered = 0;
     for (const l of LOCALES) {
       for (let chapter = 0; chapter < CHAPTER_TYPES.length; chapter++) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { initChariot } from '../src/lib/bowobharata-game/drive';
-import { missionFor, realTargets, type StepDef } from '../src/lib/bowobharata-game/missions';
+import { forward, rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { missionFor, realTargets, type DayDef, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import {
   autoRecord, checkpoint, openTargets, restore, SCORE, timeLeft, startRun, stepRun, totalReal,
   type Decoy, type RunFrame, type RunState,
@@ -20,6 +21,20 @@ function frame(o: { at?: { x: number; z: number }; prev?: { x: number; z: number
 const active = (ch: number, over: Partial<RunState> = {}): RunState => ({ ...startRun(def(ch)), phase: 'active', ...over });
 const decoy = (id: number, x: number, z: number): Decoy => ({ id, at: { x, z }, born: 0, life: null, state: 'open', mimic: false });
 const types = (e: { type: string }[]) => e.map((x) => x.type);
+
+const daysOf = (d: MissionDef): DayDef[] => (d.steps[0] as Extract<StepDef, { kind: 'course' }>).days;
+const lapsOf = (d: MissionDef) => d.steps[0] as Extract<StepDef, { kind: 'laps' }>;
+/** The point `lateral` m along rightOf(heading) from the day's or post's centre, and `ahead` m along its heading. */
+function across(d: { at: XZ; heading: number }, lateral: number, ahead = 0): XZ {
+  const r = rightOf(d.heading);
+  const f = forward(d.heading);
+  return { x: d.at.x + r.x * lateral + f.x * ahead, z: d.at.z + r.z * lateral + f.z * ahead };
+}
+/** A frame whose hull middle crosses the line of `d` at `lateral` m, forward along the heading or, with `back`, against it. */
+function through(d: { at: XZ; heading: number }, lateral: number, back = false, over: Partial<RunFrame> = {}): RunFrame {
+  const [from, to] = back ? [2, -2] : [-2, 2];
+  return frame({ prev: across(d, lateral, from), at: across(d, lateral, to), ...over });
+}
 
 describe('sight', () => {
   it('stays on 4 s from full, then turns off', () => {
@@ -210,9 +225,9 @@ describe('the grace before t 45', () => {
     expect(stepRun({ ...base, t: 45.1 }, frame()).events).toContainEqual({ type: 'failed', reason: 'time' });
   });
   it('legs: a leg spanning two steps is not reset by the middle step', () => {
-    const d = { ...def(2), legTimes: [{ fromStep: 0, seconds: 100 }, { fromStep: 2, seconds: 100 }] };
+    const d = { ...def(1), legTimes: [{ fromStep: 0, seconds: 100 }, { fromStep: 2, seconds: 100 }] };
     const items = (d.steps[0] as { items: { id: string; at: { x: number; z: number } }[] }).items;
-    const run: RunState = { ...active(2), def: d, legT: 30, extraTime: 5 };
+    const run: RunState = { ...active(1), def: d, legT: 30, extraTime: 5 };
     const two: RunState = { ...run, recorded: [items[0].id] };
     const r = stepRun(two, frame({ at: items[1].at }));
     expect(r.run.step).toBe(1);
@@ -222,8 +237,8 @@ describe('the grace before t 45', () => {
     expect(third.run.leg).toBe(0);
   });
   it('a new leg resets the leg clock and extra time', () => {
-    const d = { ...def(2), steps: [def(2).steps[1], def(2).steps[1], def(2).steps[1]], legTimes: [{ fromStep: 0, seconds: 100 }, { fromStep: 2, seconds: 100 }] };
-    const run: RunState = { ...active(2), def: d, step: 1, legT: 30, extraTime: 5 };
+    const d = { ...def(1), steps: [def(1).steps[1], def(1).steps[1], def(1).steps[1]], legTimes: [{ fromStep: 0, seconds: 100 }, { fromStep: 2, seconds: 100 }] };
+    const run: RunState = { ...active(1), def: d, step: 1, legT: 30, extraTime: 5 };
     const r = stepRun({ ...run, stopT: 5 }, frame({ at: ANCHORS.tower, speed: 1 }));
     expect(r.run.step).toBe(2);
     expect(r.run.legT).toBe(0);
@@ -362,15 +377,231 @@ describe('openTargets', () => {
     expect(totalReal(def(0))).toBe(8);
     expect(totalReal(def(4))).toBe(9);
   });
-  it('throws on course and laps steps', () => {
-    const d = { ...def(1), steps: [{ kind: 'course' as const, days: [] }] };
-    expect(() => stepRun({ ...startRun(d), phase: 'active' }, frame())).toThrow();
-    const laps = { ...def(1), steps: [{ kind: 'laps' as const, posts: [], then: (def(1).steps[0] as Extract<StepDef, { kind: 'collect' }>).items[0] }] };
-    expect(() => stepRun({ ...startRun(laps), phase: 'active' }, frame())).toThrow();
+  it('a course leads to the next day: its real gate’s centre, or the outer lane 9.5 m out on the side the course comes from', () => {
+    const d = def(4);
+    const days = daysOf(d);
+    const open = openTargets(active(4));
+    const l1 = days[0].gates.find((g) => g.real)!;
+    expect(open[0]).toEqual({ kind: 'gate', id: 'day1', at: across(days[0], l1.offset), real: true, heading: days[0].heading, width: 6 });
+    // Day 2 holds two rewrites: the lane on day 1's real gate's side.
+    const side = Math.sign(l1.offset);
+    expect(open[1]).toEqual({ kind: 'gate', id: 'day2', at: across(days[1], side * 9.5), real: false, heading: days[1].heading, width: 4 });
+    expect(open.map((t) => t.id)).toEqual(days.map((_, k) => `day${k + 1}`));
+    const all = realTargets(d).map((t) => t.id);
+    expect(openTargets(active(4, { dayIndex: 17, recorded: all })).map((t) => t.id)).toEqual(['day18']);
+    // A real gate passed by stays open after the days ahead.
+    expect(openTargets(active(4, { dayIndex: 17, recorded: all.slice(1) })).map((t) => t.id)).toEqual(['day18', all[0]]);
+  });
+  it('a lap course leads to the next post, and to the record after it once the laps match', () => {
+    const { posts, then } = lapsOf(def(5));
+    expect(openTargets(active(5)).map((t) => [t.kind, t.at])).toEqual([['post', posts[0].at], ['post', posts[1].at]]);
+    // In lap 2 the next post is P4; ids name the post and its lap, P1 opening each lap.
+    const second = openTargets(active(5, { lapStart: 3, lapPost: 3, laps: [50] }));
+    expect(second[0]).toEqual({ kind: 'post', id: 'P4-2', at: posts[3].at, real: true, heading: posts[3].heading, width: 8 });
+    expect(openTargets(active(5)).map((t) => t.id)).toEqual(['P1-1', 'P2-1']);
+    expect(openTargets(active(5, { lapStart: 3, lapPost: 0, laps: [50] })).map((t) => t.id)).toEqual(['P1-3', 'P2-3']);
+    expect(openTargets(active(5, { lapStart: 3, lapPost: 1, laps: [50, 52], matched: true }))).toEqual([
+      { kind: 'pickup', id: then.id, at: then.at, real: true },
+    ]);
   });
   it('treats a bad dt as zero', () => {
     const run = active(1, { t: 5 });
     expect(stepRun(run, { ...frame(), dt: NaN }).run.t).toBe(5);
     expect(stepRun(run, { ...frame(), dt: -1 }).run.t).toBe(5);
+  });
+});
+
+describe('course (parva 4)', () => {
+  const days = daysOf(def(4));
+  const realOf = (k: number) => days[k].gates.find((g) => g.real)!;
+
+  it('day 1’s real span records it; a span on day 2 takes a rewrite; day 3’s gap records nothing; each advances the day', () => {
+    let run = active(4, { t: 30 });
+    const one = stepRun(run, through(days[0], realOf(0).offset));
+    expect(one.events).toEqual([
+      { type: 'gate', real: true, day: 1 },
+      { type: 'recorded', id: realOf(0).id, card: 0, n: 1, total: 9 },
+    ]);
+    expect(one.run.recorded).toEqual([realOf(0).id]);
+    expect(one.run.score).toBe(SCORE.real);
+    expect(one.run.dayIndex).toBe(1);
+    run = one.run;
+
+    const two = stepRun(run, through(days[1], days[1].gates[0].offset));
+    expect(two.events).toEqual([{ type: 'gate', real: false, day: 2 }, { type: 'rewriteTaken' }]);
+    expect(two.run.decoysTaken).toBe(0);
+    expect(two.run.score).toBe(SCORE.real + SCORE.rewrite);
+    expect(two.run.dayIndex).toBe(2);
+    run = two.run;
+
+    const three = stepRun(run, through(days[2], 0));
+    expect(three.events).toEqual([]);
+    expect(three.run.recorded).toEqual([realOf(0).id]);
+    expect(three.run.dayIndex).toBe(3);
+
+    // The same rewrite crossed at t 46 counts toward the fail.
+    const late = stepRun({ ...one.run, t: 46 }, through(days[1], days[1].gates[1].offset));
+    expect(late.events).toEqual([{ type: 'gate', real: false, day: 2 }, { type: 'rewriteTaken' }]);
+    expect(late.run.decoysTaken).toBe(1);
+  });
+
+  it('an open real gate crossed later, from the other side, is recorded: day 3’s, after its gap', () => {
+    const passed = stepRun(active(4, { dayIndex: 2, recorded: [realOf(0).id] }), through(days[2], 0)).run;
+    expect(passed.dayIndex).toBe(3);
+    const back = stepRun(passed, through(days[2], realOf(2).offset, true));
+    expect(back.events).toEqual([
+      { type: 'gate', real: true, day: 3 },
+      { type: 'recorded', id: realOf(2).id, card: 1, n: 2, total: 9 },
+    ]);
+    // Back over the line it came through: the day does not move again.
+    expect(back.run.dayIndex).toBe(3);
+  });
+
+  it('a rewrite gate is taken once; three taken from t 45 fail the lakon muddied', () => {
+    const r1 = stepRun(active(4, { t: 50 }), through(days[1], -4.5));
+    expect(r1.run.decoysTaken).toBe(1);
+    const again = stepRun(r1.run, through(days[1], -4.5, true));
+    expect(again.events).toEqual([]);
+    expect(again.run.decoysTaken).toBe(1);
+    const r2 = stepRun(again.run, through(days[1], 4.5));
+    // Day 5 holds two rewrites as well.
+    expect(days[4].gates.some((g) => g.real)).toBe(false);
+    const r3 = stepRun(r2.run, through(days[4], 4.5));
+    expect(r3.run.decoysTaken).toBe(3);
+    expect(r3.events).toContainEqual({ type: 'failed', reason: 'muddied' });
+    expect(r3.run.phase).toBe('failed');
+  });
+
+  it('the line runs 11.5 m each way: past its end the day holds; within 6 m of the following day’s centre it moves on', () => {
+    expect(stepRun(active(4), through(days[0], 11.4)).run.dayIndex).toBe(1);
+    expect(stepRun(active(4), through(days[0], -11.6)).run.dayIndex).toBe(0);
+    const near = stepRun(active(4), frame({ at: across(days[1], 5.9) })).run;
+    expect(near.dayIndex).toBe(1);
+    expect(stepRun(active(4), frame({ at: across(days[1], 6.1) })).run.dayIndex).toBe(0);
+  });
+
+  it('the course ends once every day is passed with every real gate recorded: a checkpoint, then the tower', () => {
+    const all = days.flatMap((d) => d.gates.filter((g) => g.real).map((g) => g.id));
+    const last = stepRun(active(4, { dayIndex: 17, recorded: all }), through(days[17], 9.5));
+    expect(types(last.events)).toEqual(['stepDone', 'checkpoint']);
+    expect(last.run.step).toBe(1);
+    // A real gate still open after the last day keeps the course going, and leads back to it.
+    const missing = stepRun(active(4, { dayIndex: 17, recorded: all.slice(1) }), through(days[17], 9.5)).run;
+    expect(missing.step).toBe(0);
+    expect(openTargets(missing)).toEqual([
+      { kind: 'gate', id: all[0], at: across(days[0], realOf(0).offset), real: true, heading: days[0].heading, width: 6 },
+    ]);
+  });
+
+  it('a retry rides the course again from the checkpoint’s day; what was recorded and the rewrites taken stay', () => {
+    const cp = checkpoint(active(4), initChariot(-70, 58, Math.PI / 2), 0);
+    const later: RunState = { ...cp, dayIndex: 9, recorded: [realOf(0).id], taken: ['D2L'], phase: 'failed', t: 100 };
+    const r = restore(later).run;
+    expect(r.dayIndex).toBe(0);
+    expect(r.recorded).toEqual([realOf(0).id]);
+    expect(r.taken).toEqual(['D2L']);
+    // A rewrite gate counts once: crossed again after the retry, it gives nothing.
+    expect(stepRun({ ...r, dayIndex: 1 }, through(days[1], -4.5)).events).toEqual([]);
+  });
+
+  it('autoRecord records every real gate', () => {
+    const a = autoRecord(active(4));
+    expect(a.run.recorded).toEqual(realTargets(def(4)).map((t) => t.id));
+    expect(a.run.phase).toBe('outro');
+  });
+});
+
+describe('laps (parva 5)', () => {
+  const { posts, then } = lapsOf(def(5));
+  /** Rides `laps` laps of the given seconds from a fresh active run, crossing P1 first at run.t 10. */
+  function ride(laps: number[]): { run: RunState; events: { type: string }[] } {
+    let run = active(5, { t: 10 - DT });
+    let events: { type: string }[] = [];
+    const go = (k: number, t: number) => {
+      const r = stepRun({ ...run, t: t - DT }, through(posts[k], 0));
+      run = r.run;
+      events = [...events, ...r.events];
+    };
+    go(0, 10);
+    let t = 10;
+    for (const seconds of laps) {
+      for (let k = 1; k < posts.length; k++) go(k, t + (seconds * k) / posts.length);
+      t += seconds;
+      go(0, t);
+    }
+    return { run, events };
+  }
+
+  it('laps of 50.0 and 56.0 s match: lap {matched: true}, and the record after them opens', () => {
+    const { run, events } = ride([50, 56]);
+    const laps = events.filter((e) => e.type === 'lap');
+    expect(laps).toHaveLength(2);
+    expect(laps[0]).toEqual({ type: 'lap', n: 1, seconds: expect.closeTo(50, 6), matched: false });
+    expect(laps[1]).toEqual({ type: 'lap', n: 2, seconds: expect.closeTo(56, 6), matched: true });
+    expect(run.matched).toBe(true);
+    expect(openTargets(run)).toEqual([{ kind: 'pickup', id: then.id, at: then.at, real: true }]);
+    const got = stepRun(run, frame({ at: then.at }));
+    expect(types(got.events)).toEqual(['recorded', 'stepDone', 'checkpoint']);
+    expect(got.run.step).toBe(1);
+  });
+
+  it('laps of 50 and 60 s do not match: a third lap is asked for, timed against the second', () => {
+    const two = ride([50, 60]);
+    expect(two.events.filter((e) => e.type === 'lap').at(-1)).toEqual({ type: 'lap', n: 2, seconds: expect.closeTo(60, 6), matched: false });
+    expect(two.run.matched).toBe(false);
+    expect(openTargets(two.run)[0]).toMatchObject({ kind: 'post', at: posts[1].at });
+    // The record does not open before the laps match.
+    expect(stepRun(two.run, frame({ at: then.at })).run.recorded).toEqual([]);
+    const three = ride([50, 60, 66]);
+    expect(three.events.filter((e) => e.type === 'lap').at(-1)).toMatchObject({ n: 3, matched: true });
+  });
+
+  it('after five laps the record opens whatever the times; posts out of order count for nothing', () => {
+    expect(ride([40, 60, 40, 60]).run.matched).toBe(false);
+    const five = ride([40, 60, 40, 60, 40]);
+    expect(five.events.filter((e) => e.type === 'lap').at(-1)).toMatchObject({ n: 5, matched: true });
+    // From P1, crossing P3 before P2 leaves the lap where it was.
+    const started = stepRun(active(5), through(posts[0], 0)).run;
+    expect(started.lapPost).toBe(1);
+    expect(stepRun(started, through(posts[2], 0)).run.lapPost).toBe(1);
+  });
+
+  it('a post is passed only through its 8 m span', () => {
+    expect(stepRun(active(5), through(posts[0], 3.9)).run.lapStart).not.toBeNull();
+    expect(stepRun(active(5), through(posts[0], 4.1)).run.lapStart).toBeNull();
+  });
+
+  it('autoRecord records the record after the laps', () => {
+    expect(autoRecord(active(5)).run.recorded).toEqual([then.id]);
+  });
+});
+
+describe('Antar (parva 2)', () => {
+  const gate = def(2).steps[1] as Extract<StepDef, { kind: 'reach' }>;
+
+  it('reaching the gate gives the letter, then a checkpoint, and the second leg starts its clock', () => {
+    let run = active(2, { step: 1, recorded: ['A'], legT: 40, t: 40 });
+    let events: { type: string }[] = [];
+    for (let k = 0; k < Math.round(1.6 / DT) && run.step === 1; k++) {
+      const r = stepRun(run, frame({ at: gate.at, speed: 1 }));
+      run = r.run;
+      events = [...events, ...r.events];
+    }
+    expect(types(events)).toEqual(['stepDone', 'letter', 'checkpoint']);
+    expect(run.step).toBe(2);
+    expect([run.legT, run.leg]).toEqual([0, 1]);
+    expect(timeLeft(run)).toBe(90);
+    expect(run.checkpoint?.step).toBe(2);
+  });
+
+  it('the first leg fails on time past 75 s: legT 75.1 fails with time, 74.9 does not', () => {
+    const late = stepRun(active(2, { recorded: ['A'], step: 1, legT: 75.1, t: 80 }), frame());
+    expect(late.events).toContainEqual({ type: 'failed', reason: 'time' });
+    expect(stepRun(active(2, { recorded: ['A'], step: 1, legT: 74.9 - DT, t: 80 }), frame()).run.phase).toBe('active');
+  });
+
+  it('the tower is no letter: delivering at the tower gives none', () => {
+    const run = active(2, { step: 3, recorded: ['A', 'B'], stopT: 1.19, leg: 1 });
+    expect(types(stepRun(run, frame({ at: ANCHORS.tower, speed: 1 })).events)).not.toContain('letter');
   });
 });

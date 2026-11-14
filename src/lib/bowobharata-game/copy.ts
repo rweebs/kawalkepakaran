@@ -93,12 +93,15 @@ export interface GameCopy {
   types: Record<MissionType, string>;
   /** The kicker over a lakon card; `label` names the chapter, e.g. "Parva 1". */
   lakonKicker: (o: { label: string }) => string;
-  /** The objective line of the HUD, by objective. */
+  /** The objective line of the HUD, by objective: the gate (Antar's letter), the course's real gates and the lap under way. */
   objectives: {
     roam: string;
     prologue: (o: { done: number; total: number }) => string;
     collect: (o: { done: number; total: number }) => string;
     tower: string;
+    gate: string;
+    course: (o: { done: number; total: number }) => string;
+    laps: (o: { n: number }) => string;
     stop: string;
   };
   /** The speed unit, then the names of Krishna's sight (Mata), the surge (Laju) and the clamour (Riuh). */
@@ -111,6 +114,10 @@ export interface GameCopy {
     /** The prologue's records show a count only. */
     recordedPrologue: (o: { n: number; total: number }) => string;
     filed: string; rewrite: string; ranks: string; checkpoint: string; wall: string;
+    /** A rewrite gate ridden through, and Antar's letter at the gate. */
+    gate: string; letter: string;
+    /** A lap finished: its number and seconds (one decimal), and whether it matched the lap before. */
+    lap: (o: { n: number; seconds: number; matched: boolean }) => string;
   };
   /** The muted hint line of the objective panel, once per hint, for the keyboard and for touch. */
   hints: Record<HintKey, { keys: string; touch: string }>;
@@ -130,6 +137,9 @@ export interface GameCopy {
   controlsTitle: { keys: string; touch: string };
   report: ReportCopy;
 }
+
+/** Seconds to one decimal, with the locale's decimal mark. */
+const tenths = (seconds: number, mark: string) => seconds.toFixed(1).replace('.', mark);
 
 export const GAME_COPY: Record<Locale, GameCopy> = {
   id: {
@@ -188,6 +198,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       prologue: ({ done, total }) => `Catat anak panah yang tertancap: ${done}/${total}`,
       collect: ({ done, total }) => `Catat lontar di bawah sinar emas: ${done}/${total}`,
       tower: 'Bawa catatannya ke menara Sanjaya.',
+      gate: 'Antar suratnya ke gerbang Hastinapura.',
+      course: ({ done, total }) => `Lewati gapura yang asli: ${done}/${total}`,
+      laps: ({ n }) => `Putaran ${n} mengelilingi tiang: dua putaran beruntun berselisih paling banyak 15%`,
       stop: 'Berhenti sejenak di dalam lingkaran.',
     },
     ride: { speedUnit: 'km/jam', sight: 'Mata', surge: 'Laju', riuh: 'Riuh' },
@@ -200,6 +213,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       ranks: 'Barisan tidak bisa diterobos. Kereta berhenti.',
       checkpoint: 'Titik simpan tercapai.',
       wall: 'Ini batas medan. Kereta kembali ke arah tengah.',
+      gate: 'Gapura itu tulisan ulang.',
+      letter: 'Suratnya sudah sampai di gerbang.',
+      lap: ({ n, seconds, matched }) => `Putaran ${n} · ${tenths(seconds, ',')} detik${matched ? ' · hasilnya terulang' : ''}`,
     },
     hints: {
       ride: { keys: 'W atau ↑ menjalankan kereta.', touch: 'Geser jari di sisi kiri layar untuk mengarahkan kereta.' },
@@ -381,6 +397,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       prologue: ({ done, total }) => `Record the arrows in the ground: ${done}/${total}`,
       collect: ({ done, total }) => `Record the palm leaves under the gold beams: ${done}/${total}`,
       tower: "Bring the record to Sanjaya's tower.",
+      gate: 'Take the letter to the Hastinapura gate.',
+      course: ({ done, total }) => `Ride through the real gates: ${done}/${total}`,
+      laps: ({ n }) => `Lap ${n} round the posts: two laps in a row within 15% of each other`,
       stop: 'Stop inside the circle for a moment.',
     },
     ride: { speedUnit: 'km/h', sight: 'Sight', surge: 'Surge', riuh: 'Clamour' },
@@ -393,6 +412,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       ranks: 'The ranks cannot be driven through. The chariot stops.',
       checkpoint: 'Checkpoint reached.',
       wall: 'This is the edge of the field. The chariot turns back toward the centre.',
+      gate: 'That gate was a rewrite.',
+      letter: 'The letter has reached the gate.',
+      lap: ({ n, seconds, matched }) => `Lap ${n} · ${tenths(seconds, '.')} s${matched ? ' · the result holds' : ''}`,
     },
     hints: {
       ride: { keys: 'W or ↑ drives the chariot forward.', touch: 'Slide a finger on the left of the screen to steer the chariot.' },

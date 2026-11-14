@@ -170,16 +170,17 @@ const autoLimit = (ch: number) => (defOf(ch).softTime === null ? 240 : 0.6 * def
 const firstLimit = (ch: number) => defOf(ch).softTime ?? 300;
 
 /**
- * Done within `limit` s with no bump and no fail, the ranks never touched, at most one rewrite taken, and every
- * pressure rule kept.
+ * Done within `limit` s with no bump and no fail, the ranks never touched, no rewrite gate crossed and at most one
+ * rewrite taken, and every pressure rule kept.
  */
 function expectWon(r: BotRun, limit: number) {
   const { run, car } = r.state;
-  const where = `ended in ${run.phase} at step ${run.step}, car (${car.x.toFixed(1)}, ${car.z.toFixed(1)})`;
+  const where = `ended in ${run.phase} at step ${run.step}, day ${run.dayIndex}, car (${car.x.toFixed(1)}, ${car.z.toFixed(1)})`;
   expect(r.done, where).toBe(true);
   expect(r.time).toBeLessThanOrEqual(limit);
   expect(r.events.filter((e) => e.type === 'bump')).toEqual([]);
   expect(r.events.filter((e) => e.type === 'failed')).toEqual([]);
+  expect(r.events.filter((e) => e.type === 'gate' && !e.real)).toEqual([]);
   expect(count(r.events, 'rewriteTaken')).toBeLessThanOrEqual(1);
   expect(r.leastFigureGap).toBeGreaterThanOrEqual(GUARD.stop - 0.01);
   expect(r.faults).toEqual([]);
@@ -307,6 +308,39 @@ describe('every lakon can be won under pressure', () => {
       }
     }
     expect(landed).toBeGreaterThanOrEqual(10);
+  }, BOT_TIMEOUT);
+});
+
+describe('the gates, the letter and the laps meet the bots', () => {
+  it.each([2, 4, 5, 7])('chapter %i: the first-time bot records every real target and crosses no rewrite gate', (ch) => {
+    for (const seed of SEEDS) {
+      const r = runBot(ch, seed, desktop, CARELESS, firstLimit(ch));
+      expectWon(r, firstLimit(ch));
+      expect(r.state.run.recorded).toHaveLength(RECORDS[ch]);
+      expect(count(r.events, 'gate')).toBe(ch === 4 ? 9 : ch === 7 ? 2 : 0);
+    }
+  }, BOT_TIMEOUT);
+
+  it('pickReal off: the bot rides through the gate nearer it, rewrites and all, and from t 45 each one counts', () => {
+    // No volleys, so every rewrite taken is a gate.
+    const def = { ...defOf(4), riuh: { ...defOf(4).riuh, volleys: false } };
+    let s = startChapter(def, def.start, 1, desktop);
+    const bot = createBot({ pickReal: false });
+    const taken: number[] = [];
+    for (let k = 0; k < 150 / DT && s.run.phase !== 'done' && s.run.phase !== 'failed'; k++) {
+      const r = advance(s, bot(s, desktop), DT, desktop);
+      const gates = r.events.filter((e) => e.type === 'gate' && !e.real);
+      expect(count(r.events, 'rewriteTaken')).toBe(gates.length);
+      taken.push(...gates.map(() => r.state.run.t));
+      s = r.state;
+    }
+    expect(taken.length).toBeGreaterThanOrEqual(2);
+    const counted = taken.filter((t) => t >= MISSION_TIMING.grace).length;
+    expect(s.run.decoysTaken).toBe(counted);
+    if (counted >= 3) expect([s.run.phase, s.run.failReason]).toEqual(['failed', 'muddied']);
+    // The default bot picks the real gate or the outer lane: none.
+    const picked = runBot(4, 1, desktop, undefined, 240);
+    expect(picked.events.filter((e) => e.type === 'gate' && !e.real)).toEqual([]);
   }, BOT_TIMEOUT);
 });
 
@@ -1890,6 +1924,51 @@ describe('HUD snapshot', () => {
       if (seen.at(-1) !== o) seen.push(o);
     }
     expect(seen).toEqual(['collect', 'tower', 'stop', 'none']);
+  }, BOT_TIMEOUT);
+
+  /** The objective (and the lap) after every frame of an autopilot run of chapter `ch`, each change once. */
+  function objectivesOf(ch: number): string[] {
+    const w = desktop;
+    let s = startChapter(defOf(ch), defOf(ch).start, 1, w);
+    const seen: string[] = [];
+    for (let k = 0; k < 240 / DT && s.run.phase !== 'done'; k++) {
+      s = step(s, autopilot(s, w), w);
+      const h = hudOf(s, w);
+      const o = h.lap === null ? h.objective : `${h.objective} ${h.lap}`;
+      if (seen.at(-1) !== o) seen.push(o);
+    }
+    expect(s.run.phase).toBe('done');
+    return seen;
+  }
+
+  it('parva 2: the gate while the letter is carried, stop in its circle; each leg shows its own timer', () => {
+    expect(objectivesOf(2)).toEqual(['collect', 'gate', 'stop', 'collect', 'tower', 'stop', 'none']);
+    const w = desktop;
+    // The letter lies on the marker: the first active frame records it.
+    let s = step(toActive(2), IDLE);
+    expect(hudOf(s, w)).toMatchObject({ type: 'antar', objective: 'gate', done: 1, total: 2, lap: null });
+    expect(hudOf(s, w).timer).toBeLessThanOrEqual(75);
+    for (let k = 0; k < 120 / DT && s.run.step < 2; k++) s = step(s, autopilot(s, w), w);
+    expect(s.run.step).toBe(2);
+    expect(hudOf(s, w)).toMatchObject({ objective: 'collect', timer: 90 });
+  }, BOT_TIMEOUT);
+
+  it('parva 4: the course, done/total counting the real gates recorded of 9', () => {
+    const w = desktop;
+    let s = toActive(4);
+    expect(hudOf(s, w)).toMatchObject({ type: 'lintasan', objective: 'course', done: 0, total: 9, lap: null });
+    const log: GameEvent[] = [];
+    for (let k = 0; k < 60 / DT && s.run.recorded.length < 2; k++) s = step(s, autopilot(s, w), w, log);
+    expect(hudOf(s, w)).toMatchObject({ objective: 'course', done: 2, total: 9 });
+    expect(log.filter((e) => e.type === 'gate')).toEqual([
+      { type: 'gate', real: true, day: 1 },
+      { type: 'gate', real: true, day: 3 },
+    ]);
+  }, BOT_TIMEOUT);
+
+  it('parva 5: the laps with the lap number, then the record once two laps match, then the tower', () => {
+    expect(objectivesOf(5)).toEqual(['laps 1', 'laps 2', 'collect', 'tower', 'stop', 'none']);
+    expect(hudOf(toActive(5), desktop)).toMatchObject({ type: 'uji', objective: 'laps', lap: 1, done: 0, total: 1 });
   }, BOT_TIMEOUT);
 
   it('a hint shows for 3.5 s, then clears', () => {

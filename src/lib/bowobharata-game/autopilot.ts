@@ -1,12 +1,12 @@
 // The bot driver. It runs pure pursuit along the engine's route toward the first open target (routeAhead), at a speed
 // that drops for sharp turns and for the circles where the chariot must stop. By default it also meets the lures as a
-// careful player does: it steers round a rewritten copy in its way and holds Krishna's sight near one. autopilot() is
-// the bot's decision for this frame, a pure function of its arguments. createBot() adds the reaction delay: its queue
-// lives in the closure it returns, one bot per run, never in GameState. Units are metres and seconds; steer +1 turns
-// right, so yaw decreases.
-import { angleDiff, clamp, dist, forward, yawOf, type XZ } from './geom';
+// careful player does: it steers round a rewritten copy in its way and holds Krishna's sight near one, and on a course
+// it rides through each day's real gate or its outer lane, where the route leads. autopilot() is the bot's decision for
+// this frame, a pure function of its arguments. createBot() adds the reaction delay: its queue lives in the closure it
+// returns, one bot per run, never in GameState. Units are metres and seconds; steer +1 turns right, so yaw decreases.
+import { angleDiff, clamp, dist, forward, rightOf, yawOf, type XZ } from './geom';
 import { NO_INPUT, REST_SPEED, speedOf, turnRadius, type ChariotInput, type ChariotState } from './drive';
-import { hullClearance, hullMid } from './collide';
+import { HULL, hullClearance, hullMid } from './collide';
 import { drivable, openTargets, type Decoy, type RunState } from './mission-run';
 import { pathLength, pursuit, turnsAhead, type Pursuit } from './route';
 import { DRIVE, MISSION_TIMING } from './tuning';
@@ -28,12 +28,17 @@ export interface AutoOpts {
    * taken.
    */
   useSight: boolean;
+  /**
+   * On a course, ride through each day's real gate, or its outer lane on a day of two rewrites, as the route leads. Off,
+   * the bot rides through whichever of the next day's gates lies nearer the hull's middle, real or not.
+   */
+  pickReal: boolean;
 }
 
 /** autopilot's options: every AutoOpts field but `reaction`, which would need a queue (see createBot). */
 export type DecisionOpts = Partial<Omit<AutoOpts, 'reaction'>> & { reaction?: never };
 
-const DEFAULT_OPTS: AutoOpts = { speedCap: 1, reaction: 0, avoidDecoys: true, useSight: true };
+const DEFAULT_OPTS: AutoOpts = { speedCap: 1, reaction: 0, avoidDecoys: true, useSight: true, pickReal: true };
 /** A path turning more than this (radians) is taken at TURN_SPEED. */
 const TURN_SHARP = (50 * Math.PI) / 180;
 const TURN_SPEED = 8;
@@ -47,6 +52,14 @@ const PIVOT_FROM = 4;
 const PIVOT_UNTIL = (20 * Math.PI) / 180;
 /** The speed (m/s) the bot comes down to before a target that is followed by a turn back. */
 const TURN_BACK_SPEED = 2;
+/**
+ * A day's outer lane is only 4 m wide, and round a corner of a course the next day can lie 15 m on: a gate is crossed at
+ * TURN_SPEED when a turn sharper than GATE_TURN (radians) follows it, and at GATE_SPEED (m/s) when one sharper than
+ * GATE_SHARP does, so the bot (a first-time player's 0.4 s late too) comes round onto the next day's line in time.
+ */
+const GATE_TURN = (25 * Math.PI) / 180;
+const GATE_SHARP = (40 * Math.PI) / 180;
+const GATE_SPEED = 5;
 /** Within NEAR_CIRCLE m of the circle where it must stop, the bot rides at CIRCLE_SPEED. */
 const NEAR_CIRCLE = 12;
 const CIRCLE_SPEED = 3;
@@ -204,19 +217,32 @@ function afterTarget(run: RunState, target: Target): XZ | null {
   return null;
 }
 
+/** How far short of a target the hull's middle, HULL.offsets[1] m ahead of the origin, passes it: null for the circles. */
+function passedShort(target: Target): number | null {
+  if (target.kind === 'pickup') return MISSION_TIMING.pickupR + HULL.offsets[1];
+  return target.kind === 'gate' || target.kind === 'post' ? HULL.offsets[1] : null;
+}
+
 /**
- * The speed to arrive at a record with: the path ahead does not end there, it turns toward what comes next. A pickup
- * is taken MISSION_TIMING.pickupR m short, by the hull's middle 1.6 m ahead of the origin, so the turn starts early.
+ * The speed to arrive at a record, a gate or a post with: the path ahead does not end there, it turns toward what comes
+ * next. A pickup is taken MISSION_TIMING.pickupR m short by the hull's middle, a gate or a post as the hull's middle
+ * crosses it, so the turn starts early. After a gate the bot slows for gentler turns (see GATE_TURN); a turn back after
+ * a gate or a post is taken from rest once across.
  */
 function arrivalLimit(run: RunState, path: readonly XZ[], p: Pursuit, target: Target): number {
-  if (target.kind !== 'pickup') return Infinity;
+  const short = passedShort(target);
+  if (short === null) return Infinity;
   const next = afterTarget(run, target);
   const n = path.length;
   if (!next || n < 2) return Infinity;
   const into = yawOf({ x: path[n - 1].x - path[n - 2].x, z: path[n - 1].z - path[n - 2].z });
   const turn = Math.abs(angleDiff(yawOf({ x: next.x - target.at.x, z: next.z - target.at.z }), into));
-  const ahead = pathLength(path) - p.along - (MISSION_TIMING.pickupR + 1.6);
-  if (turn > TURN_BACK) return easeTo(TURN_BACK_SPEED, ahead);
+  const ahead = pathLength(path) - p.along - short;
+  if (target.kind === 'gate') {
+    if (turn > GATE_SHARP) return easeTo(GATE_SPEED, ahead);
+    return turn > GATE_TURN ? easeTo(TURN_SPEED, ahead) : Infinity;
+  }
+  if (target.kind === 'pickup' && turn > TURN_BACK) return easeTo(TURN_BACK_SPEED, ahead);
   return turn > TURN_SHARP ? easeTo(TURN_SPEED, ahead) : Infinity;
 }
 
@@ -257,17 +283,37 @@ function pedals(v: number, target: number): Pick<ChariotInput, 'throttle' | 'bra
 }
 
 /**
+ * The straight line to the centre of the next day's gate nearer the hull's middle, real or not, while a course leads to
+ * that day; otherwise null.
+ */
+function nearerGate(s: GameState, target: Target): XZ[] | null {
+  const step = s.run.def.steps[s.run.step];
+  const day = step?.kind === 'course' ? step.days[s.run.dayIndex] : undefined;
+  if (!day || target.id !== `day${s.run.dayIndex + 1}`) return null;
+  const m = hullMid(s.car);
+  const r = rightOf(day.heading);
+  let best: XZ | null = null;
+  for (const g of day.gates) {
+    const at = { x: day.at.x + r.x * g.offset, z: day.at.z + r.z * g.offset };
+    if (!best || dist(m, at) < dist(m, best)) best = at;
+  }
+  return best && [{ x: s.car.x, z: s.car.z }, best];
+}
+
+/**
  * The bot's decision for this frame, with no reaction delay: a pure function of its arguments, so the same state gives
- * the same input whatever came before. It pursues the route, steers round a copy in its way when avoidDecoys is on (the
- * world gives the dodge its colliders), and holds sight near one when useSight is on.
+ * the same input whatever came before. It pursues the route (or with pickReal off, on a course, the line to the nearer
+ * gate), steers round a copy in its way when avoidDecoys is on (the world gives the dodge its colliders), and holds sight
+ * near one when useSight is on.
  */
 export function autopilot(s: GameState, w: World, o?: DecisionOpts): FrameInput {
   const speedCap = o?.speedCap ?? DEFAULT_OPTS.speedCap;
   const avoidDecoys = o?.avoidDecoys ?? DEFAULT_OPTS.avoidDecoys;
   const useSight = o?.useSight ?? DEFAULT_OPTS.useSight;
+  const pickReal = o?.pickReal ?? DEFAULT_OPTS.pickReal;
   const base = { sight: false, skip: s.run.phase === 'intro', assist: false, aspect: DEFAULT_ASPECT };
   const target = drivable(s.run) ? openTargets(s.run)[0] : undefined;
-  const route = target ? routeAhead(s) : null;
+  const route = target ? ((!pickReal && nearerGate(s, target)) || routeAhead(s)) : null;
   if (!target || !route) return { ...base, drive: NO_INPUT };
   const p = pursuit(s.car, route);
   const d = avoidDecoys ? dodge(s, w, p.steer) : { steer: p.steer, slow: false };

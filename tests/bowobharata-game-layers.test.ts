@@ -1306,7 +1306,8 @@ describe('pickups', () => {
     const slugs = [0, 2, 2, 4, 9, 1, 2, 2, 2];
     for (let ch = 0; ch <= 8; ch++) {
       const def = missionFor(ch, Array.from({ length: slugs[ch] }, (_, k) => `s${k}`));
-      const items = itemsOf(def.steps);
+      // The records open at the intro: the first step's (Antar's record after the gate opens once the letter is there).
+      const items = itemsOf(def.steps.slice(0, 1));
       const s0 = startChapter(def, def.start, 1, WORLD);
       const { game } = fakeGame();
       createPickups(game).sync(at(s0, { phase: 'intro' }), 0);
