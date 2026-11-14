@@ -12,11 +12,13 @@ import type { HudSnapshot, ObjectiveKey } from '../src/lib/bowobharata-game/hud'
 import type { GameEvent, HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { CHAPTER_TYPES, type MissionType } from '../src/lib/bowobharata-game/missions';
 import {
-  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Recorded, SlowPrompt, TouchControls, cardView, toastText, type HudToast,
+  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Recorded, SanjayaReport, SlowPrompt, TouchControls, cardView, toastText, type HudToast,
 } from '../src/components/bowobharata-game/screens';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 const game = gameData(data);
+/** Each chapter's terlapor ids, as the island hands them to the report screens. */
+const chapterIds = game.chapters.map((c) => c.entries.map((e) => e.id));
 const LOCALES = ['id', 'en'] as const;
 const noop = () => {};
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
@@ -62,14 +64,16 @@ describe('cardView', () => {
   it('reads one locale of an event card', () => {
     const e = game.events[1][0];
     for (const l of LOCALES) {
-      expect(cardView(e, l)).toEqual({ key: e.slug, date: e.dateLabel[l], dateTime: e.date, channel: e.channel[l], title: e.title[l], href: e.path[l] });
+      expect(cardView(e, l)).toEqual({
+        key: e.slug, date: e.dateLabel[l], dateTime: e.date, channel: e.channel[l], title: e.title[l], summary: e.summary[l], href: e.path[l],
+      });
     }
   });
 });
 
 describe('Recorded (Tercatat)', () => {
   it('chapter 4, EN: 9 event cards, each with the EN allegation line and /en/right-of-reply', () => {
-    const html = renderToString(<Recorded locale="en" chapterIndex={4} cards={game.events[4]} prologue={game.prologue} whole onNext={noop} />);
+    const html = renderToString(<Recorded locale="en" chapterIndex={4} cards={game.events[4]} prologue={game.prologue} whole onNext={noop} report={game.report} />);
     expect(html).toContain(esc(GAME_COPY.en.recordedScreen.title));
     const cards = blocks(html, 'article', 'data-catch');
     expect(cards).toHaveLength(9);
@@ -86,7 +90,7 @@ describe('Recorded (Tercatat)', () => {
   it('prologue: the count, then one framed block of the 8 dates, with no event card and no terlapor name', () => {
     expect(game.prologue).toHaveLength(8);
     for (const l of LOCALES) {
-      const html = renderToString(<Recorded locale={l} chapterIndex={0} cards={[]} prologue={game.prologue} whole onNext={noop} />);
+      const html = renderToString(<Recorded locale={l} chapterIndex={0} cards={[]} prologue={game.prologue} whole onNext={noop} report={game.report} />);
       expect(html).toContain(esc(GAME_COPY[l].recordedScreen.prologue({ n: 8 })));
       expect(html).not.toContain('data-catch');
       for (const n of NAMES) expect(html, n).not.toContain(esc(n));
@@ -109,14 +113,14 @@ describe('Recorded (Tercatat)', () => {
   it('whole: false shows the note that part of the record was filled in', () => {
     for (const i of [0, 1]) {
       const one = (whole: boolean) =>
-        renderToString(<Recorded locale="id" chapterIndex={i} cards={game.events[i]} prologue={game.prologue} whole={whole} onNext={noop} />);
+        renderToString(<Recorded locale="id" chapterIndex={i} cards={game.events[i]} prologue={game.prologue} whole={whole} onNext={noop} report={game.report} />);
       expect(one(false)).toContain(esc(GAME_COPY.id.recordedScreen.skipped));
       expect(one(true)).not.toContain(esc(GAME_COPY.id.recordedScreen.skipped));
     }
   });
 
   it('goes on with the next button', () => {
-    const html = renderToString(<Recorded locale="id" chapterIndex={1} cards={game.events[1]} prologue={game.prologue} whole onNext={noop} />);
+    const html = renderToString(<Recorded locale="id" chapterIndex={1} cards={game.events[1]} prologue={game.prologue} whole onNext={noop} report={game.report} />);
     expect(html).toContain(esc(GAME_COPY.id.actions.next));
     expect(html.match(/<button/g)).toHaveLength(1);
   });
@@ -287,7 +291,7 @@ describe('Intro', () => {
 describe('Finale', () => {
   for (const l of LOCALES) {
     it(`${l}: the closing line sits in a framed block with the allegation line and the reply link`, () => {
-      const html = renderToString(<Finale locale={l} totals={game.totals} onAgain={noop} />);
+      const html = renderToString(<Finale locale={l} totals={game.totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
       const framed = blocks(html, 'article', 'data-entry="finale-close"');
       expect(framed).toHaveLength(1);
       expect(framed[0]).toMatch(/^<article class="bg-entry bg-close" data-entry="finale-close">/);
@@ -600,5 +604,195 @@ describe('TouchControls', () => {
     expect(count(mata, 'data-ring="sight"')).toBe(1);
     expect(mata).toContain('data-sweep="90"');
     expect(button(html, 'bg-touch__btn--rem')).not.toContain('data-ring');
+  });
+});
+
+// ── The chapter reports ────────────────────────────────────────────────────────────────────────────────────────────────
+
+const sanjayaHtml = (l: Locale, i: number) =>
+  renderToString(<SanjayaReport locale={l} chapterIndex={i} chapter={game.chapters[i]} onNext={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
+const recordedHtml = (l: Locale, i: number) =>
+  renderToString(<Recorded locale={l} chapterIndex={i} cards={game.events[i]} prologue={game.prologue} whole onNext={noop} report={game.report} />);
+const finaleHtml = (l: Locale) =>
+  renderToString(<Finale locale={l} totals={game.totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
+/** The HTML with every element whose start tag holds one of `attrs` cut out, nesting included. */
+function stripBlocks(html: string, attrs: string[]): string {
+  let out = html;
+  for (;;) {
+    const at = attrs.map((a) => out.search(new RegExp(`<[a-z][a-z0-9]*\\b[^>]*\\s${a}[=\\s>]`, 'i'))).filter((i) => i > -1).sort((a, b) => a - b)[0];
+    if (at === undefined) return out;
+    const tagEnd = out.indexOf('>', at);
+    const block = element(out, out.slice(at, tagEnd));
+    out = out.slice(0, at) + out.slice(at + block.length);
+  }
+}
+const LAST = game.chapters.length - 1;
+const PARVA_COUNT = PARVAS.length;
+
+describe('SanjayaReport: the framed report block', () => {
+  for (const l of LOCALES) {
+    it(`${l}: one report block per chapter, framed, holding every <title> on the screen`, () => {
+      for (let i = 0; i <= LAST; i++) {
+        const html = sanjayaHtml(l, i);
+        const marker = `data-entry="report-${game.chapters[i].id}"`;
+        expect(count(html, marker), `chapter ${i}`).toBe(1);
+        const block = element(html, marker);
+        expect(block).toMatch(/^<section class="bg-entry bg-report"/);
+        expect(block).toContain(esc(GAME_COPY[l].allegation));
+        expect(block).toContain(reply(l));
+        expect(block).toContain(esc(GAME_COPY[l].report.block));
+        expect(block).toContain('class="bg-map"');
+        const start = html.indexOf(block);
+        for (const m of html.matchAll(/<title>/g)) {
+          expect(m.index!, `chapter ${i}: a <title> outside the block`).toBeGreaterThan(start);
+          expect(m.index!).toBeLessThan(start + block.length);
+        }
+      }
+    });
+  }
+
+  it('parva 1: 17 names, 5 new and 12 seen before, in both locales', () => {
+    const tile = (l: Locale) => {
+      const t = GAME_COPY[l].report.tiles;
+      return `<dt>${esc(t.names)}</dt><dd><b>17</b><span> 5 ${t.fresh} · 12 ${esc(t.again)}</span></dd>`;
+    };
+    expect(sanjayaHtml('id', 1)).toContain(tile('id'));
+    expect(sanjayaHtml('id', 1)).toContain('5 baru · 12 muncul lagi');
+    expect(sanjayaHtml('en', 1)).toContain(tile('en'));
+    expect(sanjayaHtml('en', 1)).toContain('5 new · 12 seen before');
+  });
+
+  it('chapters with names get the three charts after the map; chapters 6 to 8 keep the sanjayaNone line and the map, with no chart', () => {
+    for (const l of LOCALES) {
+      const one = sanjayaHtml(l, 1);
+      expect(count(one, 'bg-chart bg-chart--columns')).toBe(1);
+      expect(count(one, 'bg-chart bg-chart--bars')).toBe(2);
+      expectOrder(one, ['bg-tiles', 'class="bg-map"', 'id="bg-when-dadu-di-hastinapura-t"', 'id="bg-pasal-dadu-di-hastinapura-t"', 'id="bg-stages-dadu-di-hastinapura-t"']);
+      for (const i of [6, 7, 8]) {
+        expect(game.report.chapters[i].names).toBe(0);
+        const html = sanjayaHtml(l, i);
+        expect(html).not.toContain('bg-chart--columns');
+        expect(html).not.toContain('bg-chart--bars');
+        expect(html).toContain(esc(GAME_COPY[l].sanjayaNone));
+        expect(html).toContain('class="bg-map"');
+        expect(html).not.toContain('NaN');
+      }
+    }
+  });
+
+  it('entries carry their anchors: full entries and name-only ones', () => {
+    const i = game.chapters.findIndex((c) => c.entries.some((e) => !e.full) && c.entries.some((e) => e.full));
+    const html = sanjayaHtml('id', i);
+    for (const e of game.chapters[i].entries) {
+      expect(html).toContain(e.full ? `<article class="bg-entry" data-entry="${e.id}" id="bg-entry-${e.id}">` : `<li data-entry="${e.id}" id="bg-entry-${e.id}">`);
+    }
+  });
+
+  it('the map shows the hub and group names from the copy: Indonesian as the graph has them, English on the EN page', () => {
+    const labels = Object.fromEntries(game.report.map.nodes.map((n) => [n.id, n.label]));
+    for (const [id, name] of Object.entries(GAME_COPY.id.report.map.names!)) expect(labels[id], id).toBe(name);
+    const en = element(sanjayaHtml('en', LAST), 'data-entry="report-finale"');
+    for (const name of ['Police reports', 'by the Pelapor', 'against the Pelapor']) expect(en).toContain(`<title>${name}</title>`);
+    for (const name of ['Laporan polisi', 'oleh Pelapor', 'terhadap Pelapor']) expect(en).not.toContain(`<title>${name}</title>`);
+  });
+});
+
+describe('Recorded: the framed strip and the card summaries', () => {
+  for (const l of LOCALES) {
+    it(`${l}: a report-strip block with the stat line, the allegation line and the time strip, before the records`, () => {
+      for (let i = 0; i <= PARVA_COUNT; i++) {
+        const html = recordedHtml(l, i);
+        expect(count(html, 'data-entry="report-strip"'), `chapter ${i}`).toBe(1);
+        const block = element(html, 'data-entry="report-strip"');
+        expect(block).toMatch(/^<section class="bg-entry bg-report bg-report--strip" data-entry="report-strip">/);
+        expect(block).toContain(esc(GAME_COPY[l].allegation));
+        expect(block).toContain(reply(l));
+        expect(count(block, 'bg-chart bg-chart--strip')).toBe(1);
+        expectOrder(block, ['bg-report__stat', 'bg-allegation', 'bg-chart--strip']);
+        expect(html.indexOf(block)).toBeLessThan(html.indexOf(i === 0 ? 'data-entry="prologue-dates"' : 'data-catch'));
+        expect(count(block, '<rect class="bg-mark"')).toBe(PARVA_COUNT);
+        expect(block).not.toContain('NaN');
+      }
+    });
+  }
+
+  it('the stat line: events, the window and the channels for a parva; the dates for the prologue', () => {
+    const cards = game.events[1];
+    const channels = [...new Set(cards.map((e) => e.channel.en))].join(', ');
+    expect(recordedHtml('en', 1)).toContain(esc(GAME_COPY.en.report.strip.stat({ n: cards.length, from: 'April 26, 2026', to: 'May 2, 2026', channels })));
+    expect(recordedHtml('id', 1)).toContain(`${cards.length} peristiwa · 26 April 2026 sampai 2 Mei 2026 · `);
+    const p = game.prologue;
+    expect(recordedHtml('id', 0)).toContain(esc(GAME_COPY.id.report.strip.statPrologue({ n: p.length, from: p[0].label, to: p[p.length - 1].label })));
+  });
+
+  it('parva 3: one current mark, the third window, labelled 3', () => {
+    const block = element(recordedHtml('id', 3), 'data-entry="report-strip"');
+    const current = [...block.matchAll(/<rect class="bg-mark"[^>]*data-current=""[^>]*>/g)];
+    expect(current).toHaveLength(1);
+    expect(block).toMatch(/<text class="bg-mark__label"[^>]*data-current="">3<\/text>/);
+    expect(count(block, 'data-current=""')).toBe(3);
+    expect(element(recordedHtml('id', 0), 'data-entry="report-strip"')).not.toContain('data-current');
+  });
+
+  it('every card holds its summary after its title', () => {
+    for (const l of LOCALES) {
+      for (let i = 1; i <= PARVA_COUNT; i++) {
+        const cards = blocks(recordedHtml(l, i), 'article', 'data-catch');
+        expect(cards).toHaveLength(game.events[i].length);
+        game.events[i].forEach((e, k) => {
+          expect(e.summary[l].length).toBeGreaterThan(0);
+          expect(cards[k]).toContain(`<p class="bg-catch__summary">${esc(e.summary[l])}</p>`);
+          expectOrder(cards[k], [esc(e.title[l]), 'bg-catch__summary', 'bg-allegation']);
+        });
+      }
+    }
+  });
+});
+
+describe('Finale: the framed report block', () => {
+  for (const l of LOCALES) {
+    it(`${l}: the map with its rail, one Columns, three BarLists and one TimeStrip, framed, with the closing block still last`, () => {
+      const html = finaleHtml(l);
+      expect(count(html, 'data-entry="report-finale"')).toBe(1);
+      const block = element(html, 'data-entry="report-finale"');
+      expect(block).toContain(esc(GAME_COPY[l].allegation));
+      expect(block).toContain(reply(l));
+      expect(count(block, 'class="bg-map__chip"')).toBe(11);
+      expect(count(block, 'bg-chart bg-chart--columns')).toBe(1);
+      expect(count(block, 'bg-chart bg-chart--bars')).toBe(3);
+      expect(count(block, 'bg-chart bg-chart--strip')).toBe(1);
+      expectOrder(html, [esc(GAME_COPY[l].finaleTotals(game.totals).at(-1)!), 'data-entry="report-finale"', 'data-entry="finale-close"']);
+      const framed = [...html.matchAll(/data-entry="([^"]+)"/g)].map((m) => m[1]);
+      expect(framed.at(-1)).toBe('finale-close');
+      const r = GAME_COPY[l].report;
+      expectOrder(block, [esc(r.block), esc(r.lead), 'bg-allegation', 'class="bg-map"', esc(r.finale.months), esc(r.finale.perChapter), esc(r.finale.pasalTop), esc(r.stages.title), esc(r.finale.reports)]);
+      // The months: the 8 windows as marks, none current; the parts: one row per chapter by its short name.
+      expect(count(block, '<rect class="bg-mark"')).toBeGreaterThanOrEqual(PARVA_COUNT);
+      expect(element(block, 'bg-chart--columns')).not.toContain('data-current');
+      const parts = element(block, 'aria-labelledby="bg-fin-parts-t"');
+      for (const name of [r.chapterName.prologue, r.chapterName.parva({ n: 1 }), r.chapterName.finale]) expect(parts).toContain(`<span class="bg-bars__label">${esc(name)}</span>`);
+      expect(count(parts, '<span class="bg-bars__label">')).toBe(game.chapters.length);
+      expect(block).not.toContain('NaN');
+    });
+  }
+});
+
+describe('the frame sweep: no terlapor name outside a framed block', () => {
+  it('Sanjaya, Tercatat and the finale, every chapter, both locales', () => {
+    let screens = 0;
+    for (const l of LOCALES) {
+      const all: [string, string][] = [];
+      for (let i = 0; i <= LAST; i++) all.push([`sanjaya ${i}`, stripBlocks(sanjayaHtml(l, i), ['data-entry'])]);
+      // Tercatat's event cards are framed too: each holds the allegation line and the reply link (data-catch).
+      for (let i = 0; i <= PARVA_COUNT; i++) all.push([`recorded ${i}`, stripBlocks(recordedHtml(l, i), ['data-entry', 'data-catch'])]);
+      all.push(['finale', stripBlocks(finaleHtml(l), ['data-entry'])]);
+      for (const [where, rest] of all) {
+        expect(rest).not.toContain('data-entry');
+        expect(rest).not.toContain('<title>');
+        for (const n of NAMES) expect(rest, `${l} ${where}: ${n}`).not.toContain(esc(n));
+        screens++;
+      }
+    }
+    expect(screens).toBe(2 * (game.chapters.length + PARVA_COUNT + 1 + 1));
   });
 });

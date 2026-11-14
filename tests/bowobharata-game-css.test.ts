@@ -192,3 +192,33 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(declared(g, 'left')).toEqual(['0.5rem']);
   });
 });
+
+describe('bowobharata-game.css chapter reports', () => {
+  it('widens Sanjaya and the finale to 64rem for the map and the charts', () => {
+    expect(has('.bg-sanjaya', 'max-width: 64rem')).toBe(true);
+    expect(has('.bg-finale', 'max-width: 64rem')).toBe(true);
+  });
+
+  it('stacks the report block as a grid with a 1rem gap, and fits the charts side by side at 18rem each', () => {
+    expect(has('.bg-report', 'display: grid')).toBe(true);
+    expect(has('.bg-report', 'gap: 1rem')).toBe(true);
+    expect(has('.bg-report__charts', 'display: grid')).toBe(true);
+    // 18rem columns, auto-fit; min() lets a single column shrink below 18rem on a 360 px phone instead of overflowing.
+    expect(declared('.bg-report__charts', 'grid-template-columns')).toEqual(['repeat(auto-fit, minmax(min(18rem, 100%), 1fr))']);
+  });
+
+  it('no horizontal overflow at 360 px: the report and its charts may shrink, and no fixed width is set', () => {
+    for (const sel of ['.bg-report', '.bg-report > *', '.bg-report__charts', '.bg-report__charts > *']) expect(has(sel, 'min-width: 0'), sel).toBe(true);
+    for (const sel of ['.bg-report', '.bg-report__charts', '.bg-report__stat', '.bg-catch__summary']) {
+      expect(declared(sel, 'width'), sel).toEqual([]);
+      expect(declared(sel, 'min-width').filter((v) => v !== '0'), sel).toEqual([]);
+    }
+    expect(has('.bg-screen', 'overflow-wrap: anywhere')).toBe(true);
+  });
+
+  it('a map jump to an entry clears the site header and shows its focus', () => {
+    expect(has("[id^='bg-entry-']", 'scroll-margin-top: calc(var(--nav-h, 59px) + 0.75rem)')).toBe(true);
+    expect(bodies("[id^='bg-entry-']:focus-visible").length).toBe(1);
+  });
+});
+

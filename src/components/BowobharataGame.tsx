@@ -7,7 +7,7 @@
 // screens are presentational (bowobharata-game/screens.tsx). This file loads the scene with the runtime that drives it
 // (lib/bowobharata-game/world/runtime.ts), reads the keyboard, the touch controls and a gamepad, and turns the runtime's HUD snapshots and events into the
 // HUD, the toasts, the lakon card with its letterbox, and the end of each play.
-import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Locale } from '../i18n';
 import { PARVAS } from '../lib/bowobharata';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
@@ -542,6 +542,9 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const chapter = data?.chapters[flow.chapter];
   const cards = data?.events[flow.chapter] ?? [];
   const show3d = flow.mode === '3d' && flow.screen !== 'gate';
+  // The record map may open in 3D only where the game does; the version without animation keeps its still picture.
+  const allow3d = flow.mode === '3d';
+  const chapterIds = useMemo(() => (data ? data.chapters.map((c) => c.entries.map((e) => e.id)) : []), [data]);
 
   return (
     <div ref={gameRef} className="bg-game" data-mode={flow.mode} data-screen={flow.screen}>
@@ -608,9 +611,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
         />
       )}
       {flow.screen === 'recorded' && data && (
-        <Recorded locale={locale} chapterIndex={flow.chapter} cards={cards} prologue={data.prologue} whole={whole} onNext={next} />
+        <Recorded locale={locale} chapterIndex={flow.chapter} cards={cards} prologue={data.prologue} whole={whole} onNext={next} report={data.report} />
       )}
-      {flow.screen === 'sanjaya' && chapter && <SanjayaReport locale={locale} chapterIndex={flow.chapter} chapter={chapter} onNext={next} />}
+      {flow.screen === 'sanjaya' && data && chapter && (
+        <SanjayaReport
+          locale={locale} chapterIndex={flow.chapter} chapter={chapter} onNext={next} report={data.report} chapterIds={chapterIds} allow3d={allow3d}
+        />
+      )}
       {flow.screen === 'lost' && (
         <FailCard
           locale={locale}
@@ -621,7 +628,12 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           onSkip={() => { failClock.current = null; setWhole(false); runtimeRef.current?.skip(); dispatch({ type: 'skip' }); }}
         />
       )}
-      {flow.screen === 'finale' && data && <Finale locale={locale} totals={data.totals} onAgain={() => { writeSaved(storage(), { best: flow.best, chapter: 0 }); dispatch({ type: 'restart' }); }} />}
+      {flow.screen === 'finale' && data && (
+        <Finale
+          locale={locale} totals={data.totals} report={data.report} chapterIds={chapterIds} allow3d={allow3d}
+          onAgain={() => { writeSaved(storage(), { best: flow.best, chapter: 0 }); dispatch({ type: 'restart' }); }}
+        />
+      )}
     </div>
   );
 }

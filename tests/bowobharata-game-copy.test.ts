@@ -13,6 +13,7 @@ const fixture = {
   ...totals,
   n: 3, done: 2, total: 9, seconds: 52, matched: true,
   date: '7 Mei 2026', channel: 'LinkedIn', label: 'Parva 1', m: 140, score: 300, best: 400,
+  items: 4, from: '26 April 2026', to: '2 Mei 2026', channels: 'LinkedIn, X',
 };
 const LOCALES = ['id', 'en'] as const;
 type CopyFn = (o: typeof fixture) => unknown;
@@ -379,5 +380,57 @@ describe("bowobharata-game copy: the game's own voice", () => {
     const named = entries(GAME_COPY.en).filter(([, s]) => s.includes('Rahmat Wibowo'));
     expect(named.length).toBeGreaterThanOrEqual(3);
     for (const [path, s] of named) expect(s, `en.${path}`).not.toMatch(/\b(?:he|him|his|himself|she|her|hers|herself)\b/i);
+  });
+});
+
+describe('bowobharata-game copy: the chapter reports', () => {
+  it('report exists in both locales with the same keys, deep', () => {
+    for (const l of LOCALES) expect(GAME_COPY[l].report, l).toBeTruthy();
+    expect(keyPaths(GAME_COPY.en.report).sort()).toEqual(keyPaths(GAME_COPY.id.report).sort());
+  });
+
+  it('every report string, including what its functions return, passes the voice word lists', () => {
+    const samples = { n: 7, items: 4, from: '26 April 2026', to: '2 Mei 2026', channels: 'LinkedIn, X' };
+    for (const l of LOCALES) {
+      const all: [string, string][] = [
+        ...entries(GAME_COPY[l].report, 'report'),
+        ...functions(GAME_COPY[l].report, 'report').map(([path, fn]): [string, string] => [path, String(fn(samples as never))]),
+      ];
+      expect(all.length).toBeGreaterThan(70);
+      for (const [path, s] of all) {
+        expect(s.trim().length, `${l}.${path}`).toBeGreaterThan(0);
+        expect(unallowed(s), `${l}.${path}: ${s}`).not.toMatch(ID_BANNED);
+        expect(s, `${l}.${path}`).not.toMatch(ID_ALSO);
+        expect(unallowed(s), `${l}.${path}: ${s}`).not.toMatch(EN_BANNED);
+        expect(s, `${l}.${path}`).not.toMatch(BRAND);
+        expect(s, `${l}.${path}`).not.toMatch(/[!—]/);
+        expect(namesIn(s), `${l}.${path}`).toEqual([]);
+      }
+    }
+  });
+
+  it('transcribes the brief: functions, steps, lanes and the map words', () => {
+    const { id, en } = { id: GAME_COPY.id.report, en: GAME_COPY.en.report };
+    expect(id.block).toBe('Catatan dalam angka dan peta');
+    expect(en.block).toBe('The record in numbers and a map');
+    expect(id.when.undated({ n: 3 })).toBe('3 peristiwa lain hanya bertanggal bulan atau tahun.');
+    expect(en.when.undated({ n: 3 })).toBe('3 more events are dated only to a month or year.');
+    expect(id.pasal.other({ items: 4 })).toBe('4 pasal lain');
+    expect(en.pasal.other({ items: 4 })).toBe('4 other articles');
+    expect(id.strip.stat({ n: 2, from: 'a', to: 'b', channels: 'X, Y' })).toBe('2 peristiwa · a sampai b · X, Y');
+    expect(en.strip.stat({ n: 2, from: 'a', to: 'b', channels: 'X, Y' })).toBe('2 events · a to b · X, Y');
+    expect(id.strip.statPrologue({ n: 8, from: 'a', to: 'b' })).toBe('8 tanggal · a sampai b');
+    expect(en.strip.statPrologue({ n: 8, from: 'a', to: 'b' })).toBe('8 dates · a to b');
+    expect(id.chapterName.parva({ n: 3 })).toBe('Parva 3');
+    expect(en.chapterName.finale).toBe('Finale');
+    expect(Object.keys(id.stages.steps)).toEqual(['terlapor', 'somasi', 'aduan', 'laporan', 'stpl']);
+    expect(en.stages.steps.aduan).toBe('Complaint');
+    expect(en.finale.lanes).toEqual({ by: 'by the Pelapor', against: 'against the Pelapor' });
+    expect(id.map.title).toBe('Peta hubungan 3D');
+    expect(en.map.links['out-response']).toBe("The Pelapor's legal responses");
+    expect(en.map.rail.chapter({ n: 5 })).toBe('5');
+    // The map's hub and group names: the graph's own labels in ID, translated in EN.
+    expect(id.map.names).toEqual({ perkara: 'Terlapor', laporan: 'Laporan polisi', 'lp:out': 'oleh Pelapor', 'lp:in': 'terhadap Pelapor' });
+    expect(en.map.names).toEqual({ perkara: 'Terlapor', laporan: 'Police reports', 'lp:out': 'by the Pelapor', 'lp:in': 'against the Pelapor' });
   });
 });

@@ -15,6 +15,8 @@ import BowobharataGame from '../src/components/BowobharataGame';
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 /** The data the island receives: Sanjaya's chapters as ChapterView, the event cards and the prologue dates. */
 const game = gameData(data);
+/** Each chapter's terlapor ids, as the island hands them to the report screens. */
+const chapterIds = game.chapters.map((c) => c.entries.map((e) => e.id));
 const chapters = game.chapters;
 const totals = game.totals;
 const COUNT = chapters.length;
@@ -30,10 +32,10 @@ const settings = { assist: false, easy: false };
 const paused = (locale: 'id' | 'en') =>
   renderToString(<Paused locale={locale} onResume={noop} settings={settings} onSettings={noop} onUseStill={noop} />);
 
-/** Character ranges of every element carrying data-entry (article or li, never nested in its own kind). */
+/** Character ranges of every element carrying data-entry (article, li, or the report's section; never nested in its own kind). */
 function entryRanges(html: string): [number, number][] {
   const out: [number, number][] = [];
-  for (const m of html.matchAll(/<(article|li)[^>]*data-entry="[^"]*"[^>]*>[\s\S]*?<\/\1>/g)) out.push([m.index!, m.index! + m[0].length]);
+  for (const m of html.matchAll(/<(article|li|section)[^>]*data-entry="[^"]*"[^>]*>[\s\S]*?<\/\1>/g)) out.push([m.index!, m.index! + m[0].length]);
   return out;
 }
 /** Every occurrence of every non-E terlapor name sits inside an entry element that carries the allegation line. */
@@ -56,7 +58,7 @@ function expectFramedNames(html: string, locale: 'id' | 'en') {
 }
 
 const sanjaya = (i: number, locale: 'id' | 'en' = 'id') =>
-  renderToString(<SanjayaReport locale={locale} chapterIndex={i} chapter={chapters[i]} onNext={noop} />);
+  renderToString(<SanjayaReport locale={locale} chapterIndex={i} chapter={chapters[i]} onNext={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
 
 describe('gate', () => {
   for (const locale of ['id', 'en'] as const) {
@@ -136,14 +138,14 @@ describe("Sanjaya's report", () => {
         const cards = game.events[i];
         for (const card of cards) screens.push(renderToString(<CatchCard locale={locale} card={cardView(card, locale)} />));
         if (cards.length > 0) {
-          screens.push(renderToString(<Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} />));
+          screens.push(renderToString(<Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} report={game.report} />));
         }
       }
-      checked.push(renderToString(<Recorded locale={locale} chapterIndex={0} cards={game.events[0]} prologue={game.prologue} whole={false} onNext={noop} />));
+      checked.push(renderToString(<Recorded locale={locale} chapterIndex={0} cards={game.events[0]} prologue={game.prologue} whole={false} onNext={noop} report={game.report} />));
       for (const reason of ['time', 'muddied'] as const) {
         checked.push(renderToString(<FailCard locale={locale} reason={reason} fails={2} assist={false} onRetry={noop} onSkip={noop} />));
       }
-      checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} />));
+      checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />));
       checked.push(renderToString(<TouchControls locale={locale} manual onChange={noop} surge={{ ready: true, frac: 1 }} sight={{ on: false, charge: 0 }} />));
       screens.push(paused(locale));
     }
@@ -191,10 +193,11 @@ describe('catch cards and the fallback play', () => {
       for (let i = 1; i <= PARVAS.length; i++) {
         const cards = game.events[i];
         expect(cards.length).toBeGreaterThan(0);
-        const recorded = renderToString(<Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} />);
+        const recorded = renderToString(<Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} report={game.report} />);
         const fb = renderToString(<FallbackPlay locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} taken={cards.length} onTake={noop} onDone={noop} />);
         for (const html of [recorded, fb]) {
-          expect(html.split(allegation).length - 1).toBe(cards.length);
+          // Tercatat adds its framed report strip, with one more allegation line.
+          expect(html.split(allegation).length - 1).toBe(cards.length + (html === recorded ? 1 : 0));
           const shown = [...html.matchAll(/<article[^>]*data-catch[^>]*>[\s\S]*?<\/article>/g)].map((m) => m[0]);
           expect(shown).toHaveLength(cards.length);
           for (const b of shown) {
@@ -254,20 +257,21 @@ describe('catch cards and the fallback play', () => {
 
 describe('finale and pause', () => {
   it('shows reportsBy and reportsAgainst and links to /pantau', () => {
-    const html = renderToString(<Finale locale="id" totals={totals} onAgain={noop} />);
+    const html = renderToString(<Finale locale="id" totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
     expect(html).toContain(`${totals.reportsBy} laporan dibuat Rahmat Wibowo, ${totals.reportsAgainst} laporan terhadapnya`);
     expect(html).toContain(`href="/pantau"`);
     expect(html).toContain(esc(GAME_COPY.id.finaleClose));
-    expect(renderToString(<Finale locale="en" totals={totals} onAgain={noop} />)).toContain('href="/en/monitor"');
+    expect(renderToString(<Finale locale="en" totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />)).toContain('href="/en/monitor"');
   });
 
   it('the finale closing line sits in an entry with the allegation line and the reply link', () => {
     for (const locale of ['id', 'en'] as const) {
-      const html = renderToString(<Finale locale={locale} totals={totals} onAgain={noop} />);
+      const html = renderToString(<Finale locale={locale} totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
       const close = html.match(/<article[^>]*data-entry="finale-close"[^>]*>[\s\S]*?<\/article>/)?.[0] ?? '';
       expect(close).toContain(esc(GAME_COPY[locale].finaleClose));
       expectFramedNames(html, locale);
-      expect(entryRanges(html)).toHaveLength(1);
+      // The report block and the closing block.
+      expect(entryRanges(html)).toHaveLength(2);
     }
   });
 
@@ -456,6 +460,16 @@ describe('island wiring (source)', () => {
     );
     expect(src).toMatch(/flow\.screen === 'lost' && \(\s*<FailCard\b[^>]*?\sfails=\{flow\.fails\}[^>]*?\sassist=\{settings\.assist\}/);
     expect(src).toMatch(/<FallbackPlay\b[^>]*?\scards=\{cards\}[^>]*?\sprologue=\{data\.prologue\}/);
+  });
+  it('hands the chapter reports to Tercatat, Sanjaya and the finale: the report, the chapter ids and whether 3D is allowed', () => {
+    expect(src).toContain("const allow3d = flow.mode === '3d';");
+    expect(src).toContain('data.chapters.map((c) => c.entries.map((e) => e.id))');
+    const tagOf = (name: string) => src.match(new RegExp(`<${name}\\b[\\s\\S]*?\\/>`))?.[0] ?? '';
+    expect(tagOf('Recorded')).toContain('report={data.report}');
+    for (const name of ['SanjayaReport', 'Finale']) {
+      const tag = tagOf(name);
+      for (const prop of ['report={data.report}', 'chapterIds={chapterIds}', 'allow3d={allow3d}']) expect(tag, `${name} ${prop}`).toContain(prop);
+    }
   });
   it('the skip marks the record as filled in and records the rest in the runtime before it dispatches, and every play makes the record whole again', () => {
     expect(src).toMatch(/onSkip=\{\(\) => \{ failClock\.current = null; setWhole\(false\); runtimeRef\.current\?\.skip\(\); dispatch\(\{ type: 'skip' \}\); \}\}/);

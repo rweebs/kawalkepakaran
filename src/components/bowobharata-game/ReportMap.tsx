@@ -45,6 +45,14 @@ export interface MapLabels {
   kinds: Record<MapNode['kind'], string>;
   /** The parva rail: its group's accessible name, its chips and the walk button. */
   rail: { label: string; all: string; prologue: string; finale: string; chapter: (o: { n: number }) => string; walk: string; pause: string };
+  /** Display names by node id, in place of the graph's own label: the hubs and groups whose labels the graph keeps in Indonesian. */
+  names?: Record<string, string>;
+}
+
+/** The graph with its labels as shown: `names` replaces the label of each node it lists; names and report numbers stay as they are. */
+export function namedGraph(graph: MapGraph, names?: Record<string, string>): MapGraph {
+  if (!names || !graph.nodes.some((n) => names[n.id] !== undefined)) return graph;
+  return { ...graph, nodes: graph.nodes.map((n) => (names[n.id] === undefined ? n : { ...n, label: names[n.id] })) };
 }
 
 export interface ReportMapProps {
@@ -146,8 +154,9 @@ export function ReportMap({ graph, chapterIds, upTo, focus: focusProp, rail, all
   const bright = useMemo(() => brightFor(graph, chapterIds, focus, shown), [graph, chapterIds, focus, shown]);
   const sel = selected !== null && shown[selected] ? selected : null;
   const input = useMemo(() => sceneInput(graph), [graph]);
-  const picture = useMemo(() => (ready ? null : stillPicture(graph, shown, bright, sel)), [ready, graph, shown, bright, sel]);
-  const links = useMemo(() => (sel === null ? [] : neighbours(graph, sel, shown)), [graph, sel, shown]);
+  const view = useMemo(() => namedGraph(graph, labels.names), [graph, labels.names]);
+  const picture = useMemo(() => (ready ? null : stillPicture(view, shown, bright, sel)), [ready, view, shown, bright, sel]);
+  const links = useMemo(() => (sel === null ? [] : neighbours(view, sel, shown)), [view, sel, shown]);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -282,9 +291,9 @@ export function ReportMap({ graph, chapterIds, upTo, focus: focusProp, rail, all
   const chipText = (c: RailChip) =>
     c.kind === 'all' ? labels.rail.all : c.kind === 'prologue' ? labels.rail.prologue : c.kind === 'finale' ? labels.rail.finale : labels.rail.chapter({ n: c.value ?? 0 });
 
-  const selNode = sel === null ? null : graph.nodes[sel];
+  const selNode = sel === null ? null : view.nodes[sel];
   const entry = sel === null ? null : entryFor(graph, sel, chapterIds, focus, upTo);
-  const hovered = ready && hover ? graph.nodes[hover.i] : null;
+  const hovered = ready && hover ? view.nodes[hover.i] : null;
   const canvasClass = `bg-map__canvas${ready ? '' : ' bg-map__canvas--wait'}${hovered ? ' bg-map__canvas--pointer' : ''}`;
 
   return (
@@ -355,7 +364,7 @@ export function ReportMap({ graph, chapterIds, upTo, focus: focusProp, rail, all
                           <span className="bg-map__swatch bg-map__swatch--line" style={{ background: LINK_HEX[l.kind] }} aria-hidden="true" />
                           <button type="button" className="bg-map__link" onClick={() => { focusNext.current = 'head'; pick(l.other); }}>
                             {l.kind !== 'member' && <span aria-hidden="true">{l.dir === 'out' ? '→ ' : '← '}</span>}
-                            {graph.nodes[l.other].label}
+                            {view.nodes[l.other].label}
                           </button>
                           <span className="bg-map__muted">{labels.links[l.kind]}</span>
                         </li>

@@ -43,6 +43,19 @@
 .bg-catch__meta { color: var(--accent-amber); font-size: 0.85rem; }
 .bg-taken { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
 
+/* The chapter reports: Sanjaya and the finale widen for the map and charts; the report block stacks its parts, and the
+   charts sit side by side where there is room for two of 18rem, one per row on a phone. */
+.bg-sanjaya, .bg-finale { max-width: 64rem; }
+.bg-report { display: grid; gap: 1rem; min-width: 0; }
+.bg-report > * { min-width: 0; }
+.bg-report__charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); gap: 1rem; min-width: 0; }
+.bg-report__charts > * { min-width: 0; }
+.bg-report__stat { color: var(--accent-amber); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.bg-report h3 { margin: 0; }
+.bg-catch__summary { color: var(--text-secondary); }
+[id^='bg-entry-'] { scroll-margin-top: calc(var(--nav-h, 59px) + 0.75rem); }
+[id^='bg-entry-']:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
+
 /* HUD: transparent overlay over the stage; each panel is pinned to a corner. */
 .bg-hud { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .bg-hud button { pointer-events: auto; }

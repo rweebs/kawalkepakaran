@@ -4,10 +4,41 @@
 // One calm narrator: the player drives, records and delivers, and never strikes, chases or catches anyone. The word
 // lists that hold this voice live in tests/bowobharata-game-copy.test.ts; the reference games' names that must stay
 // out, in tests/bowobharata-game-brand.ts.
+import type { TableLabels } from '../../components/bowobharata-game/charts';
+import type { MapLabels } from '../../components/bowobharata-game/ReportMap';
 import type { Locale } from '../../i18n';
+import type { Tahap } from '../perkara';
 import type { HintKey } from './mission-run';
 import type { MissionType } from './missions';
 import type { Totals } from './record';
+
+/** The chapter-end reports on Tercatat, Sanjaya and the finale: tiles, charts, the record map and their words. */
+export interface ReportCopy {
+  /** The framed report block's heading and lead line. */
+  block: string;
+  lead: string;
+  /** Sanjaya's stat tiles; `fresh` and `again` qualify the names count. */
+  tiles: { names: string; fresh: string; again: string; acts: string; replies: string; pasal: string; reports: string };
+  /** The chapter's events by day (a parva) or by month (the prologue and the finale chapter). */
+  when: { title: string; day: string; month: string; undated: (o: { n: number }) => string };
+  pasal: { title: string; note: string; other: (o: { items: number }) => string };
+  stages: { title: string; note: string; steps: Record<Tahap['key'], string> };
+  /** Every chart's table twin. */
+  table: TableLabels;
+  /** Tercatat's strip: where the parva sits in the whole story. */
+  strip: {
+    title: string; events: string; dates: string;
+    stat: (o: { n: number; from: string; to: string; channels: string }) => string;
+    statPrologue: (o: { n: number; from: string; to: string }) => string;
+  };
+  finale: {
+    months: string; monthsNote: string; perChapter: string; perChapterNote: string; pasalTop: string; reports: string;
+    lanes: { by: string; against: string };
+  };
+  /** A chapter's short name on the finale's per-part chart. */
+  chapterName: { prologue: string; parva: (o: { n: number }) => string; finale: string };
+  map: MapLabels;
+}
 
 export interface GameCopy {
   title: string;
@@ -97,6 +128,7 @@ export interface GameCopy {
   controlsKeys: string[];
   controlsTouch: string[];
   controlsTitle: { keys: string; touch: string };
+  report: ReportCopy;
 }
 
 export const GAME_COPY: Record<Locale, GameCopy> = {
@@ -234,6 +266,64 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       'Ketuk layar untuk melewati pembuka lakon.',
     ],
     controlsTitle: { keys: 'Papan ketik', touch: 'Layar sentuh' },
+    report: {
+      block: 'Catatan dalam angka dan peta',
+      lead: 'Disusun dari berkas yang sama dengan laporan Sanjaya: siapa, kapan, pasal apa, dan sejauh mana penanganannya.',
+      tiles: { names: 'Nama tercatat', fresh: 'baru', again: 'muncul lagi', acts: 'Dugaan perbuatan', replies: 'Tanggapan', pasal: 'Pasal dikutip', reports: 'Nomor laporan' },
+      when: {
+        title: 'Kapan peristiwanya bertanggal',
+        day: 'Jumlah peristiwa per hari.',
+        month: 'Jumlah peristiwa per bulan.',
+        undated: ({ n }) => `${n} peristiwa lain hanya bertanggal bulan atau tahun.`,
+      },
+      pasal: { title: 'Pasal yang dikutip', note: 'Jumlah nama yang mengutip tiap pasal.', other: ({ items }) => `${items} pasal lain` },
+      stages: {
+        title: 'Sejauh mana penanganannya',
+        note: 'Jumlah nama yang sudah sampai di tiap tahap.',
+        steps: { terlapor: 'Tercatat', somasi: 'Somasi', aduan: 'Aduan', laporan: 'Laporan polisi', stpl: 'STPL' },
+      },
+      table: { show: 'Lihat tabel', key: 'Butir', value: 'Jumlah' },
+      strip: {
+        title: 'Posisi parva ini dalam cerita',
+        events: 'Peristiwa parva ini',
+        dates: 'Tanggal sebelum perang',
+        stat: ({ n, from, to, channels }) => `${n} peristiwa · ${from} sampai ${to} · ${channels}`,
+        statPrologue: ({ n, from, to }) => `${n} tanggal · ${from} sampai ${to}`,
+      },
+      finale: {
+        months: 'Peristiwa per bulan di seluruh catatan',
+        monthsNote: 'Pita bernomor menandai rentang tanggal tiap parva.',
+        perChapter: 'Nama baru per bagian',
+        perChapterNote: 'Nama yang pertama kali masuk catatan di tiap bagian.',
+        pasalTop: 'Pasal yang paling sering dikutip',
+        reports: 'Laporan polisi menurut waktu',
+        lanes: { by: 'oleh Pelapor', against: 'terhadap Pelapor' },
+      },
+      chapterName: { prologue: 'Prolog', parva: ({ n }) => `Parva ${n}`, finale: 'Akhir' },
+      map: {
+        title: 'Peta hubungan 3D',
+        hint: 'Seret untuk memutar, gulir atau cubit untuk memperbesar, tekan titik untuk melihat hubungannya.',
+        still: 'Perangkat ini tidak bisa membuka 3D, jadi peta ditampilkan sebagai gambar diam.',
+        aria: 'Peta hubungan antara Pelapor, terlapor, dan laporan polisi yang sudah tercatat',
+        sources: { rw: 'Pelapor', perkara: 'Terlapor', laporan: 'Laporan polisi' },
+        links: {
+          'in-allegation': 'Perbuatan yang diduga Pelapor (dugaan)',
+          'out-response': 'Tanggapan hukum Pelapor',
+          against: 'Laporan pihak lain terhadap Pelapor',
+          member: 'Termasuk dalam kelompok',
+        },
+        bright: 'Terang: bagian ini',
+        dim: 'Redup: bagian sebelumnya',
+        size: 'Ukuran titik = jumlah hubungannya.',
+        selected: 'Titik terpilih',
+        linksTitle: 'Hubungan',
+        clear: 'Hapus pilihan',
+        entry: 'Lihat entrinya',
+        kinds: { center: 'Pelapor', hub: 'sumber', cluster: 'kelompok', member: 'butir' },
+        rail: { label: 'Bagian cerita', all: 'Semua', prologue: 'Prolog', finale: 'Akhir', chapter: ({ n }) => `${n}`, walk: 'Putar perjalanan', pause: 'Jeda' },
+        names: { perkara: 'Terlapor', laporan: 'Laporan polisi', 'lp:out': 'oleh Pelapor', 'lp:in': 'terhadap Pelapor' },
+      },
+    },
   },
   en: {
     title: 'BOWOBHARATA',
@@ -369,5 +459,63 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       "Tap the screen to skip the episode's opening.",
     ],
     controlsTitle: { keys: 'Keyboard', touch: 'Touch screen' },
+    report: {
+      block: 'The record in numbers and a map',
+      lead: "Drawn from the same file as Sanjaya's report: who, when, which articles, and how far each case has gone.",
+      tiles: { names: 'Names on record', fresh: 'new', again: 'seen before', acts: 'Alleged acts', replies: 'Replies', pasal: 'Articles cited', reports: 'Report numbers' },
+      when: {
+        title: 'When the events are dated',
+        day: 'Events per day.',
+        month: 'Events per month.',
+        undated: ({ n }) => `${n} more events are dated only to a month or year.`,
+      },
+      pasal: { title: 'Articles cited', note: 'Names citing each article.', other: ({ items }) => `${items} other articles` },
+      stages: {
+        title: 'How far the handling has gone',
+        note: 'Names that have reached each step.',
+        steps: { terlapor: 'On record', somasi: 'Somasi', aduan: 'Complaint', laporan: 'Police report', stpl: 'STPL' },
+      },
+      table: { show: 'Show the table', key: 'Item', value: 'Count' },
+      strip: {
+        title: 'Where this parva sits in the story',
+        events: 'Events of this parva',
+        dates: 'Dates before the war',
+        stat: ({ n, from, to, channels }) => `${n} events · ${from} to ${to} · ${channels}`,
+        statPrologue: ({ n, from, to }) => `${n} dates · ${from} to ${to}`,
+      },
+      finale: {
+        months: 'Events per month across the record',
+        monthsNote: "Numbered bands mark each parva's dates.",
+        perChapter: 'New names per part',
+        perChapterNote: 'Names entering the record in each part.',
+        pasalTop: 'Articles cited most often',
+        reports: 'Police reports over time',
+        lanes: { by: 'by the Pelapor', against: 'against the Pelapor' },
+      },
+      chapterName: { prologue: 'Prologue', parva: ({ n }) => `Parva ${n}`, finale: 'Finale' },
+      map: {
+        title: '3D link map',
+        hint: 'Drag to turn, scroll or pinch to zoom, press a point to see its links.',
+        still: 'This device cannot open 3D, so the map is shown as a still picture.',
+        aria: 'Link map of the Pelapor, the terlapor and the police reports on record so far',
+        sources: { rw: 'Pelapor', perkara: 'Terlapor', laporan: 'Police reports' },
+        links: {
+          'in-allegation': 'Act alleged by the Pelapor (allegation)',
+          'out-response': "The Pelapor's legal responses",
+          against: 'Reports by others against the Pelapor',
+          member: 'Belongs to group',
+        },
+        bright: 'Bright: this part',
+        dim: 'Dim: earlier parts',
+        size: 'Point size = number of links.',
+        selected: 'Selected point',
+        linksTitle: 'Links',
+        clear: 'Clear selection',
+        entry: 'See the entry',
+        kinds: { center: 'Pelapor', hub: 'source', cluster: 'group', member: 'item' },
+        rail: { label: 'Parts of the story', all: 'All', prologue: 'Prologue', finale: 'Finale', chapter: ({ n }) => `${n}`, walk: 'Play the journey', pause: 'Pause' },
+        names: { perkara: 'Terlapor', laporan: 'Police reports', 'lp:out': 'by the Pelapor', 'lp:in': 'against the Pelapor' },
+      },
+    },
   },
 };

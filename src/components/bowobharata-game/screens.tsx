@@ -15,13 +15,19 @@ import { createTouchPointers, type TouchState } from '../../lib/bowobharata-game
 import type { FailReason, GameEvent } from '../../lib/bowobharata-game/mission-run';
 import type { MissionType } from '../../lib/bowobharata-game/missions';
 import type { Totals } from '../../lib/bowobharata-game/record';
-import { kategoriLabel } from '../../lib/perkara';
+import type { ChapterReport, ReportData } from '../../lib/bowobharata-game/report-types';
+import { kategoriLabel, type Tahap } from '../../lib/perkara';
+import { BarList, Columns, StatTiles, TimeStrip, type Mark } from './charts';
+import { ReportMap } from './ReportMap';
 
 /** One event card in one language, as a screen shows it: `date` is the label, `dateTime` the ISO day. */
-export interface CardView { key: string; date: string; dateTime: string; channel: string; title: string; href: string }
+export interface CardView { key: string; date: string; dateTime: string; channel: string; title: string; summary: string; href: string }
 
 export function cardView(e: EventCard, locale: Locale): CardView {
-  return { key: e.slug, date: e.dateLabel[locale], dateTime: e.date, channel: e.channel[locale], title: e.title[locale], href: e.path[locale] };
+  return {
+    key: e.slug, date: e.dateLabel[locale], dateTime: e.date, channel: e.channel[locale], title: e.title[locale], summary: e.summary[locale],
+    href: e.path[locale],
+  };
 }
 
 interface ChapterInfo { kicker: string | null; title: string; episode: string | null; id: string }
@@ -163,6 +169,7 @@ export function CatchCard({ locale, card }: { locale: Locale; card: CardView }) 
     <article className="bg-catch" data-catch>
       <p className="bg-catch__meta"><time dateTime={card.dateTime}>{card.date}</time> · {card.channel}</p>
       <h3>{card.title}</h3>
+      <p className="bg-catch__summary">{card.summary}</p>
       <Allegation locale={locale} />
       <a href={card.href}>{c.catchSource}</a>
     </article>
@@ -187,9 +194,47 @@ function PrologueRecords({ locale, prologue }: { locale: Locale; prologue: Prolo
   );
 }
 
+/** A whole day in the locale's long form, read in UTC: "26 April 2026", "April 26, 2026". */
+const longDay = (locale: Locale, iso: string) =>
+  new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${iso}T00:00:00Z`));
+
+/** The parva windows as chart marks, labelled 1 to 8; `current` is the window's index, or -1 for none. */
+const windowMarks = (report: ReportData, current: number): Mark[] =>
+  report.windows.map((w, i) => ({ from: w.from, to: w.to, label: String(i + 1), current: i === current }));
+
+/** Tercatat's framed strip: the stat line, the allegation line, and where the chapter's dates sit in the whole story. */
+function RecordStrip({ locale, chapterIndex, cards, prologue, report }: {
+  locale: Locale; chapterIndex: number; cards: EventCard[]; prologue: PrologueRecord[]; report: ReportData;
+}) {
+  const r = GAME_COPY[locale].report;
+  const isPrologue = chapterIndex === 0;
+  const w = report.windows[chapterIndex - 1];
+  let stat: string;
+  if (isPrologue) {
+    stat = r.strip.statPrologue({ n: prologue.length, from: prologue[0]?.label ?? '', to: prologue[prologue.length - 1]?.label ?? '' });
+  } else {
+    const channels = [...new Set(cards.map((e) => e.channel[locale]))].join(', ');
+    stat = r.strip.stat({ n: cards.length, from: w ? longDay(locale, w.from) : '', to: w ? longDay(locale, w.to) : '', channels });
+  }
+  const lane = isPrologue
+    ? { label: r.strip.dates, dates: prologue.map((d) => d.iso) }
+    : { label: r.strip.events, dates: cards.map((e) => e.date) };
+  return (
+    <section className="bg-entry bg-report bg-report--strip" data-entry="report-strip">
+      <p className="bg-report__stat">{stat}</p>
+      <Allegation locale={locale} />
+      <TimeStrip
+        id={`bg-strip-${chapterIndex}`} locale={locale} title={r.strip.title} span={report.span}
+        marks={windowMarks(report, chapterIndex - 1)} lanes={[lane]} table={r.table}
+      />
+    </section>
+  );
+}
+
 /** Tercatat: what went on record in the chapter. `whole` is false when the skip after two fails filled the rest in. */
-export function Recorded({ locale, chapterIndex, cards, prologue, whole, onNext }: {
-  locale: Locale; chapterIndex: number; cards: EventCard[]; prologue: PrologueRecord[]; whole: boolean; onNext: () => void;
+export function Recorded({ locale, chapterIndex, cards, prologue, whole, onNext, report }: {
+  locale: Locale; chapterIndex: number; cards: EventCard[]; prologue: PrologueRecord[]; whole: boolean; onNext: () => void; report: ReportData;
 }) {
   const c = GAME_COPY[locale];
   return (
@@ -197,6 +242,7 @@ export function Recorded({ locale, chapterIndex, cards, prologue, whole, onNext 
       <p className="bg-kicker">{chapterLine(chapterInfo(chapterIndex, locale))}</p>
       <h2 id="bg-recorded-title">{c.recordedScreen.title}</h2>
       {!whole && <p className="bg-note">{c.recordedScreen.skipped}</p>}
+      <RecordStrip locale={locale} chapterIndex={chapterIndex} cards={cards} prologue={prologue} report={report} />
       {chapterIndex === 0
         ? <PrologueRecords locale={locale} prologue={prologue} />
         : cards.map((e) => cardView(e, locale)).map((card) => <CatchCard key={card.key} locale={locale} card={card} />)}
@@ -208,7 +254,7 @@ export function Recorded({ locale, chapterIndex, cards, prologue, whole, onNext 
 function FullEntry({ locale, e }: { locale: Locale; e: EntryView }) {
   const f = GAME_COPY[locale].fields;
   return (
-    <article className="bg-entry" data-entry={e.id}>
+    <article className="bg-entry" data-entry={e.id} id={`bg-entry-${e.id}`}>
       <h3>{e.nama}</h3>
       <Allegation locale={locale} />
       <p className="bg-entry__cat">{kategoriLabel(e.kategori)}{e.klaster ? ` · ${e.klaster}` : ''}</p>
@@ -228,15 +274,72 @@ function FullEntry({ locale, e }: { locale: Locale; e: EntryView }) {
   );
 }
 
-export function SanjayaReport({ locale, chapterIndex, chapter, onNext }: { locale: Locale; chapterIndex: number; chapter: ChapterView; onNext: () => void }) {
+/** The steps of the handling as BarList rows, by their names in the copy. */
+const stageRows = (locale: Locale, stages: readonly Tahap[]) => stages.map((t) => ({ label: GAME_COPY[locale].report.stages.steps[t.key], n: t.n }));
+
+/** Scrolls a Sanjaya entry into view and gives it keyboard focus: the map's way to a selected terlapor. */
+function goToEntry(id: string) {
+  const el = document.getElementById(`bg-entry-${id}`);
+  if (!el) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.tabIndex = -1;
+  el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+  el.focus({ preventScroll: true });
+}
+
+/** The chapter's framed report on Sanjaya's screen: the tiles, the record map up to this chapter, and three charts when names came in. */
+function ChapterBlock({ locale, chapterIndex, id, cr, report, chapterIds, allow3d }: {
+  locale: Locale; chapterIndex: number; id: string; cr: ChapterReport; report: ReportData; chapterIds: string[][]; allow3d: boolean;
+}) {
+  const r = GAME_COPY[locale].report;
+  const t = r.tiles;
+  return (
+    <section className="bg-entry bg-report" data-entry={`report-${id}`}>
+      <h3>{r.block}</h3>
+      <p>{r.lead}</p>
+      <Allegation locale={locale} />
+      <StatTiles
+        tiles={[
+          { label: t.names, value: cr.names, note: `${cr.fresh} ${t.fresh} · ${cr.again} ${t.again}` },
+          { label: t.acts, value: cr.acts },
+          { label: t.replies, value: cr.replies },
+          { label: t.pasal, value: cr.pasal.length },
+          { label: t.reports, value: cr.reports },
+        ]}
+      />
+      <ReportMap
+        locale={locale} graph={report.map} chapterIds={chapterIds} upTo={chapterIndex} focus={chapterIndex} allow3d={allow3d}
+        labels={r.map} onEntry={goToEntry}
+      />
+      {cr.names > 0 && (
+        <div className="bg-report__charts">
+          <Columns
+            id={`bg-when-${id}`} locale={locale} title={r.when.title} note={cr.unit === 'day' ? r.when.day : r.when.month} unit={cr.unit}
+            bins={cr.bins} undated={cr.undated} undatedNote={r.when.undated} table={r.table}
+          />
+          <BarList id={`bg-pasal-${id}`} title={r.pasal.title} note={r.pasal.note} rows={cr.pasal} limit={8} other={r.pasal.other} table={r.table} />
+          <BarList id={`bg-stages-${id}`} title={r.stages.title} note={r.stages.note} rows={stageRows(locale, cr.stages)} table={r.table} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function SanjayaReport({ locale, chapterIndex, chapter, onNext, report, chapterIds, allow3d }: {
+  locale: Locale; chapterIndex: number; chapter: ChapterView; onNext: () => void; report: ReportData; chapterIds: string[][]; allow3d: boolean;
+}) {
   const c = GAME_COPY[locale];
   const full = chapter.entries.filter((e) => e.full);
   const again = chapter.entries.filter((e) => !e.full);
+  const cr = report.chapters[chapterIndex];
   return (
     <section className="bg-screen bg-sanjaya" aria-labelledby="bg-sanjaya-title">
       <p className="bg-kicker">{chapterLine(chapterInfo(chapterIndex, locale))}</p>
       <h2 id="bg-sanjaya-title">{c.sanjayaTitle}</h2>
       <p>{c.sanjayaIntro}</p>
+      {cr && (
+        <ChapterBlock locale={locale} chapterIndex={chapterIndex} id={chapter.id} cr={cr} report={report} chapterIds={chapterIds} allow3d={allow3d} />
+      )}
       {chapter.entries.length === 0 && <p className="bg-note">{c.sanjayaNone}</p>}
       {full.map((e) => <FullEntry key={e.id} locale={locale} e={e} />)}
       {again.length > 0 && (
@@ -244,7 +347,7 @@ export function SanjayaReport({ locale, chapterIndex, chapter, onNext }: { local
           <h3>{c.nameOnly}</h3>
           <ul className="bg-again">
             {again.map((e) => (
-              <li key={e.id} data-entry={e.id}>
+              <li key={e.id} data-entry={e.id} id={`bg-entry-${e.id}`}>
                 <strong>{e.nama}</strong>
                 <span className="bg-allegation">{c.allegation} <a href={routePath('reply', locale)}>{c.reply}</a></span>
               </li>
@@ -579,7 +682,48 @@ export function SlowPrompt({ locale, onUseStill, onKeepPlaying }: { locale: Loca
   );
 }
 
-export function Finale({ locale, totals, onAgain }: { locale: Locale; totals: Totals; onAgain: () => void }) {
+/** A chapter's short name: the prologue, Parva n, or the finale. */
+const chapterName = (locale: Locale, i: number, last: number) => {
+  const n = GAME_COPY[locale].report.chapterName;
+  return i === 0 ? n.prologue : i === last ? n.finale : n.parva({ n: i });
+};
+
+/** The finale's framed report: the whole record on the map with its rail, then the months, the parts, the pasal, the
+ * steps and the police reports over time. */
+function FinaleBlock({ locale, report, chapterIds, allow3d }: { locale: Locale; report: ReportData; chapterIds: string[][]; allow3d: boolean }) {
+  const r = GAME_COPY[locale].report;
+  const last = report.chapters.length - 1;
+  const marks = windowMarks(report, -1);
+  const dated = (dir: 'by' | 'against') => report.reports.flatMap((d) => (d.dir === dir && d.date ? [d.date] : []));
+  return (
+    <section className="bg-entry bg-report" data-entry="report-finale">
+      <h3>{r.block}</h3>
+      <p>{r.lead}</p>
+      <Allegation locale={locale} />
+      <ReportMap locale={locale} graph={report.map} chapterIds={chapterIds} upTo={last} focus={null} rail allow3d={allow3d} labels={r.map} onEntry={goToEntry} />
+      <div className="bg-report__charts">
+        <Columns
+          id="bg-fin-months" locale={locale} title={r.finale.months} note={r.finale.monthsNote} unit="month" bins={report.months} marks={marks}
+          undated={report.undated} undatedNote={r.when.undated} table={r.table}
+        />
+        <BarList
+          id="bg-fin-parts" title={r.finale.perChapter} note={r.finale.perChapterNote}
+          rows={report.fresh.map((n, i) => ({ label: chapterName(locale, i, last), n }))} table={r.table}
+        />
+        <BarList id="bg-fin-pasal" title={r.finale.pasalTop} note={r.pasal.note} rows={report.pasal} limit={10} other={r.pasal.other} table={r.table} />
+        <BarList id="bg-fin-stages" title={r.stages.title} note={r.stages.note} rows={stageRows(locale, report.stages)} table={r.table} />
+      </div>
+      <TimeStrip
+        id="bg-fin-reports" locale={locale} title={r.finale.reports} span={report.span} marks={marks}
+        lanes={[{ label: r.finale.lanes.by, dates: dated('by') }, { label: r.finale.lanes.against, dates: dated('against') }]} table={r.table}
+      />
+    </section>
+  );
+}
+
+export function Finale({ locale, totals, onAgain, report, chapterIds, allow3d }: {
+  locale: Locale; totals: Totals; onAgain: () => void; report: ReportData; chapterIds: string[][]; allow3d: boolean;
+}) {
   const c = GAME_COPY[locale];
   const lines = c.finaleTotals(totals);
   const label = lines[lines.length - 1];
@@ -588,6 +732,7 @@ export function Finale({ locale, totals, onAgain }: { locale: Locale; totals: To
       <h2 id="bg-finale-title" className="bg-title">{c.title}</h2>
       {lines.slice(0, -1).map((l) => <p key={l}>{l}</p>)}
       <p><a href={routePath('monitor', locale)}>{label}</a></p>
+      <FinaleBlock locale={locale} report={report} chapterIds={chapterIds} allow3d={allow3d} />
       <article className="bg-entry bg-close" data-entry="finale-close">
         <p>{c.finaleClose}</p>
         <Allegation locale={locale} />

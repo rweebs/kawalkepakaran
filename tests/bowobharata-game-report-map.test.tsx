@@ -10,7 +10,7 @@ import {
 import {
   EASE_MS, LINK_COLORS, buildReportObjects, createReportMap, dimLinkOpacity, linkOpacity, sceneSettings, type ReportMapApi,
 } from '../src/lib/bowobharata-game/world/report-map';
-import { ReportMap, type MapLabels } from '../src/components/bowobharata-game/ReportMap';
+import { ReportMap, namedGraph, type MapLabels } from '../src/components/bowobharata-game/ReportMap';
 
 // The record map (Task 3 of the chapter reports): the pure view, the three.js scene built in node without a renderer, the
 // scene's lifecycle against a stub renderer, the still SVG through renderToString, and source checks on the 3D module.
@@ -887,6 +887,24 @@ describe('ReportMap (renderToString)', () => {
     expect(titles(early).sort()).toEqual(LABEL_LIST.filter((_, i) => i !== T2 && i !== LP01).sort());
     for (const gone of ['Nama Dua', 'LP-01']) expect(early).not.toContain(gone);
     expect(early.match(/<line /g)).toHaveLength(4);
+  });
+
+  it('labels.names shows a hub or group by its given name in place of the graph label, and leaves the rest alone', () => {
+    const names = { perkara: 'Accused', 'lp:out': 'by the Pelapor', missing: 'Nobody' };
+    const h = html({ labels: { ...LABELS, names } });
+    const t = titles(h);
+    expect(t).toContain('Accused');
+    expect(t).toContain('by the Pelapor');
+    expect(t).not.toContain('Terlapor');
+    expect(t).not.toContain('oleh Pelapor');
+    for (const keep of ['Nama Satu', 'Nama Dua', 'LP-01', 'Laporan polisi']) expect(t).toContain(keep);
+    expect(namedGraph(G, undefined)).toBe(G);
+    expect(namedGraph(G, { missing: 'x' })).toBe(G);
+    const named = namedGraph(G, names);
+    expect(named.nodes[PERKARA].label).toBe('Accused');
+    expect(named.nodes[T1]).toBe(G.nodes[T1]);
+    expect(named.links).toBe(G.links);
+    expect(G.nodes[PERKARA].label).toBe('Terlapor');
   });
 
   it('draws links first, then the dots far to near', () => {
