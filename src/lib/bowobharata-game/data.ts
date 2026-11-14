@@ -4,6 +4,7 @@
 import type { Locale } from '../../i18n';
 import type { TerlaporKronologi } from '../perkara';
 import type { ChapterId, Totals } from './record';
+import type { ReportData } from './report-types';
 
 /** A dossier row as the screens read it. */
 export type RowView = Pick<TerlaporKronologi, 'tanggal' | 'iso' | 'peristiwa'>;
@@ -17,10 +18,12 @@ export interface ChapterView { id: ChapterId; entries: EntryView[] }
 export interface EventCard {
   slug: string; date: string; channel: Record<Locale, string>; title: Record<Locale, string>; dateLabel: Record<Locale, string>;
   path: Record<Locale, string>;
+  /** The event's first paragraph, cut at 280 characters (summaryOf). */
+  summary: Record<Locale, string>;
 }
 /** A prologue date: the ISO value and the dossier's own `tanggal`. It names nobody. */
 export interface PrologueRecord { iso: string; label: string }
 /** `events[i]` holds chapter i's cards: none for the prologue (0) and the finale (last). */
-export interface GameData { chapters: ChapterView[]; totals: Totals; events: EventCard[][]; prologue: PrologueRecord[] }
+export interface GameData { chapters: ChapterView[]; totals: Totals; events: EventCard[][]; prologue: PrologueRecord[]; report: ReportData }
 
 export const GAME_DATA_SRC = '/pantau-data/bowobharata-game.json';

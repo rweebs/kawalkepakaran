@@ -101,10 +101,10 @@ describe('payload', () => {
     for (const c of served.chapters) expect(c).not.toHaveProperty('window');
   });
 
-  it('carries the event cards and the prologue dates, under 120,000 characters', () => {
+  it('carries the event cards and the prologue dates, under 200,000 characters', () => {
     expect(served.events).toEqual(data.events);
     expect(served.prologue).toEqual(data.prologue);
-    expect(json.length).toBeLessThan(120_000);
+    expect(json.length).toBeLessThan(200_000);
   });
 });
 

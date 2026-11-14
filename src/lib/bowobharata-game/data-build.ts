@@ -7,6 +7,7 @@ import { eventPath, formatDateFor, localizeEvent } from '../linimasa-locale';
 import type { Perkara, TerlaporKronologi } from '../perkara';
 import type { EntryView, EventCard, GameData, PrologueRecord, RowView } from './data';
 import { buildChapters, finaleTotals, type SanjayaEntry } from './record';
+import { reportData, summaryOf } from './report-build';
 
 const rowView = ({ tanggal, iso, peristiwa }: TerlaporKronologi): RowView => ({ tanggal, iso, peristiwa });
 
@@ -32,6 +33,7 @@ export function eventCards(chapterIndex: number): EventCard[] {
       title: perLocale((l) => loc[l].title),
       dateLabel: perLocale((l) => formatDateFor(e.date, l)),
       path: perLocale((l) => eventPath(loc[l], l)),
+      summary: perLocale((l) => summaryOf(loc[l].paragraphs)),
     };
   });
 }
@@ -57,5 +59,6 @@ export function gameData(p: Perkara): GameData {
     totals: finaleTotals(p),
     events: chapters.map((_, i) => eventCards(i)),
     prologue: prologueRecords(chapters[0].entries),
+    report: reportData(p, chapters),
   };
 }
