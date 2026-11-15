@@ -21,7 +21,7 @@ import {
   type Guard,
 } from './drive';
 import { GAME_WARRIORS, PLAY, ZONES, softWallAccel, staticColliders, zonesAt, type Collider, type Zone } from './world';
-import { fieldEdge, figureGuard, hullMid, resolveContacts } from './collide';
+import { HULL, fieldEdge, figureGuard, hullMid, resolveContacts } from './collide';
 import {
   bump,
   chaseView,
@@ -95,6 +95,11 @@ export interface GameState {
   hintQueue: HintKey[];
   /** When the last hint, held and wall events fired (clock seconds; −Infinity before the first). */
   hintAt: number;
+  /**
+   * The copy the sight lesson follows (its id) while that lesson is the last hint fired and its copy is still to be met
+   * (SIGHT_LESSON); null otherwise. The HUD keeps the lesson up while it is set.
+   */
+  hintCopy: number | null;
   heldAt: number;
   wallAt: number;
   /** The id the next volley gets (its copy and haze share it); the lakon's own copies and haze are numbered first. */
@@ -124,6 +129,14 @@ export const HELD_MIN = 0.05;
 export const EVENT_GAP = 6;
 /** Real seconds a hint stays on the HUD before another may replace it. */
 export const HINT_MIN = 1.5;
+/**
+ * The sight lesson follows the copy that brought it, and the HUD keeps it up past HINT_SECONDS while the chariot has
+ * still to meet that copy: until the copy is taken or filed, or passed (more than `passed` m from the hull's middle;
+ * it was within 15 m when it brought the lesson), and never longer than `most` real seconds after the lesson fired.
+ * Each lets the copy go for good, on the frame after it happens. A copy beside or behind the hull is not yet passed:
+ * the prologue's drivers overshoot L7 past the lesson copy and pivot back to meet it.
+ */
+export const SIGHT_LESSON = { passed: 20, most: 12 } as const;
 /** The outro's opening slow motion, for the scene's time scale. */
 const OUTRO_SLOW = { seconds: 1.2, scale: 0.35 } as const;
 /** Parva 8's dawn: the mix it starts from. */
@@ -230,6 +243,7 @@ export function startChapter(
     hintsShown: [],
     hintQueue: [],
     hintAt: -Infinity,
+    hintCopy: null,
     heldAt: -Infinity,
     wallAt: -Infinity,
     nextId: decoys.length + clouds.length + 1,
@@ -560,6 +574,50 @@ function ownCopyAhead(s: GameState, range: number): boolean {
   return false;
 }
 
+const PASSED_SQ = SIGHT_LESSON.passed * SIGHT_LESSON.passed;
+/**
+ * The squared distance from the hull's middle to copy d while it is open, else Infinity. Plain arithmetic, so following
+ * a lesson's copy every frame allocates nothing.
+ */
+function openGap(car: ChariotState, d: Decoy): number {
+  if (d.state !== 'open') return Infinity;
+  const dx = d.at.x - (car.x + Math.cos(car.yaw) * HULL.offsets[1]);
+  const dz = d.at.z - (car.z - Math.sin(car.yaw) * HULL.offsets[1]);
+  return dx * dx + dz * dz;
+}
+
+/**
+ * The copy a sight lesson firing in `s` follows: the nearest of the lakon's own copies still open within
+ * SIGHT_LESSON.passed m (the one within 15 m that brought it), or null.
+ */
+function lessonCopyOf(s: GameState): number | null {
+  let id: number | null = null;
+  let best = PASSED_SQ;
+  for (let k = 0; k < s.decoys.length; k++) {
+    const d = s.decoys[k];
+    const gap = d.life === null ? openGap(s.car, d) : Infinity;
+    if (gap <= best) {
+      best = gap;
+      id = d.id;
+    }
+  }
+  return id;
+}
+
+/**
+ * The copy the sight lesson still follows in the frame ending at `clock`, decided on `s`, the frame before: kept while
+ * that copy was still open within SIGHT_LESSON.passed m and the lesson is younger than SIGHT_LESSON.most s. Deciding on
+ * the frame before keeps the lesson up through the frame in which the copy is taken, filed or passed.
+ */
+function stillFollowed(s: GameState, clock: number): number | null {
+  const id = s.hintCopy;
+  if (id === null || clock - s.hintAt >= SIGHT_LESSON.most) return null;
+  for (let k = 0; k < s.decoys.length; k++) {
+    if (s.decoys[k].id === id) return openGap(s.car, s.decoys[k]) <= PASSED_SQ ? id : null;
+  }
+  return null;
+}
+
 /** The prologue's lessons come only in an active lakon that teaches; the surge and the drift from chapter 1 on. */
 const lesson = (s: GameState) => s.run.def.hints && s.run.phase === 'active';
 const fromChapterOne = (s: GameState) => s.run.def.chapter >= 1 && drivable(s.run);
@@ -580,7 +638,8 @@ const HINT_ORDER: readonly HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 's
 /**
  * Step 11. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
  * first hint fires once the hint on the HUD has stayed HINT_MIN, even if its own moment has passed (each is a lesson).
- * At most one fires per frame. The queue is dropped when the lakon ends.
+ * At most one fires per frame. A sight lesson that fires follows its copy (hintCopy); any other hint lets it go. The
+ * queue is dropped when the lakon ends.
  */
 function stepHints(s: GameState): { state: GameState; event: GameEvent | null } {
   if (s.run.phase === 'done') return { state: s.hintQueue.length > 0 ? { ...s, hintQueue: [] } : s, event: null };
@@ -590,8 +649,9 @@ function stepHints(s: GameState): { state: GameState; event: GameEvent | null } 
     return { state: queue === s.hintQueue ? s : { ...s, hintQueue: queue }, event: null };
   }
   const [key, ...rest] = queue;
+  const hintCopy = key === 'sight' ? lessonCopyOf(s) : null;
   return {
-    state: { ...s, hintsShown: [...s.hintsShown, key], hintQueue: rest, hintAt: s.clock },
+    state: { ...s, hintsShown: [...s.hintsShown, key], hintQueue: rest, hintAt: s.clock, hintCopy },
     event: { type: 'hint', key },
   };
 }
@@ -650,7 +710,8 @@ export function advance(
     decoys: s.decoys,
   });
   events.push(...ran.events);
-  // The frame's new state; step 9 fills in its clamour and volleys before it is handed on to the camera and hints.
+  // The frame's new state; step 9 fills in its clamour and volleys before it is handed on to the camera and hints. The
+  // sight lesson lets its copy go once the frame before met it, or its time is up.
   const moved: GameState = {
     ...s,
     clock,
@@ -662,6 +723,7 @@ export function advance(
     route: routeFor(ran.run, car, s.route, w),
     heldAt,
     wallAt,
+    hintCopy: stillFollowed(s, clock),
   };
   // 9. The clamour and the volleys, in a frame that began in the active lakon; then no lure is left on the route.
   if (s.run.phase === 'active') stepPressure(moved, s, ran.events, dt, w, events);

@@ -29,7 +29,10 @@ export interface HudSnapshot {
   hint: HintKey | null;
 }
 
-/** Seconds a hint stays on the HUD. */
+/**
+ * Seconds a hint stays on the HUD. The sight lesson stays longer while it follows its copy (GameState.hintCopy, set
+ * only while that lesson is the last hint fired): until the chariot meets the copy, and at most SIGHT_LESSON.most s.
+ */
 export const HINT_SECONDS = 3.5;
 
 /** A ring's fill in hundredths, so equal snapshots compare equal however the fill crept. */
@@ -77,7 +80,7 @@ export function hudOf(s: GameState, w: World): HudSnapshot {
     speedKmh: Math.round(Math.hypot(car.vx, car.vz) * 3.6),
     surge: { ready: car.cooldown <= 0, frac: fill(1 - car.cooldown / DRIVE.boostCooldown) },
     sight: { on: sight.on, charge: fill(sight.charge) },
-    hint: shown.length > 0 && s.clock - s.hintAt < HINT_SECONDS ? shown[shown.length - 1] : null,
+    hint: shown.length > 0 && (s.clock - s.hintAt < HINT_SECONDS || s.hintCopy !== null) ? shown[shown.length - 1] : null,
   };
 }
 
