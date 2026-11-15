@@ -1,6 +1,8 @@
-// The game's screens, rendered from props only, so they can be checked with renderToString. Two keep state of their own:
-// TouchControls its pointers, and the Radar (Radar.tsx) a presentational fade and ease state on the frame clock, whose
-// first render renderToString pins and whose timing is pinned through its pure model.
+// The game's screens, rendered from props only, so they can be checked with renderToString. Some parts keep state of
+// their own: TouchControls its pointers; the Radar (Radar.tsx) a presentational fade and ease state on the frame clock,
+// whose first render renderToString pins and whose timing is pinned only through its pure model; and the record map
+// (ReportMap.tsx, on SanjayaReport and Finale) its focus, selection, walk and the 3D view it loads, whose still first
+// render renderToString pins.
 // Every named person and every block of dossier dates sits in an element marked data-entry together with the allegation
 // line and the reply link, and every event card carries both too. The driving HUD (GameHud) shows counts, timers, speeds
 // and the radar's kinds and positions (Radar), and its toasts (toastText) counts, dates and channels only, never a name

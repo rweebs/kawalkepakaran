@@ -56,8 +56,9 @@
 [id^='bg-entry-'] { scroll-margin-top: calc(var(--nav-h, 59px) + 0.75rem); }
 [id^='bg-entry-']:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
 
-/* HUD: transparent overlay over the stage; each panel is pinned to a corner. */
-.bg-hud { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+/* HUD: transparent overlay over the stage; each panel is pinned to a corner. It is a size container, the stage's size, so
+   its layout follows the stage (shorter in the page, under the site header, than in full screen), not the viewport. */
+.bg-hud { position: absolute; inset: 0; pointer-events: none; z-index: 1; container: bg-hud / size; }
 .bg-hud button { pointer-events: auto; }
 .bg-objective { position: absolute; top: 0.75rem; left: 0.75rem; max-width: min(22rem, 46%); display: grid; gap: 0.25rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-hint { margin: 0; color: var(--text-secondary); font-size: 0.8rem; background: none; }
@@ -66,7 +67,8 @@
 .bg-radar-slot .bg-speed { margin: 0; padding: 0.15rem 0.65rem; border-radius: var(--radius-full); background: rgba(11, 16, 32, 0.72); line-height: 1.4; }
 .bg-gauges { position: absolute; bottom: 0.75rem; right: 0.75rem; display: grid; gap: 0.35rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-toasts { position: absolute; bottom: 0.75rem; left: 0.75rem; display: grid; gap: 0.35rem; max-width: min(22rem, 60%); }
-/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule, in a smaller type so the longest fits a phone's column in four lines. The buttons carry the rings, so there is no gauges panel. */
+/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule, in a smaller type so the longest fits a phone's column in four lines. The buttons carry the rings, so there is no gauges panel. The objective panel also stops 8 px short of Laju's column (168 px in, past the inset). */
+.bg-hud[data-touch] .bg-objective { max-width: min(22rem, 46%, calc(100% - 184px)); }
 .bg-hud[data-touch] .bg-toasts { top: calc(0.75rem + 148px + 2.5rem); bottom: auto; left: auto; right: 0.75rem; max-width: min(22rem, calc(54% - 2rem)); }
 .bg-hud[data-touch] .bg-toast { font-size: 0.8rem; line-height: 1.45; padding: 0.3rem 0.55rem; }
 .bg-hud dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; }
@@ -121,8 +123,10 @@
 /* Above the letterbox bars (2), the lakon card and the wipe (3): a pause during a lakon intro shows the whole panel. */
 .bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 4; }
 
-/* Touch controls: the steer zone (left 46% x bottom 55%) and the buttons, anchored to the stage's bottom corners. */
-.bg-touch { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+/* Touch controls: the steer zone (left 46% x bottom 55%) and the buttons, anchored to the stage's bottom corners. Under the
+   HUD, which lets every touch through but its own buttons: where the objective panel runs into the steer zone, Pause and
+   Full screen still take their taps. A size container like the HUD. */
+.bg-touch { position: absolute; inset: 0; pointer-events: none; z-index: 0; container: bg-touch / size; }
 .bg-touch__steer { position: absolute; left: 0; bottom: 0; width: 46%; height: 55%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
 .bg-touch__capsule { position: absolute; width: 140px; height: 56px; transform: translate(-50%, -50%); border-radius: 28px; border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(11, 16, 32, 0.45); pointer-events: none; }
 .bg-touch__knob { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
@@ -156,27 +160,45 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
 @media (max-width: 480px) {
   .bg-screen { padding: 1rem; }
   .bg-posters { grid-template-columns: minmax(0, 1fr); }
+  .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
+}
+/* A narrow stage: the HUD's corners come in to 0.5rem. */
+@container bg-hud (width <= 480px) {
   .bg-objective { top: 0.5rem; left: 0.5rem; }
   .bg-radar-slot { top: 0.5rem; right: 0.5rem; }
   .bg-gauges { bottom: 0.5rem; right: 0.5rem; }
   .bg-toasts { left: 0.5rem; }
   .bg-hud[data-touch] .bg-toasts { top: calc(0.5rem + 148px + 2.5rem); right: 0.5rem; max-width: min(22rem, calc(54% - 1.5rem)); }
-  .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
 }
-/* A short upright phone (360×640, 375×667): two toasts would reach Maju or Mata, so only the newest shows, whole. The
-   live region has already read each older one: it was the newest when it came. */
-@media (max-width: 480px) and (max-height: 720px) {
-  .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; }
-}
-/* A short stage (a phone on its side): the buttons' column runs nearly the stage's height, 168 px in from the right
-   (Laju's left edge). On touch the objective panel narrows to 40%, the radar and the toasts under it sit just left of
-   the buttons, clear of the panel and the steer zone, and only the newest toast shows. */
-@media (max-height: 520px) {
-  .bg-hud[data-touch] .bg-objective { max-width: min(22rem, 40%); }
+/* A short stage (a phone on its side, or under a tall header): the buttons' column runs nearly the stage's height, 168 px
+   in from the right (Laju's left edge). On touch the radar shrinks to 112 px, and it and the toasts under it sit just left
+   of the buttons, the toasts' column 8 px clear of the objective panel's 46% and its inset. Maju takes the place left of
+   Mata and above Laju, at their size, since it would rise past the stage's top. A narrow stage keeps the upright layout. */
+@container bg-hud (width > 480px) and (height <= 520px) {
+  .bg-hud[data-touch] .bg-radar__map, .bg-hud[data-touch] .bg-riuh svg { width: 112px; height: 112px; }
   .bg-hud[data-touch] .bg-radar-slot { right: calc(168px + 0.5rem); }
-  .bg-hud[data-touch] .bg-toasts { right: calc(168px + 0.5rem); max-width: calc(54% - 168px - 1rem); }
-  .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; }
+  .bg-hud[data-touch] .bg-toasts { top: calc(0.75rem + 112px + 2.5rem); right: calc(168px + 0.5rem); max-width: calc(54% - 168px - 1.75rem); }
 }
+@container bg-touch (width > 480px) and (height <= 520px) {
+  .bg-touch__btn--ride { right: 108px; bottom: 112px; width: 60px; height: 60px; }
+}
+/* Only the newest toast shows where two do not fit, by the stage's own height: two of the tallest real toasts at the
+   column's width and their gap, from the toasts' top down to 8 px above the stage's bottom or the highest button under
+   them. The column's width sets the lines, so each threshold holds for a range of widths. The numbers come from the
+   css test's model of the toasts (tests/bowobharata-game-css.test.ts), which checks them on both sides. An older toast
+   is hidden whole, and the live region has read it: the island spaces toasts at least 1.5 s apart. */
+@container bg-hud (width < 342px) and (height < 642px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width <= 480px) and (height < 605px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width > 480px) and (width < 504px) and (height > 520px) and (height < 609px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width > 480px) and (height > 520px) and (height < 572px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (height < 272px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 808px) and (height < 309px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 660px) and (height < 346px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 600px) and (height < 383px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 572px) and (height < 420px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 537px) and (height < 457px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 522px) and (height < 494px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
+@container bg-hud (width < 516px) and (height <= 520px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .bg-game * { transition: none !important; animation: none !important; }
   .bg-wipe, .bg-stage[data-cine='on'] .bg-wipe { display: none; clip-path: none; transition: none; animation: none; }

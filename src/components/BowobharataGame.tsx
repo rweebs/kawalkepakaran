@@ -18,6 +18,7 @@ import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } f
 import { failShotDone, sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
 import { gamepadInput, keyAction, keyboardInput, mergeInputs, NO_TOUCH, type InputPart, touchInput, type TouchState } from '../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
+import { EMPTY_TOASTS, queueToasts, takeToast, type Toast, type ToastQueue } from '../lib/bowobharata-game/toast-queue';
 import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
 import type { Runtime } from '../lib/bowobharata-game/world/runtime';
 import {
@@ -33,7 +34,7 @@ const COUNT = PARVAS.length + 2;
 const STILL_SCREENS: readonly Screen[] = ['recorded', 'sanjaya', 'lost'];
 /** The lakon events that show a toast; toastText gives each its line. */
 const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap']);
-/** Toasts on screen at once, and how long each stays (ms). */
+/** Toasts on screen at once, and how long each stays from its own push (ms). Pushes are TOAST_GAP_MS apart (toast-queue.ts). */
 const TOAST_MAX = 2;
 const TOAST_MS = 4000;
 
@@ -107,10 +108,12 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const touch = useRef<TouchState>({ ...NO_TOUCH });
   const touchDevice = useRef(false);
   const padHeld = useRef({ skip: false, pause: false });
-  // The play view's clockwork: its pending timers (toasts), the toast ids, whether
-  // the lakon card is up, and whether the next HUD snapshot is the chapter's first.
+  // The play view's clockwork: its pending timers (toasts and their pump), the toast ids, the toasts waiting their turn and
+  // whether the pump's timer runs, whether the lakon card is up, and whether the next HUD snapshot is the chapter's first.
   const timers = useRef(new Set<number>());
   const toastId = useRef(0);
+  const toastQueue = useRef<ToastQueue>(EMPTY_TOASTS);
+  const pumping = useRef(false);
   const missionUp = useRef(false);
   const first = useRef(false);
   // The game clock at the failed event, until the fail shot has run; and the chapter the stage was last scrolled for.
@@ -137,6 +140,18 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     later(() => setToasts((list) => list.filter((t) => t.id !== id)), TOAST_MS);
   };
 
+  /** Pushes the next waiting toast once TOAST_GAP_MS has run since the last push, then waits for the one after it. */
+  const pumpToasts = () => {
+    pumping.current = false;
+    const { toast, queue, wait } = takeToast(toastQueue.current, performance.now());
+    toastQueue.current = queue;
+    if (toast) pushToast(toast.text);
+    if (wait !== null) {
+      pumping.current = true;
+      later(pumpToasts, wait);
+    }
+  };
+
   /** The lakon card and the letterbox, opened by the gunungan: one CSS animation covers the stage, then opens it. */
   const showMission = () => {
     if (missionUp.current) return;
@@ -153,10 +168,12 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     setWipe(null);
   };
 
-  /** Clears the play view: its timers, the HUD, the toasts, the card, the letterbox and any skip not yet taken. */
+  /** Clears the play view: its timers, the HUD, the toasts and those waiting, the card, the letterbox and any skip not yet taken. */
   const resetPlay = () => {
     for (const t of timers.current) window.clearTimeout(t);
     timers.current.clear();
+    toastQueue.current = EMPTY_TOASTS;
+    pumping.current = false;
     missionUp.current = false;
     first.current = false;
     failClock.current = null;
@@ -200,6 +217,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const onEvents = (events: readonly GameEvent[]) => {
     // Only a play shows its events: the fail card's skip records the rest while Tercatat is on its way.
     if (flowRef.current.screen !== 'play') return;
+    const toasts: Toast[] = [];
     for (const e of events) {
       switch (e.type) {
         case 'introStart':
@@ -222,9 +240,14 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
         default:
           if (TOASTED.has(e.type)) {
             const text = toastText(e, locale, flowRef.current.chapter, cardOf, events);
-            if (text) pushToast(text);
+            if (text) toasts.push({ type: e.type, text });
           }
       }
+    }
+    // The frame's toasts wait their turn in order, so each is the newest for TOAST_GAP_MS at least.
+    if (toasts.length > 0) {
+      toastQueue.current = queueToasts(toastQueue.current, toasts);
+      if (!pumping.current) pumpToasts();
     }
   };
 

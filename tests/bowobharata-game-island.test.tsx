@@ -7,8 +7,13 @@ import { kategoriKey, type Perkara } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
 import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
-import { CHAPTER_TYPES } from '../src/lib/bowobharata-game/missions';
+import { initChariot } from '../src/lib/bowobharata-game/drive';
+import { realTargets, CHAPTER_TYPES, missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
+import { startRun, stepRun, type GameEvent, type RunFrame, type RunState } from '../src/lib/bowobharata-game/mission-run';
 import { RADAR_PX, type RadarItem } from '../src/lib/bowobharata-game/radar';
+import {
+  EMPTY_TOASTS, TOAST_GAP_MS, TOAST_QUEUE_MAX, queueToasts, takeToast, type Toast, type ToastQueue,
+} from '../src/lib/bowobharata-game/toast-queue';
 import {
   Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, TouchControls, cardView,
   GameHud, Radar, toastText, type HudToast,
@@ -336,6 +341,129 @@ describe('finale and pause', () => {
     expect(html).toContain('href="/hak-jawab"');
     expect(paused('en')).toContain(esc(FRAMING_EN[0]));
     expect(paused('en')).toContain('href="/en/right-of-reply"');
+  });
+});
+
+describe('toast pacing: every toast shown whole, alone or beside another, for at least 1.5 s, and read once (ruling 1)', () => {
+  const SLUGS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+  const def = (ch: number) => missionFor(ch, SLUGS.slice(0, [0, 2, 2, 4, 9, 1, 2, 2, 2][ch]));
+  const DT = 1 / 60;
+  const frame = (at: { x: number; z: number }, speed = 0, prev = at): RunFrame => ({
+    car: { ...initChariot(at.x, at.z, 0), vx: speed, vz: 0 }, mid: at, midPrev: prev, dt: DT, sight: false, skip: false, riuh: 0, decoys: [],
+  });
+  const active = (ch: number, over: Partial<RunState> = {}): RunState => ({ ...startRun(def(ch)), phase: 'active', ...over });
+  /** A frame's toasts as the island makes them: each event's line through toastText, with the frame's events. */
+  const toastsOf = (events: readonly GameEvent[], chapter: number): Toast[] =>
+    events.flatMap((e) => {
+      const text = toastText(e, 'en', chapter, () => ({ date: 'May 4, 2026', channel: 'LinkedIn' }), events);
+      return text === null ? [] : [{ type: e.type, text }];
+    });
+  /**
+   * The island's display, from a list of frames (time, toasts): each frame's toasts queue, the queue is taken from at
+   * every millisecond step it asks for, and the shown list keeps the last two, each for 4 s from its own push. Returns
+   * the pushes with their times, and how long each stayed the newest.
+   */
+  function play(frames: { at: number; toasts: Toast[] }[], until: number) {
+    let q: ToastQueue = EMPTY_TOASTS;
+    const pushes: { at: number; text: string }[] = [];
+    let k = 0;
+    for (let t = 0; t <= until; t += 10) {
+      while (k < frames.length && frames[k].at <= t) q = queueToasts(q, frames[k++].toasts);
+      for (;;) {
+        const r = takeToast(q, t);
+        q = r.queue;
+        if (!r.toast) break;
+        pushes.push({ at: t, text: r.toast.text });
+      }
+      expect(q.waiting.length, `at ${t}`).toBeLessThanOrEqual(Math.max(TOAST_QUEUE_MAX, q.waiting.filter((x) => x.type !== 'wall' && x.type !== 'held').length));
+    }
+    const newest = pushes.map((p, i) => Math.min((pushes[i + 1]?.at ?? Infinity) - p.at, 4000));
+    return { pushes, newest, q };
+  }
+
+  it('the prologue\'s last record and its step\'s checkpoint, in one frame: the record first, the checkpoint 1.5 s later', () => {
+    const all = realTargets(def(0)).map((t) => t.id);
+    const r = stepRun(active(0, { recorded: all.slice(0, 7) }), frame({ x: -54, z: 24 }));
+    expect(r.events.map((e) => e.type)).toEqual(['recorded', 'stepDone', 'checkpoint']);
+    const toasts = toastsOf(r.events, 0);
+    expect(toasts.map((t) => t.type)).toEqual(['recorded', 'checkpoint']);
+    const { pushes, newest } = play([{ at: 0, toasts }], 6000);
+    expect(pushes.map((p) => [p.at, p.text])).toEqual([[0, toasts[0].text], [TOAST_GAP_MS, toasts[1].text]]);
+    for (const n of newest) expect(n).toBeGreaterThanOrEqual(TOAST_GAP_MS);
+  });
+
+  it('Antar\'s letter and its checkpoint, in one frame: both shown, 1.5 s apart', () => {
+    const gate = def(2).steps[1] as Extract<StepDef, { kind: 'reach' }>;
+    let run = active(2, { step: 1, recorded: ['A'], legT: 40, t: 40 });
+    const frames: { at: number; toasts: Toast[] }[] = [];
+    for (let k = 0; k < Math.round(1.6 / DT) && run.step === 1; k++) {
+      const r = stepRun(run, frame(gate.at, 1));
+      run = r.run;
+      if (r.events.length > 0) frames.push({ at: Math.round(k * DT * 1000), toasts: toastsOf(r.events, 2) });
+    }
+    const types = frames.flatMap((f) => f.toasts.map((t) => t.type));
+    expect(types).toEqual(['letter', 'checkpoint']);
+    expect(frames).toHaveLength(1);
+    const { pushes, newest } = play(frames, 8000);
+    expect(pushes).toHaveLength(2);
+    expect(pushes[1].at - pushes[0].at).toBeGreaterThanOrEqual(TOAST_GAP_MS);
+    for (const n of newest) expect(n).toBeGreaterThanOrEqual(TOAST_GAP_MS);
+  });
+
+  it('a burst of five in one frame: each becomes the newest at its own time, 1.5 s apart, none dropped', () => {
+    const burst: Toast[] = [
+      { type: 'recorded', text: 'R1' }, { type: 'filed', text: 'F' }, { type: 'checkpoint', text: 'C' }, { type: 'held', text: 'H' }, { type: 'lap', text: 'L' },
+    ];
+    const { pushes, newest } = play([{ at: 0, toasts: burst }], 12000);
+    expect(pushes.map((p) => p.text)).toEqual(['R1', 'F', 'C', 'H', 'L']);
+    expect(new Set(pushes.map((p) => p.at)).size).toBe(5);
+    for (let i = 1; i < pushes.length; i++) expect(pushes[i].at - pushes[i - 1].at).toBeGreaterThanOrEqual(TOAST_GAP_MS);
+    for (const n of newest) expect(n).toBeGreaterThanOrEqual(TOAST_GAP_MS);
+  });
+
+  it('the queue is bounded by wall and held toasts giving way, oldest first; a record, filed, letter, gate, lap or checkpoint toast is never dropped', () => {
+    const keep: Toast['type'][] = ['recorded', 'filed', 'letter', 'gate', 'lap', 'checkpoint'];
+    // The chariot leans on the edge and the ranks every frame for 3 s while the lakon's own toasts come.
+    const frames = Array.from({ length: 180 }, (_, k) => ({
+      at: k * 16,
+      toasts: [
+        ...(k % 2 === 0 ? [{ type: 'wall' as const, text: `W${k}` }] : [{ type: 'held' as const, text: `H${k}` }]),
+        ...(k % 30 === 0 ? [{ type: keep[(k / 30) % keep.length], text: `K${k}` }] : []),
+      ],
+    }));
+    const { pushes, q } = play(frames, 40000);
+    // Every lakon toast was shown, in order.
+    const kept = pushes.filter((p) => p.text.startsWith('K')).map((p) => p.text);
+    expect(kept).toEqual(frames.flatMap((f) => f.toasts.filter((t) => t.text.startsWith('K')).map((t) => t.text)));
+    // The wall and held toasts gave way: far fewer than came, and the queue ends empty.
+    expect(pushes.filter((p) => !p.text.startsWith('K')).length).toBeLessThan(10);
+    expect(q.waiting).toEqual([]);
+    // When only lakon toasts wait, none is dropped even past the bound.
+    const many = Array.from({ length: TOAST_QUEUE_MAX + 3 }, (_, k): Toast => ({ type: 'recorded', text: `R${k}` }));
+    expect(queueToasts(EMPTY_TOASTS, many).waiting).toHaveLength(TOAST_QUEUE_MAX + 3);
+    // One over the bound: the oldest droppable one gives way, the newer stays.
+    const mixed: Toast[] = [{ type: 'wall', text: 'old' }, ...many.slice(0, TOAST_QUEUE_MAX - 1), { type: 'held', text: 'new' }];
+    expect(queueToasts(EMPTY_TOASTS, mixed).waiting.map((t) => t.text)).toEqual([...many.slice(0, TOAST_QUEUE_MAX - 1).map((t) => t.text), 'new']);
+  });
+
+  it('the island paces its toasts through the queue, keeps TOAST_MAX and TOAST_MS, and clears the queue wherever the play view clears its timers', () => {
+    const src = readFileSync('src/components/BowobharataGame.tsx', 'utf8');
+    expect(TOAST_GAP_MS).toBe(1500);
+    expect(src).toContain('const TOAST_MAX = 2;');
+    expect(src).toContain('const TOAST_MS = 4000;');
+    // A frame's toasts go to the queue in order; pushToast is reached only from the queue's pump.
+    expect(src).toMatch(/queueToasts\(toastQueue\.current, /);
+    expect(src.match(/pushToast\(/g)).toHaveLength(1);
+    expect(src).toMatch(/takeToast\(toastQueue\.current, performance\.now\(\)\)/);
+    // The pump waits on the play view's own timers, so resetPlay stops it with them, and empties the queue.
+    expect(src).toMatch(/pumping\.current = true;\s*later\(pumpToasts, wait\);/);
+    const reset = /const resetPlay = \(\) => \{([\s\S]*?)\n  \};/.exec(src)?.[1] ?? '';
+    expect(reset).toContain('timers.current.clear();');
+    expect(reset).toContain('toastQueue.current = EMPTY_TOASTS;');
+    expect(reset).toContain('pumping.current = false;');
+    // Leaving play (and every new play) runs resetPlay, so no toast from one play waits into the next screen.
+    expect(src).toMatch(/if \(!playing3d\) resetPlay\(\);/);
+    expect(src).toMatch(/else if \(flow\.screen === 'play' && data\) \{\s*resetPlay\(\);/);
   });
 });
 
