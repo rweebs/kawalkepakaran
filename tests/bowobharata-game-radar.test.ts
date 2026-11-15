@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { initChariot } from '../src/lib/bowobharata-game/drive';
-import { rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { clamp, forward, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
 import { advance, createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
 import { autopilot } from '../src/lib/bowobharata-game/autopilot';
-import { missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
-import type { Decoy, RunState } from '../src/lib/bowobharata-game/mission-run';
-import { ANCHORS, TOWER_EXIT, distToCollider } from '../src/lib/bowobharata-game/world';
+import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
+import { openTargets, type Decoy, type RunState } from '../src/lib/bowobharata-game/mission-run';
+import { ANCHORS, TOWER_EXIT, distToCollider, type Collider } from '../src/lib/bowobharata-game/world';
+import { levelEffects, riuhLevel } from '../src/lib/bowobharata-game/riuh';
 import {
   GATE_DAYS,
   RADAR_PX,
@@ -162,7 +163,8 @@ describe('radarItems', () => {
     expect(veiled.length).toBeGreaterThan(0);
     for (const i of veiled) {
       expect(i.dist, i.kind).toBeLessThanOrEqual(0.7 * 70 + EPS);
-      if (i.kind !== 'ranks') expect(fromCentre(i), i.kind).toBeLessThanOrEqual(0.7 * R + EPS);
+      expect(fromCentre(i), i.kind).toBeLessThanOrEqual(0.7 * R + EPS);
+      for (const p of i.points ?? []) expect(fromCentre(p), `${i.kind} point`).toBeLessThanOrEqual(0.7 * R + EPS);
     }
     expectAt(ofKind(veiled, 'record'), [{ x: 52, z: 44 }], car);
     expect(ofKind(veiled, 'tower')).toEqual([]);
@@ -211,13 +213,12 @@ describe('radarItems', () => {
 
   describe('a course', () => {
     const course = defOf(4).steps[0] as Extract<StepDef, { kind: 'course' }>;
-    /** Day n's real gate: its id and its centre. */
+    /** Day n's real gate: its id and its centre, by the course's own `across`. */
     const realGate = (n: number) => {
       const d = course.days[n - 1];
       const g = d.gates.find((x) => x.real);
       if (!g) throw new Error(`day ${n} holds no real gate`);
-      const r = rightOf(d.heading);
-      return { id: g.id, at: { x: d.at.x + r.x * g.offset, z: d.at.z + r.z * g.offset } };
+      return { id: g.id, at: across(d.at, d.heading, g.offset) };
     };
     const car: Pose = { x: -70, z: 50, yaw: NORTH };
     const gates = (run: Partial<RunState>) => ofKind(items(stateAt(4, car, {}, run)), 'gate');
@@ -236,6 +237,19 @@ describe('radarItems', () => {
       expectAt(gates({ dayIndex: 1 }), atDays([1, 3, 4]), car);
       const all = [1, 3, 4, 6, 8, 9, 12, 14, 17];
       expectAt(gates({ dayIndex: 18, recorded: all.filter((n) => n !== 6).map((n) => realGate(n).id) }), atDays([6]), car);
+    });
+
+    it("puts each gate where the engine's own targets stand: day 1's ridden past, then the aims of days 3 and 4", () => {
+      // openTargets lists the aim of every day ahead (a real day's aim is its real gate's centre), then the real gates
+      // ridden past and still open, by their own ids.
+      const run = stateAt(4, car, {}, { dayIndex: 1 }).run;
+      const targets = openTargets(run);
+      const target = (id: string) => {
+        const t = targets.find((x) => x.id === id);
+        if (!t || t.kind !== 'gate' || !t.real) throw new Error(`no real gate target ${id}`);
+        return t.at;
+      };
+      expectAt(gates({ dayIndex: 1 }), [target(realGate(1).id), target('day3'), target('day4')], car);
     });
 
     it('shows nothing of the course in roam, and no record items: its records are its gates', () => {
@@ -258,33 +272,187 @@ describe('radarItems', () => {
     expectAt(ofKind(matched, 'record'), [laps.then.at], car);
   });
 
-  it('the ranks: each army block as its outline, while any of it lies within the range', () => {
-    const car: Pose = { x: 0, z: 30, yaw: NORTH };
-    const ranks = ofKind(items(stateAt(1, car)), 'ranks');
-    expect(w.figures).toHaveLength(2);
-    expect(ranks).toHaveLength(2);
-    w.figures.forEach((c, k) => {
+  describe('the ranks', () => {
+    const boxOf = (c: Collider) => {
       if (c.kind !== 'box') throw new Error('an army is a box');
-      const corners = [
-        { x: c.minX, z: c.minZ },
-        { x: c.maxX, z: c.minZ },
-        { x: c.maxX, z: c.maxZ },
-        { x: c.minX, z: c.maxZ },
+      return c;
+    };
+    const cornersOf = (c: Collider): XZ[] => {
+      const b = boxOf(c);
+      return [
+        { x: b.minX, z: b.minZ },
+        { x: b.maxX, z: b.minZ },
+        { x: b.maxX, z: b.maxZ },
+        { x: b.minX, z: b.maxZ },
       ];
-      const pts = ranks[k].points ?? [];
-      expect(pts).toHaveLength(4);
-      corners.forEach((p, j) => {
-        expect(pts[j].x).toBeCloseTo(mapPx(p, car).x, 9);
-        expect(pts[j].y).toBeCloseTo(mapPx(p, car).y, 9);
+    };
+    /** The block's nearest point to p, as distToCollider measures it: p itself inside the block. */
+    const nearestOf = (c: Collider, p: XZ): XZ => {
+      const b = boxOf(c);
+      return { x: clamp(p.x, b.minX, b.maxX), z: clamp(p.z, b.minZ, b.maxZ) };
+    };
+    const toXZ = (p: { x: number; y: number }): XZ => ({ x: p.x, z: p.y });
+    /** The field point under radar point p, with the chariot at `car` and the radar out to `range` m. */
+    const fieldOf = (p: { x: number; y: number }, car: Pose, range = 70): XZ => {
+      const f = forward(car.yaw);
+      const side = ((p.x - C) * range) / R;
+      const ahead = ((C - p.y) * range) / R;
+      return { x: car.x + f.z * -side + f.x * ahead, z: car.z + f.x * side + f.z * ahead };
+    };
+    /** Whether the field point lies in the block, to a micrometre. */
+    const inBlock = (c: Collider, q: XZ) => {
+      const b = boxOf(c);
+      return q.x >= b.minX - 1e-6 && q.x <= b.maxX + 1e-6 && q.z >= b.minZ - 1e-6 && q.z <= b.maxZ + 1e-6;
+    };
+    /** The polygon's area (px²). */
+    const areaOf = (pts: readonly { x: number; y: number }[]) =>
+      Math.abs(pts.reduce((a, p, k) => a + p.x * pts[(k + 1) % pts.length].y - pts[(k + 1) % pts.length].x * p.y, 0)) / 2;
+
+    it('a block wholly within the range: its four corners, anchored at its nearest point', () => {
+      // Between the blocks, halfway along them: both lie within 36 m.
+      const car: Pose = { x: 0, z: -15, yaw: NORTH };
+      const ranks = ofKind(items(stateAt(1, car)), 'ranks');
+      expect(w.figures).toHaveLength(2);
+      expect(ranks).toHaveLength(2);
+      w.figures.forEach((c, k) => {
+        const pts = ranks[k].points ?? [];
+        expect(pts).toHaveLength(4);
+        cornersOf(c).forEach((p, j) => {
+          expect(pts[j].x).toBeCloseTo(mapPx(p, car).x, 9);
+          expect(pts[j].y).toBeCloseTo(mapPx(p, car).y, 9);
+        });
+        const near = mapPx(nearestOf(c, car), car);
+        expect(ranks[k].clamped).toBe(false);
+        expect(ranks[k].x).toBeCloseTo(near.x, 9);
+        expect(ranks[k].y).toBeCloseTo(near.y, 9);
+        expect(ranks[k].dist).toBeCloseTo(distToCollider(car, c), 9);
       });
-      const mid = mapPx({ x: (c.minX + c.maxX) / 2, z: (c.minZ + c.maxZ) / 2 }, car);
-      expect(ranks[k].x).toBeCloseTo(mid.x, 9);
-      expect(ranks[k].y).toBeCloseTo(mid.y, 9);
-      expect(ranks[k].dist).toBeCloseTo(Math.max(0, distToCollider(car, c)), 9);
     });
-    // Inside a block's own box the distance is 0; far from both, no ranks.
-    expect(ofKind(items(stateAt(1, { x: 11, z: -15, yaw: NORTH })), 'ranks')[1].dist).toBe(0);
-    expect(ofKind(items(stateAt(1, { x: -120, z: 50, yaw: NORTH })), 'ranks')).toEqual([]);
+
+    it('a block reaching past the radar is cut at the rim: its near corners kept, the rest along the rim', () => {
+      // From (0, 40) the blocks' near corners lie 25–32 m off and their far corners 85–88 m off.
+      const car: Pose = { x: 0, z: 40, yaw: NORTH };
+      const ranks = ofKind(items(stateAt(1, car)), 'ranks');
+      expect(ranks).toHaveLength(2);
+      w.figures.forEach((c, k) => {
+        const pts = ranks[k].points ?? [];
+        const corners = cornersOf(c).map((p) => mapPx(p, car));
+        let onRim = 0;
+        for (const p of pts) {
+          expect(fromCentre(p)).toBeLessThanOrEqual(R + EPS);
+          const rim = Math.abs(fromCentre(p) - R) < 1e-6;
+          const edge = corners.some((a, j) => segPointDist(toXZ(p), toXZ(a), toXZ(corners[(j + 1) % 4])) < 1e-6);
+          expect(rim || edge, `(${p.x}, ${p.y})`).toBe(true);
+          if (rim) onRim++;
+        }
+        expect(onRim).toBeGreaterThanOrEqual(2);
+        // Every point lies on the block too: the rim is followed the way that stays on it.
+        for (const p of pts) expect(inBlock(c, fieldOf(p, car)), `(${p.x}, ${p.y})`).toBe(true);
+        // Its area is the block's within the radar, sampled every quarter pixel; the arcs' 15° chords lose under 3%.
+        let inside = 0;
+        for (let x = 0.125; x < RADAR_PX; x += 0.25) {
+          for (let y = 0.125; y < RADAR_PX; y += 0.25) {
+            if (Math.hypot(x - C, y - C) <= R && inBlock(c, fieldOf({ x, y }, car))) inside++;
+          }
+        }
+        const exact = inside / 16;
+        expect(Math.abs(areaOf(pts) - exact) / exact).toBeLessThan(0.03);
+        // The two corners within the range stay; the two beyond it go.
+        const kept = corners.filter((q) => pts.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-9));
+        expect(kept).toEqual(corners.filter((q) => fromCentre(q) <= R));
+        expect(kept).toHaveLength(2);
+        expect(ranks[k].x).toBeCloseTo(mapPx(nearestOf(c, car), car).x, 9);
+        expect(ranks[k].y).toBeCloseTo(mapPx(nearestOf(c, car), car).y, 9);
+      });
+    });
+
+    it('inside a block it is anchored at the chariot, 0 m off; far from both blocks there are none', () => {
+      const inside = ofKind(items(stateAt(1, { x: 11, z: -15, yaw: 0.3 })), 'ranks')[1];
+      expect(inside).toMatchObject({ x: C, y: C, clamped: false, dist: 0 });
+      expect(ofKind(items(stateAt(1, { x: -120, z: 50, yaw: NORTH })), 'ranks')).toEqual([]);
+    });
+
+    it('over a sweep of chariot places, every anchor and outline point lies within the radius shown', () => {
+      // Level 4 with sight off: 70% of the inner radius. In sight, or with no static: all of it. Level 5: 55%.
+      const base = stateAt(1, { x: 0, z: 0, yaw: 0 });
+      const cases = [
+        { riuh: 4.2, on: false, radius: 0.7 * R },
+        { riuh: 4.2, on: true, radius: R },
+        { riuh: 5, on: false, radius: 0.55 * R },
+        { riuh: 0, on: false, radius: R },
+      ];
+      for (const { riuh, on, radius } of cases) {
+        let seen = 0;
+        let cut = 0;
+        let worst = 0;
+        let offAnchor = 0;
+        let offBlock = 0;
+        for (let i = 0; i <= 60; i++) {
+          for (let j = 0; j <= 60; j++) {
+            const car = initChariot(-160 + (320 * i) / 60, -170 + (320 * j) / 60, (i * 61 + j) * 0.37);
+            const s: GameState = { ...base, car, riuh: { ...base.riuh, value: riuh }, sight: { ...base.sight, on } };
+            for (const r of ofKind(items(s), 'ranks')) {
+              seen++;
+              if (r.clamped) worst = Infinity;
+              const pts = r.points ?? [];
+              // The anchor and every outline point lie on an army block.
+              for (const p of [r, ...pts]) if (!w.figures.some((c) => inBlock(c, fieldOf(p, car)))) offBlock++;
+              worst = Math.max(worst, fromCentre(r), ...pts.map(fromCentre));
+              // The anchor is the block's nearest point: as far out on the radar as the block is metres off.
+              offAnchor = Math.max(offAnchor, Math.abs(fromCentre(r) - (r.dist * R) / 70));
+              if (pts.some((p) => fromCentre(p) > radius - 1e-6)) cut++;
+            }
+          }
+        }
+        expect(seen, `riuh ${riuh}, sight ${on}`).toBeGreaterThan(500);
+        expect(cut, `riuh ${riuh}, sight ${on}`).toBeGreaterThan(100);
+        expect(worst, `riuh ${riuh}, sight ${on}`).toBeLessThanOrEqual(radius + EPS);
+        expect(offAnchor).toBeLessThan(1e-9);
+        expect(offBlock, `riuh ${riuh}, sight ${on}`).toBe(0);
+      }
+    });
+  });
+
+  describe('the edge holds while the speed wobbles', () => {
+    /** The state with the chariot at `at`, moving forward at v m/s. */
+    const moving = (s: GameState, at: Pose, v: number): GameState => {
+      const f = forward(at.yaw);
+      return { ...s, car: { ...initChariot(at.x, at.z, at.yaw), vx: f.x * v, vz: f.z * v } };
+    };
+    /** 0 to 2.2 m/s: the range runs from 70 m to 74.84 m. */
+    const SPEEDS = Array.from({ length: 23 }, (_, k) => k / 10);
+
+    it('at level 4 a record just past the edge of the static stays hidden, and shows from the next step of range', () => {
+      // Record A (52, 44) lies 49.5 m from (52, −5.5): past 70% of 70 m, though within 70% of 74.84 m. B lies 45.6 m off.
+      const at: Pose = { x: 52, z: -5.5, yaw: 0 };
+      const base = loud(stateAt(1, at), 4.2);
+      expect(SPEEDS.map((v) => ofKind(items(moving(base, at, v)), 'record').length)).toEqual(SPEEDS.map(() => 1));
+      // From 75 m of range (2.28 m/s) the edge lies at 52.5 m.
+      expect(ofKind(items(moving(base, at, 2.4)), 'record')).toHaveLength(2);
+      // Nothing shown ever lies past the static's inner edge.
+      for (const v of [...SPEEDS, 2.4]) {
+        for (const i of items(moving(base, at, v))) {
+          expect(fromCentre(i), `${i.kind} at ${v} m/s`).toBeLessThanOrEqual(0.7 * R + EPS);
+          for (const p of i.points ?? []) expect(fromCentre(p), `${i.kind} at ${v} m/s`).toBeLessThanOrEqual(0.7 * R + EPS);
+        }
+      }
+    });
+
+    it('at level 4 a block just past the edge of the static stays out', () => {
+      // The Kurawa block's east face lies 49.5 m west of (68.8, −15); the Pandawa block lies 71.7 m off.
+      const at: Pose = { x: 19.3 + 49.5, z: -15, yaw: Math.PI };
+      const base = loud(stateAt(1, at), 4.2);
+      expect(SPEEDS.map((v) => ofKind(items(moving(base, at, v)), 'ranks').length)).toEqual(SPEEDS.map(() => 0));
+      expect(ofKind(items(moving(base, at, 2.4)), 'ranks')).toHaveLength(1);
+    });
+
+    it('in sight, a copy just past the range stays out, and shows from the next step of range', () => {
+      const at: Pose = { x: 0, z: 0, yaw: 0 };
+      const copy: Decoy = { id: 9, at: { x: 70.5, z: 0 }, born: 0, life: 20, state: 'open', mimic: false };
+      const s = { ...sighted(stateAt(1, at)), decoys: [copy] };
+      expect(SPEEDS.map((v) => ofKind(items(moving(s, at, v)), 'decoy').length)).toEqual(SPEEDS.map(() => 0));
+      expect(ofKind(items(moving(s, at, 2.4)), 'decoy')).toHaveLength(1);
+    });
   });
 
   describe('the route', () => {
@@ -358,7 +526,7 @@ describe('radarItems', () => {
     expect(JSON.stringify(s)).toBe(before);
   });
 
-  it('every lakon, ridden by the autopilot: bounded, inside the radar, copies only in sight, the route at most 12 points', () => {
+  it('every lakon, ridden by the autopilot: bounded, inside the radius shown, copies only in sight, the route at most 12 points', () => {
     let frames = 0;
     let withCopies = 0;
     for (const ch of [0, 1, 2, 4, 5, 7]) {
@@ -370,13 +538,13 @@ describe('radarItems', () => {
         const list = items(s);
         // Bounded by the data: the ranks, the shelters, the route, the tower, at most 9 records or gates, and the copies.
         expect(list.length).toBeLessThanOrEqual(2 + 3 + 1 + 1 + 9 + s.decoys.length);
+        // The radius shown: the inner radius, or the static's inner edge with sight off.
+        const shown = (s.sight.on ? 1 : 1 - levelEffects(riuhLevel(s.riuh.value)).radarStatic) * R;
         for (const i of list) {
-          if (i.kind !== 'ranks') expect(fromCentre(i), i.kind).toBeLessThanOrEqual(R + EPS);
+          expect(fromCentre(i), i.kind).toBeLessThanOrEqual(shown + EPS);
+          for (const p of i.points ?? []) expect(fromCentre(p), `${i.kind} point`).toBeLessThanOrEqual(shown + EPS);
           expect(i.clamped || i.dist <= radarRange(0) + 2.2 * 25 + EPS).toBe(true);
-          if (i.kind === 'route') {
-            expect(i.points!.length).toBeLessThanOrEqual(ROUTE_POINTS);
-            for (const p of i.points!) expect(fromCentre(p)).toBeLessThanOrEqual(R + EPS);
-          }
+          if (i.kind === 'route') expect(i.points!.length).toBeLessThanOrEqual(ROUTE_POINTS);
         }
         const copies = ofKind(list, 'decoy').length;
         if (!s.sight.on) expect(copies).toBe(0);
@@ -399,15 +567,18 @@ describe('sameRadar', () => {
   const a = items(s);
   const move = (k: number, dx: number, dy: number) => a.map((i, j) => (j === k ? { ...i, x: i.x + dx, y: i.y + dy } : i));
   const routeAt = a.findIndex((i) => i.kind === 'route');
-  const moveRoute = (dx: number) =>
-    a.map((i, j) => (j === routeAt ? { ...i, points: i.points!.map((p, n) => (n === 1 ? { ...p, x: p.x + dx } : p)) } : i));
+  const moveRoute = (dx: number, dy = 0) =>
+    a.map((i, j) => (j === routeAt ? { ...i, points: i.points!.map((p, n) => (n === 1 ? { x: p.x + dx, y: p.y + dy } : p)) } : i));
 
   it('holds for the same items, and for any moved less than 1 px', () => {
     expect(routeAt).toBeGreaterThanOrEqual(0);
     expect(sameRadar(a, items(s))).toBe(true);
     expect(sameRadar(a, move(0, 0.6, -0.6))).toBe(true);
-    expect(sameRadar(a, move(a.length - 1, -0.99, 0.99))).toBe(true);
+    // 0.99 px along the diagonal.
+    expect(sameRadar(a, move(a.length - 1, 0.7, 0.7))).toBe(true);
+    expect(sameRadar(a, move(a.length - 1, -0.7, 0.7))).toBe(true);
     expect(sameRadar(a, moveRoute(0.5))).toBe(true);
+    expect(sameRadar(a, moveRoute(0.7, -0.7))).toBe(true);
     expect(sameRadar(a, a.map((i) => ({ ...i, dist: i.dist + 3 })))).toBe(true);
   });
 
@@ -417,6 +588,10 @@ describe('sameRadar', () => {
     expect(sameRadar(a, a.map((i, j) => (j === 0 ? { ...i, kind: 'replay' as const } : i)))).toBe(false);
     expect(sameRadar(a, move(0, 1, 0))).toBe(false);
     expect(sameRadar(a, move(a.length - 1, 0, -1))).toBe(false);
+    // 1.004 px and 1.40 px along the diagonal: a move under a pixel on each axis is still a move of a pixel or more.
+    expect(sameRadar(a, move(a.length - 1, 0.71, 0.71))).toBe(false);
+    expect(sameRadar(a, move(a.length - 1, -0.99, 0.99))).toBe(false);
+    expect(sameRadar(a, moveRoute(0.71, -0.71))).toBe(false);
     expect(sameRadar(a, a.map((i, j) => (j === 0 ? { ...i, clamped: !i.clamped } : i)))).toBe(false);
     expect(sameRadar(a, moveRoute(1))).toBe(false);
     expect(sameRadar(a, a.map((i, j) => (j === routeAt ? { ...i, points: i.points!.slice(1) } : i)))).toBe(false);

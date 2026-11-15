@@ -2144,6 +2144,8 @@ describe('HUD snapshot', () => {
     // The radar: its count, a kind, a position by 1 px or more, but not less.
     const moved = (dx: number, dy: number): HudSnapshot => ({ ...a, radar: a.radar.map((i, k) => (k === 0 ? { ...i, x: i.x + dx, y: i.y + dy } : i)) });
     expect(sameHud(a, moved(0.5, -0.5))).toBe(true);
+    expect(sameHud(a, moved(0.7, 0.7))).toBe(true);
+    expect(sameHud(a, moved(0.71, 0.71))).toBe(false);
     expect(sameHud(a, moved(1, 0))).toBe(false);
     expect(sameHud(a, moved(0, -1.5))).toBe(false);
     expect(sameHud(a, { ...a, radar: a.radar.slice(1) })).toBe(false);
@@ -2151,7 +2153,9 @@ describe('HUD snapshot', () => {
   });
 
   it('a creeping chariot moves the radar now and then, not every frame, and the radar never freezes', () => {
-    // 1 cm a frame for 600 frames: 6 m, about 5.7 px at rest. The island keeps the snapshot shown while sameHud holds.
+    // 1 cm a frame for 600 frames: 6 m, about 5.7 px at rest (the rim points of a cut outline slide a little faster), and
+    // on the way the tower leaves the range and a shelter comes into it. The island keeps the snapshot shown while
+    // sameHud holds.
     const base = toActive(1);
     let shown = hudOf(base, desktop);
     let renders = 0;
@@ -2163,7 +2167,7 @@ describe('HUD snapshot', () => {
       shown = last;
     }
     expect(renders).toBeGreaterThanOrEqual(4);
-    expect(renders).toBeLessThanOrEqual(6);
+    expect(renders).toBeLessThanOrEqual(10);
     expect(shown.radar.map((i) => i.kind)).toEqual(last.radar.map((i) => i.kind));
     shown.radar.forEach((i, k) => {
       expect(Math.abs(i.x - last.radar[k].x)).toBeLessThan(1);

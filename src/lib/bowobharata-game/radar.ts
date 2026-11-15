@@ -4,11 +4,14 @@
 // It shows the ranks and the shelters, the route ahead, the copies (only in Krishna's sight, and never in roam), the
 // tower, and what the lakon leads to: the marker in roam, the open records, the real gates of the next GATE_DAYS days
 // of a course (and any ridden past and still open), the next two lap posts, and the Hastinapura gate while the letter
-// is carried. At a Riuh level with radar static, what lies beyond (1 − static) of the range is hidden unless sight is
-// on, and the route is cut there. Positions, kinds and metres only: no text. Pure: no clock, no randomness.
-import { dist, forward, rightOf, type XZ } from './geom';
+// is carried. At a Riuh level with radar static, nothing shows beyond (1 − static) of the inner radius unless sight is
+// on: what lies there is left out, and the route and the ranks' outlines are cut there. Whether a place shows is read on
+// the range in RANGE_STEP steps, so a place at an edge does not flip in and out as the speed wobbles. Positions, kinds
+// and metres only: no text. Pure: no clock, no randomness.
+import { clamp, dist, forward, rightOf, type XZ } from './geom';
 import { speedOf } from './drive';
 import { openTargets, type RunState } from './mission-run';
+import { across } from './missions';
 import { levelEffects, riuhLevel } from './riuh';
 import { pointAt, projectOnPath } from './route';
 import { ANCHORS, distToCollider, type Area, type Collider } from './world';
@@ -19,14 +22,23 @@ export type RadarKind = 'marker' | 'replay' | 'record' | 'gate' | 'tower' | 'she
 /** One thing on the radar, in px on its square. */
 export interface RadarItem {
   kind: RadarKind;
-  /** Where it lies, clamped to the inner radius. The ranks: their block's middle. The route: where its line ends. */
+  /**
+   * Where it lies, clamped to the inner radius. The ranks: their block's nearest point to the chariot (the chariot's own
+   * place inside the block), always within the radius shown, never clamped. The route: where its line ends.
+   */
   x: number;
   y: number;
   /** Beyond the range, so drawn at the inner radius; for the route, its line is cut short of its end. */
   clamped: boolean;
   /** Metres from the chariot: to the ranks' block (0 inside it), to the route's end. */
   dist: number;
-  /** The ranks: their block's four corners, not clamped (clip them to the disc). The route: its line, inside the disc. */
+  /**
+   * The ranks: their block's outline as a closed polygon, cut to the radius shown (the static's inner edge,
+   * (px/2 − 8)·(1 − static), while the static shows and sight is off; else the inner radius px/2 − 8), following that
+   * circle in arcs of at most 15° where the block runs past it: every point lies within it. Its four corners when the
+   * block lies wholly within; fewer than 3 points only when the block just touches the edge. The route: its line, within
+   * the same radius.
+   */
   points?: { x: number; y: number }[];
 }
 
@@ -42,7 +54,11 @@ export const GATE_DAYS = 3;
 const MAX_COPIES = 64;
 /** The range at rest (m), and what each m/s of speed either way adds. */
 const RANGE = { rest: 70, perSpeed: 2.2 } as const;
-/** A move this large (px) or larger is a change to the eye. */
+/** Whether a place shows is read on the range floored to steps this long (m): 2.27 m/s of speed each. */
+const RANGE_STEP = 5;
+/** A cut outline follows the circle in arcs of at most this (radians). */
+const ARC_STEP = Math.PI / 12;
+/** A move this far (px) or farther is a change to the eye. */
 const SHOWN_MOVE = 1;
 
 /** The radar's range (m) at forward speed v (m/s), either way: 70 m at rest, 107.4 m at 17 m/s, 125 m at 25 m/s. */
@@ -106,16 +122,127 @@ function areaMid(a: Area): XZ {
   return a.kind === 'circle' ? { x: a.x, z: a.z } : { x: (a.minX + a.maxX) / 2, z: (a.minZ + a.maxZ) / 2 };
 }
 
-/** An army as the radar draws it: its block's outline, or a point for a round one. */
-function ranksItem(f: Frame, c: Collider, d: number): RadarItem {
-  if (c.kind === 'circle') return pointItem('ranks', f, c, d);
-  const item = pointItem('ranks', f, { x: (c.minX + c.maxX) / 2, z: (c.minZ + c.maxZ) / 2 }, d);
-  item.points = [
-    spot(f, { x: c.minX, z: c.minZ }),
-    spot(f, { x: c.maxX, z: c.minZ }),
-    spot(f, { x: c.maxX, z: c.maxZ }),
-    spot(f, { x: c.minX, z: c.maxZ }),
-  ];
+/** The collider's nearest point to p, the one distToCollider measures to: p itself inside it. */
+function nearestPoint(c: Collider, p: XZ): XZ {
+  if (c.kind === 'box') return { x: clamp(p.x, c.minX, c.maxX), z: clamp(p.z, c.minZ, c.maxZ) };
+  const d = Math.hypot(p.x - c.x, p.z - c.z);
+  if (d <= c.r) return { x: p.x, z: p.z };
+  return { x: c.x + ((p.x - c.x) * c.r) / d, z: c.z + ((p.z - c.z) * c.r) / d };
+}
+
+/** The way round the polygon runs, from the sign of its area: +1 as angles grow (atan2 on x and y), −1 as they fall. */
+function turnOf(poly: readonly Px[]): number {
+  let a = 0;
+  for (let k = 0; k < poly.length; k++) {
+    const p = poly[k];
+    const q = poly[(k + 1) % poly.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a < 0 ? -1 : 1;
+}
+
+/** Whether the convex polygon holds the point (c, c). */
+function holdsCentre(poly: readonly Px[], c: number, turn: number): boolean {
+  for (let k = 0; k < poly.length; k++) {
+    const p = poly[k];
+    const q = poly[(k + 1) % poly.length];
+    if (turn * ((q.x - p.x) * (c - p.y) - (q.y - p.y) * (c - p.x)) < 0) return false;
+  }
+  return true;
+}
+
+/** The points within the arc of radius r round (c, c) from `from` to `to`, running `turn` (+1 as angles grow). */
+function arcBetween(from: Px, to: Px, c: number, r: number, turn: number): Px[] {
+  if (Math.hypot(from.x - to.x, from.y - to.y) < 1e-9) return [];
+  const a0 = Math.atan2(from.y - c, from.x - c);
+  const a1 = Math.atan2(to.y - c, to.x - c);
+  let sweep = (turn > 0 ? a1 - a0 : a0 - a1) % (2 * Math.PI);
+  if (sweep < 0) sweep += 2 * Math.PI;
+  const steps = Math.ceil(sweep / ARC_STEP);
+  const out: Px[] = [];
+  for (let j = 1; j < steps; j++) {
+    const a = a0 + (turn * sweep * j) / steps;
+    out.push({ x: c + r * Math.cos(a), y: c + r * Math.sin(a) });
+  }
+  return out;
+}
+
+/** The whole circle of radius r round (c, c), a point every ARC_STEP. */
+function ringOf(c: number, r: number): Px[] {
+  const n = Math.round((2 * Math.PI) / ARC_STEP);
+  return Array.from({ length: n }, (_, j) => {
+    const a = (2 * Math.PI * j) / n;
+    return { x: c + r * Math.cos(a), y: c + r * Math.sin(a) };
+  });
+}
+
+/**
+ * The convex polygon cut to the circle of radius r round (c, c): its corners within the circle, the points where its
+ * sides cross it, and from each point where it leaves the circle to the next where it comes back in, the circle's own
+ * arc. Every point lies within the circle. The whole circle when the polygon holds it; none when they do not meet.
+ */
+function clipToCircle(poly: readonly Px[], c: number, r: number): Px[] {
+  const within = (p: Px) => Math.hypot(p.x - c, p.y - c) <= r;
+  const turn = turnOf(poly);
+  const marks: { p: Px; leaves: boolean }[] = [];
+  let crossings = 0;
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k];
+    const b = poly[(k + 1) % poly.length];
+    const aIn = within(a);
+    const bIn = within(b);
+    if (aIn) marks.push({ p: a, leaves: false });
+    if (aIn && bIn) continue;
+    // Where the side a→b, a + t(b − a), meets the circle: the roots of qa·t² + 2qb·t + qc.
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const ox = a.x - c;
+    const oy = a.y - c;
+    const qa = dx * dx + dy * dy;
+    const qb = ox * dx + oy * dy;
+    const qc = ox * ox + oy * oy - r * r;
+    const disc = qb * qb - qa * qc;
+    if (qa === 0 || disc <= 0) continue;
+    const t0 = (-qb - Math.sqrt(disc)) / qa;
+    const t1 = (-qb + Math.sqrt(disc)) / qa;
+    const on = (t: number): Px => {
+      const u = Math.min(1, Math.max(0, t));
+      return { x: a.x + dx * u, y: a.y + dy * u };
+    };
+    if (aIn) marks.push({ p: on(t1), leaves: true });
+    else if (bIn) marks.push({ p: on(t0), leaves: false });
+    else if (t0 > 0 && t1 < 1) marks.push({ p: on(t0), leaves: false }, { p: on(t1), leaves: true });
+    else continue;
+    crossings++;
+  }
+  if (crossings === 0) {
+    if (marks.length > 0) return marks.map((m) => m.p);
+    return holdsCentre(poly, c, turn) ? ringOf(c, r) : [];
+  }
+  const out: Px[] = [];
+  marks.forEach((m, k) => {
+    if (out.length === 0 || Math.hypot(m.p.x - out[out.length - 1].x, m.p.y - out[out.length - 1].y) > 1e-9) out.push(m.p);
+    if (m.leaves) out.push(...arcBetween(m.p, marks[(k + 1) % marks.length].p, c, r, turn));
+  });
+  if (out.length > 1 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) <= 1e-9) out.pop();
+  return out;
+}
+
+/**
+ * An army as the radar draws it: anchored at its nearest point to the chariot, its block's outline cut to the circle of
+ * `edge` px (a round one is a point).
+ */
+function ranksItem(f: Frame, c: Collider, car: XZ, d: number, edge: number): RadarItem {
+  const item = pointItem('ranks', f, nearestPoint(c, car), d);
+  if (c.kind === 'box') {
+    const corners = [
+      spot(f, { x: c.minX, z: c.minZ }),
+      spot(f, { x: c.maxX, z: c.minZ }),
+      spot(f, { x: c.maxX, z: c.maxZ }),
+      spot(f, { x: c.minX, z: c.maxZ }),
+    ];
+    item.points = clipToCircle(corners, f.c, edge);
+  }
   return item;
 }
 
@@ -167,12 +294,6 @@ function routeItem(route: readonly XZ[], f: Frame, car: XZ, reach: number): Rada
   return { kind: 'route', x: end.x, y: end.y, clamped: cut, dist: dist(car, route[route.length - 1]), points };
 }
 
-/** The position of a gate `offset` m to the right of its day's centre, across the day's heading. */
-function gateAt(day: { at: XZ; heading: number }, offset: number): XZ {
-  const r = rightOf(day.heading);
-  return { x: day.at.x + r.x * offset, z: day.at.z + r.z * offset };
-}
-
 /**
  * What the lakon leads to, as openTargets has it: the marker in roam; the open records; the next lap posts; the
  * Hastinapura gate while the letter is carried (the tower is always on the radar). A course's aims give way to its real
@@ -192,16 +313,19 @@ function lakonItems(s: GameState, show: (kind: RadarKind, at: XZ) => void): void
   const last = Math.min(run.dayIndex + GATE_DAYS, step.days.length);
   for (let k = 0; k < last; k++) {
     const day = step.days[k];
-    for (const g of day.gates) if (g.real && !run.recorded.includes(g.id)) show('gate', gateAt(day, g.offset));
+    for (const g of day.gates) if (g.real && !run.recorded.includes(g.id)) show('gate', across(day.at, day.heading, g.offset));
   }
 }
 
 /**
- * What the radar shows, on a square `px` wide, in drawing order: the ranks (each army whose block lies within the range),
- * the shelters, the route ahead, the copies (in sight, outside roam, open and within the range), the tower, then what
- * the lakon leads to. The ranks and copies show only within the range; everything else stays at the inner radius when
- * beyond it. With static (riuhLevel's radarStatic) and sight off, nothing beyond (1 − static) of the range shows and the
- * route is cut there. Bounded by the lakon's data and MAX_COPIES; nothing is sorted.
+ * What the radar shows, on a square `px` wide, in drawing order: the ranks (each army whose block reaches within the
+ * radius shown), the shelters, the route ahead, the copies (in sight, outside roam, open and within the range), the
+ * tower, then what the lakon leads to. The ranks and copies show only within the range; everything else stays at the
+ * inner radius when beyond it. With static (riuhLevel's radarStatic) and sight off, the radius shown is (1 − static) of
+ * the inner radius: nothing beyond it shows, and the route and the ranks' outlines are cut at it. Whether a place shows
+ * is read on the range floored to RANGE_STEP m, never past the radius shown, so a place at the edge stays in or out
+ * while the speed wobbles; the cut lines follow the exact edge. Bounded by the lakon's data and MAX_COPIES; nothing is
+ * sorted.
  */
 export function radarItems(s: GameState, w: World, px: number): RadarItem[] {
   const { car } = s;
@@ -209,21 +333,23 @@ export function radarItems(s: GameState, w: World, px: number): RadarItem[] {
   const f = frameOf(car, range, px);
   const sight = s.sight.on;
   const fog = sight ? 0 : levelEffects(riuhLevel(s.riuh.value)).radarStatic;
-  /** How far (m) a place may lie and still show: anywhere without static (beyond the range, at the inner radius). */
-  const clear = fog > 0 ? (1 - fog) * range : Infinity;
-  const near = Math.min(range, clear);
+  /**
+   * How far (m) a place may lie and still show (for the ranks and copies always, for the rest under static): the range
+   * floored to RANGE_STEP, so the edge holds still while the speed wobbles, and never past the radius shown.
+   */
+  const keep = (1 - fog) * Math.floor(range / RANGE_STEP) * RANGE_STEP;
   const out: RadarItem[] = [];
   const show = (kind: RadarKind, at: XZ) => {
     const d = dist(car, at);
-    if (d <= clear) out.push(pointItem(kind, f, at, d));
+    if (fog === 0 || d <= keep) out.push(pointItem(kind, f, at, d));
   };
 
   for (const c of w.figures) {
     const d = Math.max(0, distToCollider(car, c));
-    if (d <= near) out.push(ranksItem(f, c, d));
+    if (d <= keep) out.push(ranksItem(f, c, car, d, (1 - fog) * f.r));
   }
   for (const zone of w.zones) if (zone.role === 'shelter') show('shelter', areaMid(zone.area));
-  const route = s.route && routeItem(s.route.points, f, car, near);
+  const route = s.route && routeItem(s.route.points, f, car, (1 - fog) * range);
   if (route) out.push(route);
   if (sight && s.run.phase !== 'roam') {
     let shown = 0;
@@ -231,7 +357,7 @@ export function radarItems(s: GameState, w: World, px: number): RadarItem[] {
       if (shown === MAX_COPIES) break;
       if (d.state !== 'open') continue;
       const m = dist(car, d.at);
-      if (m > range) continue;
+      if (m > keep) continue;
       out.push(pointItem('decoy', f, d.at, m));
       shown++;
     }
@@ -241,7 +367,7 @@ export function radarItems(s: GameState, w: World, px: number): RadarItem[] {
   return out;
 }
 
-const samePx = (a: Px, b: Px) => Math.abs(a.x - b.x) < SHOWN_MOVE && Math.abs(a.y - b.y) < SHOWN_MOVE;
+const samePx = (a: Px, b: Px) => Math.hypot(a.x - b.x, a.y - b.y) < SHOWN_MOVE;
 
 function samePoints(a: readonly Px[] | undefined, b: readonly Px[] | undefined): boolean {
   if (!a || !b) return a === b;
@@ -251,9 +377,10 @@ function samePoints(a: readonly Px[] | undefined, b: readonly Px[] | undefined):
 }
 
 /**
- * Whether two radars look the same: as many items, in order, of the same kinds and clamps, none moved by SHOWN_MOVE px
- * or more on either axis, the outlines and lines alike. A move under a pixel is not a change, so a creeping chariot does
- * not redraw the HUD every frame; compared with the snapshot last shown, the moves add up until one is.
+ * Whether two radars look the same: as many items, in order, of the same kinds and clamps, none moved SHOWN_MOVE px or
+ * farther (as a distance, so a diagonal move counts in full), the outlines and lines alike. A move under a pixel is not
+ * a change, so a creeping chariot does not redraw the HUD every frame; compared with the snapshot last shown, the moves
+ * add up until one is.
  */
 export function sameRadar(a: readonly RadarItem[], b: readonly RadarItem[]): boolean {
   if (a.length !== b.length) return false;
