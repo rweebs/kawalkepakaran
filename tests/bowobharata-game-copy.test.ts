@@ -282,9 +282,14 @@ describe('bowobharata-game copy', () => {
       expect(c.toasts.lap({ n: 3, seconds: 52, matched: true })).not.toBe(c.toasts.lap({ n: 3, seconds: 52, matched: false }));
       for (const s of [c.objectives.gate, c.toasts.gate, c.toasts.letter]) expect(s).not.toMatch(/\d/);
     }
-    // Seconds to one decimal, with the decimal comma in Indonesian.
+    // Seconds to one decimal, with the decimal comma in Indonesian; a matched lap ends the re-test, whether the times
+    // matched or the fifth lap did it.
     expect(id.toasts.lap({ n: 1, seconds: 49.96, matched: false })).toBe('Putaran 1 · 50,0 detik');
     expect(en.toasts.lap({ n: 1, seconds: 49.96, matched: false })).toBe('Lap 1 · 50.0 s');
+    expect(id.toasts.lap({ n: 5, seconds: 61, matched: true })).toBe('Putaran 5 · 61,0 detik · uji ulang selesai');
+    expect(en.toasts.lap({ n: 5, seconds: 61, matched: true })).toBe('Lap 5 · 61.0 s · re-test complete');
+    expect(id.toasts.gate).toBe('Gapura itu tulisan ulang, dan ikut masuk ke catatan.');
+    expect(en.toasts.gate).toBe('That gate was a rewrite, and it went into the record.');
   });
 
   it('finaleTotals is built from the numbers, in both locales', () => {

@@ -2,10 +2,10 @@
 // (collect, reach, a course of days and gates, laps over posts), the copies, the fail checks, checkpoints and the ending.
 // No physics, no clock, no randomness; state is immutable. A gate, a day's line or a post is passed when the hull's
 // middle crosses it within the frame.
-import { angleDiff, dist, rightOf, yawOf, type XZ } from './geom';
+import { angleDiff, dist, forward, rightOf, yawOf, type XZ } from './geom';
 import type { ChariotState } from './drive';
-import { crossesSegment, sweptHit } from './collide';
-import { realTargets, type GateDef, type MissionDef, type StepDef } from './missions';
+import { sweptHit } from './collide';
+import { across, realTargets, type GateDef, type MissionDef, type PickupDef, type StepDef } from './missions';
 import { MISSION_TIMING } from './tuning';
 
 export type Phase = 'roam' | 'intro' | 'active' | 'outro' | 'failed' | 'done';
@@ -233,30 +233,37 @@ interface Span {
 }
 
 /**
- * A course worked out once (a course step belongs to one lakon): each day's line (dayLineHalf m each way) and gate spans,
- * where the course leads on each day (its real gate's centre, or on a day of two rewrites the middle of the outer lane
- * the chariot turns least to reach, coming over the day before: the line the bot rides, and the route the player is
- * shown), and each real gate as a target of its own, for a day ridden past without it.
+ * A course worked out once per lakon: each day's line (dayLineHalf m each way) and gate spans; where the course leads on
+ * each day (its real gate's centre, or on a day of two rewrites the middle of an outer lane: the line the bot rides, and
+ * the route the player is shown); each real gate as a target of its own, for a day ridden past without it; and the pose
+ * a retry resumes from once each day is passed.
  */
 interface CourseGeom {
   lines: Span[];
   spans: Span[][];
   aims: Target[];
   gates: (Target | null)[][];
+  poses: { x: number; z: number; yaw: number }[];
 }
-const COURSES = new WeakMap<Course, CourseGeom>();
+/** By lakon, then by course step: the first day's lane reads the lakon's start. */
+const COURSES = new WeakMap<MissionDef, WeakMap<Course, CourseGeom>>();
+/** A course that turns this much (radians) or more into a day of two rewrites takes the outside of the turn there. */
+const CORNER = Math.PI / 3;
+/** A retry resumes this far (m) past the line of the last day passed, at its centre. */
+const PAST = 3;
 
-/** The point `lateral` m to the right of `at` across `heading`. */
-function across(at: XZ, heading: number, lateral: number): XZ {
-  const r = rightOf(heading);
-  return { x: at.x + r.x * lateral, z: at.z + r.z * lateral };
+/** Where the step after `s` leads first: its first record or its place; null when there is none. */
+function placeAfter(def: MissionDef, s: StepDef): XZ | null {
+  const next = def.steps[def.steps.indexOf(s) + 1];
+  if (next?.kind === 'reach') return next.at;
+  if (next?.kind === 'collect') return next.items[0]?.at ?? null;
+  return null;
 }
-
-/** How far (radians) a chariot at `from` riding along `yaw` must turn to head for `to`. */
-const turnTo = (from: XZ, yaw: number, to: XZ) => Math.abs(angleDiff(yawOf({ x: to.x - from.x, z: to.z - from.z }), yaw));
 
 function courseGeom(def: MissionDef, s: Course): CourseGeom {
-  const known = COURSES.get(s);
+  let byStep = COURSES.get(def);
+  if (!byStep) COURSES.set(def, (byStep = new WeakMap()));
+  const known = byStep.get(s);
   if (known) return known;
   const half = MISSION_TIMING.dayLineHalf;
   // Where the chariot comes from, and its way: the start, then each day's aim along that day's heading.
@@ -269,15 +276,24 @@ function courseGeom(def: MissionDef, s: Course): CourseGeom {
     if (real) {
       aims.push({ kind: 'gate', id, at: across(d.at, d.heading, real.offset), real: true, heading: d.heading, width: real.width });
     } else {
-      // The nearer lane: the one the chariot turns least to reach. On a straight it is the side the chariot is on; round
-      // a corner, the outside one.
-      const right = across(d.at, d.heading, LANE);
-      const left = across(d.at, d.heading, -LANE);
-      const at = turnTo(from, way, right) <= turnTo(from, way, left) ? right : left;
-      aims.push({ kind: 'gate', id, at, real: false, heading: d.heading, width: half - LANE_IN });
+      // The outer lane on the nearer side, the side the chariot comes from; but where the course turns CORNER or more
+      // into the day, the outside of the turn (a right turn's is on the left), which the chariot can come round to.
+      const turn = angleDiff(d.heading, way);
+      const r = rightOf(d.heading);
+      const nearer = (from.x - d.at.x) * r.x + (from.z - d.at.z) * r.z >= 0 ? 1 : -1;
+      const side = Math.abs(turn) >= CORNER ? Math.sign(turn) : nearer;
+      aims.push({ kind: 'gate', id, at: across(d.at, d.heading, side * LANE), real: false, heading: d.heading, width: half - LANE_IN });
     }
     from = aims[k].at;
     way = d.heading;
+  });
+  const after = placeAfter(def, s);
+  const poses = s.days.map((d, k) => {
+    const f = forward(d.heading);
+    const x = d.at.x + f.x * PAST;
+    const z = d.at.z + f.z * PAST;
+    const next = s.days[k + 1]?.at ?? after;
+    return { x, z, yaw: next ? yawOf({ x: next.x - x, z: next.z - z }) : d.heading };
   });
   const geom: CourseGeom = {
     lines: s.days.map((d) => ({ a: across(d.at, d.heading, -half), b: across(d.at, d.heading, half) })),
@@ -288,12 +304,25 @@ function courseGeom(def: MissionDef, s: Course): CourseGeom {
         g.real ? { kind: 'gate', id: g.id, at: across(d.at, d.heading, g.offset), real: true, heading: d.heading, width: g.width } : null,
       ),
     ),
+    poses,
   };
-  COURSES.set(s, geom);
+  byStep.set(s, geom);
   return geom;
 }
 
-const crossed = (f: RunFrame, s: Span) => crossesSegment(f.midPrev, f.mid, s.a, s.b);
+/** The cross product (a − o) × (b − o): its sign is the side of line o→a that b lies on, 0 on it. */
+const cross = (o: XZ, a: XZ, b: XZ) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+
+/**
+ * Whether the hull's middle crosses the span this frame: from strictly one side of its line to the other side or onto
+ * it (so a frame that ends on the line counts once, and the next, starting on it, does not), between its ends.
+ */
+function crossed(f: RunFrame, s: Span): boolean {
+  const from = cross(s.a, s.b, f.midPrev);
+  const to = cross(s.a, s.b, f.mid);
+  if (from === 0 || (from > 0 ? to > 0 : to < 0)) return false;
+  return cross(f.midPrev, f.mid, s.a) * cross(f.midPrev, f.mid, s.b) < 0;
+}
 
 /** Whether every real gate of the course is recorded. */
 function allGates(run: RunState, s: Course): boolean {
@@ -302,10 +331,11 @@ function allGates(run: RunState, s: Course): boolean {
 }
 
 /**
- * A course. Any real gate crossed, from either side and on any day, is recorded once; any rewrite gate crossed is taken
- * once, a rewrite into the record that counts toward the fail from the grace on, as a copy taken without sight does.
- * Crossing the next day's line passes it, and so does coming near the centre of the day after it. The course is done once
- * every day is passed with every real gate recorded.
+ * A course. Any real gate crossed, from either side and on any day, is recorded once. A rewrite gate counts until its day
+ * is passed (the day being crossed still counts): crossed, it is taken once, a rewrite into the record that counts toward
+ * the fail from the grace on, as a copy taken without sight does; a passed day's rewrite gates are inert. Crossing the
+ * next day's line passes it, and so does coming near the centre of the day after it; each day passed leaves a silent
+ * checkpoint just past its line. The course is done once every day is passed with every real gate recorded.
  */
 function stepCourse(run: RunState, f: RunFrame, s: Course): Out {
   const geom = courseGeom(run.def, s);
@@ -321,7 +351,7 @@ function stepCourse(run: RunState, f: RunFrame, s: Course): Out {
         const r = recordTarget(cur, g, SCORE.real);
         cur = r.run;
         events.push({ type: 'gate', real: true, day: k + 1 }, r.event);
-      } else if (!cur.taken.includes(g.id)) {
+      } else if (k >= cur.dayIndex && !cur.taken.includes(g.id)) {
         const decoysTaken = cur.t >= GRACE ? cur.decoysTaken + 1 : cur.decoysTaken;
         cur = addScore({ ...cur, taken: [...cur.taken, g.id], decoysTaken }, SCORE.rewrite);
         events.push({ type: 'gate', real: false, day: k + 1 }, { type: 'rewriteTaken' });
@@ -331,7 +361,7 @@ function stepCourse(run: RunState, f: RunFrame, s: Course): Out {
   const i = cur.dayIndex;
   const after = s.days[i + 1];
   if ((i < s.days.length && crossed(f, geom.lines[i])) || (after && dist(f.mid, after.at) <= DAY_NEAR)) {
-    cur = { ...cur, dayIndex: i + 1 };
+    cur = checkpoint({ ...cur, dayIndex: i + 1 }, geom.poses[i], f.riuh);
   }
   if (cur.dayIndex >= s.days.length && allGates(cur, s)) {
     const fin = finishStep(cur, f);
@@ -340,16 +370,16 @@ function stepCourse(run: RunState, f: RunFrame, s: Course): Out {
   return { run: cur, events };
 }
 
-/** The lap posts' spans, postWidth m wide across each post's heading. */
-const LAP_SPANS = new WeakMap<Laps, Span[]>();
-function lapSpans(s: Laps): Span[] {
-  let spans = LAP_SPANS.get(s);
-  if (!spans) {
+/** A lap course worked out once: the posts' spans, postWidth m wide across each post's heading, and its record as a list. */
+const LAPS = new WeakMap<Laps, { spans: Span[]; then: readonly PickupDef[] }>();
+function lapsGeom(s: Laps): { spans: Span[]; then: readonly PickupDef[] } {
+  let geom = LAPS.get(s);
+  if (!geom) {
     const half = MISSION_TIMING.postWidth / 2;
-    spans = s.posts.map((p) => ({ a: across(p.at, p.heading, -half), b: across(p.at, p.heading, half) }));
-    LAP_SPANS.set(s, spans);
+    geom = { spans: s.posts.map((p) => ({ a: across(p.at, p.heading, -half), b: across(p.at, p.heading, half) })), then: [s.then] };
+    LAPS.set(s, geom);
   }
-  return spans;
+  return geom;
 }
 
 /**
@@ -358,9 +388,10 @@ function lapSpans(s: Laps): Span[] {
  * times. Once they match, the record after them is open, and recording it closes the step.
  */
 function stepLaps(run: RunState, f: RunFrame, s: Laps): Out {
-  if (run.matched) return stepCollect(run, f, [s.then]);
+  const geom = lapsGeom(s);
+  if (run.matched) return stepCollect(run, f, geom.then);
   const k = run.lapPost;
-  if (!crossed(f, lapSpans(s)[k])) return { run, events: [] };
+  if (!crossed(f, geom.spans[k])) return { run, events: [] };
   const lapPost = (k + 1) % s.posts.length;
   if (k !== 0) return { run: { ...run, lapPost }, events: [] };
   if (run.lapStart === null) return { run: { ...run, lapStart: run.t, lapPost }, events: [] };

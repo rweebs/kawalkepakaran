@@ -369,9 +369,24 @@ describe('toastText', () => {
     }
     expect(toastText({ type: 'lap', n: 2, seconds: 51.27, matched: false }, 'id', 5, () => null)).toBe('Putaran 2 · 51,3 detik');
     expect(toastText({ type: 'lap', n: 2, seconds: 51.27, matched: false }, 'en', 5, () => null)).toBe('Lap 2 · 51.3 s');
+    // Matched by the times or by the fifth lap: either way the re-test is done.
     const matched = (l: Locale) => toastText({ type: 'lap', n: 2, seconds: 51.27, matched: true }, l, 5, () => null)!;
-    expect(matched('id').startsWith('Putaran 2 · 51,3 detik · ')).toBe(true);
-    expect(matched('en').startsWith('Lap 2 · 51.3 s · ')).toBe(true);
+    expect(matched('id')).toBe('Putaran 2 · 51,3 detik · uji ulang selesai');
+    expect(matched('en')).toBe('Lap 2 · 51.3 s · re-test complete');
+  });
+
+  it('a rewrite gate shows one toast: its rewriteTaken stays quiet in the frame it is crossed; a copy taken still shows its own', () => {
+    for (const l of LOCALES) {
+      const t = GAME_COPY[l].toasts;
+      const crossing: GameEvent[] = [{ type: 'gate', real: false, day: 2 }, { type: 'rewriteTaken' }];
+      expect(crossing.flatMap((e) => toastText(e, l, 4, () => null, crossing) ?? [])).toEqual([t.gate]);
+      const copy: GameEvent[] = [{ type: 'rewriteTaken' }];
+      expect(copy.flatMap((e) => toastText(e, l, 4, () => null, copy) ?? [])).toEqual([t.rewrite]);
+      expect(toastText({ type: 'rewriteTaken' }, l, 4, () => null)).toBe(t.rewrite);
+    }
+    // The gate's line says both: a rewrite, and that it went into the record.
+    expect(GAME_COPY.id.toasts.gate).toMatch(/tulisan ulang[\s\S]*masuk ke catatan/);
+    expect(GAME_COPY.en.toasts.gate).toMatch(/rewrite[\s\S]*into the record/);
   });
 
   it('the events that are not toasts give null', () => {

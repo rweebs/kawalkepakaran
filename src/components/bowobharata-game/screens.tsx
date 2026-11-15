@@ -761,13 +761,15 @@ export function Finale({ locale, totals, onAgain, report, chapterIds, allow3d }:
 /**
  * The toast for a lakon event, or null when the event shows none. A toast carries counts, dates and channels only, never a
  * name or an event title. A record of a parva shows its card's date and channel; the prologue's records, and any record
- * whose card `cardOf` cannot give, show the count alone.
+ * whose card `cardOf` cannot give, show the count alone. Given the frame's events, a rewrite gate's line stands for the
+ * rewriteTaken of the same crossing, which then shows none.
  */
 export function toastText(
   e: GameEvent,
   locale: Locale,
   chapter: number,
   cardOf: (card: number) => { date: string; channel: string } | null,
+  frame?: readonly GameEvent[],
 ): string | null {
   const t = GAME_COPY[locale].toasts;
   switch (e.type) {
@@ -780,7 +782,7 @@ export function toastText(
     case 'filed':
       return t.filed;
     case 'rewriteTaken':
-      return t.rewrite;
+      return frame?.some((x) => x.type === 'gate' && !x.real) ? null : t.rewrite;
     case 'held':
       return t.ranks;
     case 'checkpoint':

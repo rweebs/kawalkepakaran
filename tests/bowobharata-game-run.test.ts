@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { initChariot } from '../src/lib/bowobharata-game/drive';
-import { forward, rightOf, type XZ } from '../src/lib/bowobharata-game/geom';
+import { HULL, hullCircles, hullClearance } from '../src/lib/bowobharata-game/collide';
+import { angleDiff, forward, rightOf, segPointDist, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import { missionFor, realTargets, type DayDef, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import {
   autoRecord, checkpoint, openTargets, restore, SCORE, timeLeft, startRun, stepRun, totalReal,
   type Decoy, type RunFrame, type RunState,
 } from '../src/lib/bowobharata-game/mission-run';
 import { initSight, stepSight, worldScale } from '../src/lib/bowobharata-game/sight';
-import { ANCHORS } from '../src/lib/bowobharata-game/world';
+import { ANCHORS, staticColliders } from '../src/lib/bowobharata-game/world';
 
 const SLUGS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
 const def = (ch: number) => missionFor(ch, ch === 0 ? [] : SLUGS.slice(0, [0, 2, 2, 4, 9, 1, 2, 2, 2][ch]));
@@ -392,6 +393,30 @@ describe('openTargets', () => {
     // A real gate passed by stays open after the days ahead.
     expect(openTargets(active(4, { dayIndex: 17, recorded: all.slice(1) })).map((t) => t.id)).toEqual(['day18', all[0]]);
   });
+  it('each day of two rewrites leads through its outer lane on the nearer side, but round a 60° corner on its outside', () => {
+    const lane = (ch: number, day: number) => openTargets(active(ch)).find((t) => t.id === `day${day}`)!;
+    // Parva 4: days 11 and 16 come round the course's 90° corners, so their lane is on the outside of the turn.
+    const P4: [number, -1 | 1][] = [[2, -1], [5, -1], [7, -1], [10, 1], [11, -1], [13, 1], [15, -1], [16, -1], [18, -1]];
+    const d4 = daysOf(def(4));
+    expect(d4.flatMap((d, k) => (d.gates.some((g) => g.real) ? [] : [k + 1]))).toEqual(P4.map(([day]) => day));
+    for (const [day, side] of P4) {
+      expect(lane(4, day), `parva 4 day ${day}`).toMatchObject({ real: false, at: across(d4[day - 1], side * 9.5), width: 4 });
+    }
+    expect(Math.abs(angleDiff(d4[10].heading, d4[9].heading))).toBeCloseTo(Math.PI / 2, 12);
+    expect(Math.abs(angleDiff(d4[15].heading, d4[14].heading))).toBeCloseTo(Math.PI / 2, 12);
+    // Parva 7 bends gently: both of its days of two rewrites take the nearer, right-hand lane.
+    const d7 = daysOf(def(7));
+    for (const day of [1, 3]) expect(lane(7, day), `parva 7 day ${day}`).toMatchObject({ at: across(d7[day - 1], 9.5) });
+  });
+  it('the lane of a course’s first day reads the lakon’s own start', () => {
+    const d = def(7);
+    const day1 = daysOf(d)[0];
+    // From a start far to day 1's left, along its heading, the nearer lane is the left one.
+    const from = across(day1, -30, -20);
+    const moved: MissionDef = { ...d, start: { x: from.x, z: from.z, yaw: day1.heading } };
+    expect(openTargets({ ...startRun(d), phase: 'active' })[0].at).toEqual(across(day1, 9.5));
+    expect(openTargets({ ...startRun(moved), phase: 'active' })[0].at).toEqual(across(day1, -9.5));
+  });
   it('a lap course leads to the next post, and to the record after it once the laps match', () => {
     const { posts, then } = lapsOf(def(5));
     expect(openTargets(active(5)).map((t) => [t.kind, t.at])).toEqual([['post', posts[0].at], ['post', posts[1].at]]);
@@ -463,13 +488,48 @@ describe('course (parva 4)', () => {
     const again = stepRun(r1.run, through(days[1], -4.5, true));
     expect(again.events).toEqual([]);
     expect(again.run.decoysTaken).toBe(1);
-    const r2 = stepRun(again.run, through(days[1], 4.5));
-    // Day 5 holds two rewrites as well.
+    // Day 5 holds two rewrites as well, and it is not passed yet.
     expect(days[4].gates.some((g) => g.real)).toBe(false);
-    const r3 = stepRun(r2.run, through(days[4], 4.5));
+    expect(again.run.dayIndex).toBeLessThanOrEqual(4);
+    const r2 = stepRun(again.run, through(days[4], 4.5));
+    const r3 = stepRun(r2.run, through(days[4], -4.5));
     expect(r3.run.decoysTaken).toBe(3);
     expect(r3.events).toContainEqual({ type: 'failed', reason: 'muddied' });
     expect(r3.run.phase).toBe('failed');
+  });
+
+  it('a passed day’s rewrite gates are inert; its real gate stays open from either side; the day being crossed counts', () => {
+    const passed = active(4, { dayIndex: 3, t: 50 });
+    for (const back of [false, true]) {
+      const r = stepRun(passed, through(days[1], days[1].gates[0].offset, back));
+      expect(r.events).toEqual([]);
+      expect([r.run.decoysTaken, r.run.taken, r.run.score]).toEqual([0, [], 0]);
+    }
+    expect(types(stepRun(passed, through(days[2], realOf(2).offset, true)).events)).toEqual(['gate', 'recorded']);
+    // Day 4's line is the next one: its gates count in the frame that passes it.
+    const four = active(4, { dayIndex: 3, t: 50 });
+    const rewrite = days[3].gates.find((g) => !g.real)!;
+    const r = stepRun(four, through(days[3], rewrite.offset));
+    expect(r.events).toEqual([{ type: 'gate', real: false, day: 4 }, { type: 'rewriteTaken' }]);
+    expect([r.run.dayIndex, r.run.decoysTaken]).toEqual([4, 1]);
+  });
+
+  it('a frame ending exactly on a gate span counts there, once', () => {
+    // Day 6 faces due east, so its line lies exactly on x = −50.
+    expect(days[5].heading).toBe(0);
+    const real = realOf(5);
+    const on = stepRun(active(4, { dayIndex: 5 }), frame({ prev: across(days[5], real.offset, -2), at: across(days[5], real.offset, 0) }));
+    expect(on.events).toEqual([
+      { type: 'gate', real: true, day: 6 },
+      { type: 'recorded', id: real.id, card: 3, n: 1, total: 9 },
+    ]);
+    expect(on.run.dayIndex).toBe(6);
+    // On to day 7, and back onto day 6's line from beyond it: nothing more.
+    const off = stepRun(on.run, frame({ prev: across(days[5], real.offset, 0), at: across(days[5], real.offset, 2) }));
+    expect(off.events).toEqual([]);
+    const backOn = stepRun(off.run, frame({ prev: across(days[5], real.offset, 2), at: across(days[5], real.offset, 0) }));
+    expect(backOn.events).toEqual([]);
+    expect(backOn.run.recorded).toEqual([real.id]);
   });
 
   it('the line runs 11.5 m each way: past its end the day holds; within 6 m of the following day’s centre it moves on', () => {
@@ -502,6 +562,45 @@ describe('course (parva 4)', () => {
     expect(r.taken).toEqual(['D2L']);
     // A rewrite gate counts once: crossed again after the retry, it gives nothing.
     expect(stepRun({ ...r, dayIndex: 1 }, through(days[1], -4.5)).events).toEqual([]);
+  });
+
+  it('passing a day leaves a silent checkpoint a few metres past its line, centred, facing the next day, in the clear', () => {
+    const cols = staticColliders();
+    for (const ch of [4, 7]) {
+      const d = def(ch);
+      const ds = daysOf(d);
+      const spans = ds.flatMap((day) => day.gates.map((g) => [across(day, g.offset - g.width / 2), across(day, g.offset + g.width / 2)]));
+      ds.forEach((day, k) => {
+        const at = `parva ${ch} day ${k + 1}`;
+        // Every real gate recorded: crossing at the gap records nothing, and the last day closes the course.
+        const all = realTargets(d).map((t) => t.id);
+        const r = stepRun(active(ch, { dayIndex: k, recorded: all }), through(day, 0));
+        const cp = r.run.checkpoint!;
+        if (k + 1 < ds.length) {
+          // Silent: no checkpoint event, so no toast.
+          expect(r.events, at).toEqual([]);
+          expect(cp.dayIndex, at).toBe(k + 1);
+          const f = forward(day.heading);
+          const past = (cp.car.x - day.at.x) * f.x + (cp.car.z - day.at.z) * f.z;
+          const side = (cp.car.x - day.at.x) * rightOf(day.heading).x + (cp.car.z - day.at.z) * rightOf(day.heading).z;
+          expect(past, at).toBeGreaterThanOrEqual(2);
+          expect(past, at).toBeLessThanOrEqual(5);
+          expect(side, at).toBeCloseTo(0, 9);
+          const next = ds[k + 1].at;
+          expect(cp.car.yaw, at).toBeCloseTo(yawOf({ x: next.x - cp.car.x, z: next.z - cp.car.z }), 9);
+          expect(hullClearance(cp.car.x, cp.car.z, cp.car.yaw, cols), at).toBeGreaterThanOrEqual(1);
+          for (const c of hullCircles(cp.car.x, cp.car.z, cp.car.yaw)) {
+            for (const [p, q] of spans) expect(segPointDist(c, p, q), at).toBeGreaterThan(HULL.r);
+          }
+          // The retry resumes there, with the records kept.
+          const back = restore({ ...r.run, phase: 'failed', dayIndex: 0 });
+          expect([back.car, back.run.dayIndex, back.run.recorded], at).toEqual([cp.car, k + 1, r.run.recorded]);
+        } else {
+          // The last day closes the course, and the step's own checkpoint follows.
+          expect(types(r.events), at).toEqual(['stepDone', 'checkpoint']);
+        }
+      });
+    }
   });
 
   it('autoRecord records every real gate', () => {

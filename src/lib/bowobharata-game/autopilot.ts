@@ -4,10 +4,11 @@
 // it rides through each day's real gate or its outer lane, where the route leads. autopilot() is the bot's decision for
 // this frame, a pure function of its arguments. createBot() adds the reaction delay: its queue lives in the closure it
 // returns, one bot per run, never in GameState. Units are metres and seconds; steer +1 turns right, so yaw decreases.
-import { angleDiff, clamp, dist, forward, rightOf, yawOf, type XZ } from './geom';
+import { angleDiff, clamp, dist, forward, yawOf, type XZ } from './geom';
 import { NO_INPUT, REST_SPEED, speedOf, turnRadius, type ChariotInput, type ChariotState } from './drive';
 import { HULL, hullClearance, hullMid } from './collide';
 import { drivable, openTargets, type Decoy, type RunState } from './mission-run';
+import { across } from './missions';
 import { pathLength, pursuit, turnsAhead, type Pursuit } from './route';
 import { DRIVE, MISSION_TIMING } from './tuning';
 import { distToCollider, type Collider } from './world';
@@ -291,10 +292,9 @@ function nearerGate(s: GameState, target: Target): XZ[] | null {
   const day = step?.kind === 'course' ? step.days[s.run.dayIndex] : undefined;
   if (!day || target.id !== `day${s.run.dayIndex + 1}`) return null;
   const m = hullMid(s.car);
-  const r = rightOf(day.heading);
   let best: XZ | null = null;
   for (const g of day.gates) {
-    const at = { x: day.at.x + r.x * g.offset, z: day.at.z + r.z * g.offset };
+    const at = across(day.at, day.heading, g.offset);
     if (!best || dist(m, at) < dist(m, best)) best = at;
   }
   return best && [{ x: s.car.x, z: s.car.z }, best];

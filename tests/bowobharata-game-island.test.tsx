@@ -384,7 +384,8 @@ describe('island wiring (source)', () => {
     );
     expect(src).toContain('const TOAST_MAX = 2;');
     expect(src).toContain('const TOAST_MS = 4000;');
-    expect(src).toMatch(/toastText\(e, locale, flowRef\.current\.chapter, cardOf\)/);
+    // The frame's events go along, so a rewrite gate's toast covers its rewriteTaken.
+    expect(src).toMatch(/toastText\(e, locale, flowRef\.current\.chapter, cardOf, events\)/);
     expect(src).toContain('.slice(-TOAST_MAX)');
     // The HUD redraws only when the snapshot changes.
     expect(src).toContain('prev && sameHud(prev, h) ? prev : h');

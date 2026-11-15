@@ -74,10 +74,16 @@ const clonePt = (p: XZ): XZ => ({ x: p.x, z: p.z });
 
 /** A day's two gates stand this far either side of its centre: 6 m wide with the 3 m gap between them. */
 const GATE_OFFSET = (MISSION_TIMING.gateWidth + MISSION_TIMING.gateGap) / 2;
-/** From this day on, a course's rewrite gates mimic gold. */
-const MIMIC_FROM = 4;
+/** From this day on, parva 4's rewrite gates mimic gold. */
+const P4_MIMIC_FROM = 4;
 /** The seed of the draws that put each of parva 4's real gates on its day's left or right. */
 const P4_SEED = 404;
+
+/** The point `lateral` m to the right of `at` across `heading`: on a day's or a post's line, `lateral` out from its centre. */
+export function across(at: XZ, heading: number, lateral: number): XZ {
+  const r = rightOf(heading);
+  return { x: at.x + r.x * lateral, z: at.z + r.z * lateral };
+}
 
 /** Record k as a lontar: the k-th letter for its id, the chapter's slug k and card k. */
 const lontar = (k: number, at: XZ, slugs: readonly string[]): PickupDef => ({
@@ -106,9 +112,9 @@ type RealGate = { side: -1 | 1; slug: string; card: number } | null;
 
 /**
  * Day n of a course: its two gates, left (−) and right (+) of the centre across the heading, the real one where `real`
- * puts it. A rewrite gate carries no slug and card −1, and mimics gold from day MIMIC_FROM on.
+ * puts it. A rewrite gate carries no slug and card −1, and mimics gold from day `mimicFrom` on (never when null).
  */
-function dayOf(n: number, at: XZ, heading: number, real: RealGate): DayDef {
+function dayOf(n: number, at: XZ, heading: number, real: RealGate, mimicFrom: number | null): DayDef {
   const gates = ([-1, 1] as const).map((side): GateDef => {
     const isReal = real !== null && real.side === side;
     return {
@@ -117,7 +123,7 @@ function dayOf(n: number, at: XZ, heading: number, real: RealGate): DayDef {
       width: MISSION_TIMING.gateWidth,
       real: isReal,
       slug: isReal ? real.slug : null,
-      mimic: !isReal && n >= MIMIC_FROM,
+      mimic: !isReal && mimicFrom !== null && n >= mimicFrom,
       card: isReal ? real.card : -1,
     };
   });
@@ -132,16 +138,19 @@ const P4_DAYS: { at: XZ; heading: number }[] = [
   ...[50, 25, 0].map((x) => ({ at: xz(x, 40), heading: Math.PI })),
 ];
 
-/** Parva 4: the days of REAL_DAYS_P4 hold the 9 slugs in timeline order, each real gate's side drawn from seed 404. */
+/**
+ * Parva 4: the days of REAL_DAYS_P4 hold the 9 slugs in timeline order, each real gate's side drawn from seed 404; from
+ * day 4 on its rewrite gates mimic gold.
+ */
 function parva4(slugs: readonly string[]): StepDef[] {
   const realDays: readonly number[] = REAL_DAYS_P4;
   let rng = P4_SEED;
   const days = P4_DAYS.map(({ at, heading }, k) => {
     const card = realDays.indexOf(k + 1);
-    if (card < 0) return dayOf(k + 1, at, heading, null);
+    if (card < 0) return dayOf(k + 1, at, heading, null, P4_MIMIC_FROM);
     const draw = nextRand(rng);
     rng = draw.a;
-    return dayOf(k + 1, at, heading, { side: draw.v < 0.5 ? -1 : 1, slug: slugs[card], card });
+    return dayOf(k + 1, at, heading, { side: draw.v < 0.5 ? -1 : 1, slug: slugs[card], card }, P4_MIMIC_FROM);
   });
   return [{ kind: 'course', days }];
 }
@@ -159,14 +168,17 @@ const P7_DAYS: { at: XZ; real: { side: -1 | 1; card: number } | null }[] = [
   { at: xz(0, 72), real: { side: 1, card: 1 } },
 ];
 
-/** Parva 7: each day faces from the point before it (the marker for day 1) to the point after it (the tower for day 4). */
+/**
+ * Parva 7: each day faces from the point before it (the marker for day 1) to the point after it (the tower for day 4).
+ * Its rewrite gates stay grey: the mimics are parva 4's.
+ */
 function parva7(slugs: readonly string[]): StepDef[] {
   const line = [P7_MARKER, ...P7_DAYS.map((d) => d.at), ANCHORS.tower];
   const days = P7_DAYS.map(({ at, real }, k) => {
     const prev = line[k];
     const next = line[k + 2];
     const heading = yawOf({ x: next.x - prev.x, z: next.z - prev.z });
-    return dayOf(k + 1, at, heading, real && { side: real.side, slug: slugs[real.card], card: real.card });
+    return dayOf(k + 1, at, heading, real && { side: real.side, slug: slugs[real.card], card: real.card }, null);
   });
   return [{ kind: 'course', days }];
 }
@@ -368,8 +380,7 @@ export function realTargets(def: MissionDef): { id: string; slug: string | null 
 
 /** The two ends of a span `width` m wide across `heading`, centred `offset` m to the right of `at`. */
 function spanEnds(at: XZ, heading: number, offset: number, width: number): XZ[] {
-  const r = rightOf(heading);
-  return [offset - width / 2, offset + width / 2].map((o) => ({ x: at.x + r.x * o, z: at.z + r.z * o }));
+  return [across(at, heading, offset - width / 2), across(at, heading, offset + width / 2)];
 }
 
 /** The points that must stand on open ground: the marker, the pickups, the ends of every gate and post; never a reach centre. */

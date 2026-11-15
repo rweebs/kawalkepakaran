@@ -114,9 +114,9 @@ export interface GameCopy {
     /** The prologue's records show a count only. */
     recordedPrologue: (o: { n: number; total: number }) => string;
     filed: string; rewrite: string; ranks: string; checkpoint: string; wall: string;
-    /** A rewrite gate ridden through, and Antar's letter at the gate. */
+    /** A rewrite gate ridden through (a rewrite, now in the record: the one line for both), and Antar's letter at the gate. */
     gate: string; letter: string;
-    /** A lap finished: its number and seconds (one decimal), and whether it matched the lap before. */
+    /** A lap finished: its number and seconds (one decimal), and whether it ended the re-test (the laps matched, or ran out). */
     lap: (o: { n: number; seconds: number; matched: boolean }) => string;
   };
   /** The muted hint line of the objective panel, once per hint, for the keyboard and for touch. */
@@ -213,9 +213,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       ranks: 'Barisan tidak bisa diterobos. Kereta berhenti.',
       checkpoint: 'Titik simpan tercapai.',
       wall: 'Ini batas medan. Kereta kembali ke arah tengah.',
-      gate: 'Gapura itu tulisan ulang.',
+      gate: 'Gapura itu tulisan ulang, dan ikut masuk ke catatan.',
       letter: 'Suratnya sudah sampai di gerbang.',
-      lap: ({ n, seconds, matched }) => `Putaran ${n} · ${tenths(seconds, ',')} detik${matched ? ' · hasilnya terulang' : ''}`,
+      lap: ({ n, seconds, matched }) => `Putaran ${n} · ${tenths(seconds, ',')} detik${matched ? ' · uji ulang selesai' : ''}`,
     },
     hints: {
       ride: { keys: 'W atau ↑ menjalankan kereta.', touch: 'Geser jari di sisi kiri layar untuk mengarahkan kereta.' },
@@ -412,9 +412,9 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       ranks: 'The ranks cannot be driven through. The chariot stops.',
       checkpoint: 'Checkpoint reached.',
       wall: 'This is the edge of the field. The chariot turns back toward the centre.',
-      gate: 'That gate was a rewrite.',
+      gate: 'That gate was a rewrite, and it went into the record.',
       letter: 'The letter has reached the gate.',
-      lap: ({ n, seconds, matched }) => `Lap ${n} · ${tenths(seconds, '.')} s${matched ? ' · the result holds' : ''}`,
+      lap: ({ n, seconds, matched }) => `Lap ${n} · ${tenths(seconds, '.')} s${matched ? ' · re-test complete' : ''}`,
     },
     hints: {
       ride: { keys: 'W or ↑ drives the chariot forward.', touch: 'Slide a finger on the left of the screen to steer the chariot.' },

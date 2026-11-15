@@ -1302,7 +1302,7 @@ describe('pickups', () => {
     expect(drawn(game.root, 'record-beams')).toBe(2);
   });
 
-  it('draws every record of every lakon during its intro, each under its beam', () => {
+  it("draws the opening step's records of every lakon during its intro, each under its beam", () => {
     const slugs = [0, 2, 2, 4, 9, 1, 2, 2, 2];
     for (let ch = 0; ch <= 8; ch++) {
       const def = missionFor(ch, Array.from({ length: slugs[ch] }, (_, k) => `s${k}`));

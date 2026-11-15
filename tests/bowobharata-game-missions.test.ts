@@ -459,6 +459,8 @@ describe('parva 7, Lintasan: the storm', () => {
       expect(d.gates.map((g) => g.offset).sort((p, q) => p - q)).toEqual([-4.5, 4.5]);
       for (const g of d.gates) expect(g.width).toBe(MISSION_TIMING.gateWidth);
     }
+    // Mimics belong to parva 4: the storm's rewrites are all grey.
+    expect(days.flatMap((d) => d.gates).filter((g) => !g.real).map((g) => g.mimic)).toEqual([false, false, false, false, false, false]);
   });
 
   it('days 2 and 4 at the stand-in’s records; day 1 on the storm’s line from the marker, day 3 between days 2 and 4', () => {

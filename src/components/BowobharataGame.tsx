@@ -221,7 +221,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           break;
         default:
           if (TOASTED.has(e.type)) {
-            const text = toastText(e, locale, flowRef.current.chapter, cardOf);
+            const text = toastText(e, locale, flowRef.current.chapter, cardOf, events);
             if (text) pushToast(text);
           }
       }

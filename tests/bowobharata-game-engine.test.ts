@@ -3,8 +3,8 @@ import { NO_INPUT, REST_SPEED, initChariot, speedOf, type ChariotInput, type Gua
 import { HULL, hullCircles, hullClearance, hullMid } from '../src/lib/bowobharata-game/collide';
 import { chaseView, projectNdc } from '../src/lib/bowobharata-game/chase';
 import { clamp, dist, forward, polylineDist, rightOf, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
-import { missionFor, type MissionDef } from '../src/lib/bowobharata-game/missions';
-import { timeLeft, type Decoy, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
+import { missionFor, realTargets, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
+import { timeLeft, totalReal, type Decoy, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { ANCHORS, PLAY, RECORD_CIRCLE, TOWER_EXIT, zonesAt } from '../src/lib/bowobharata-game/world';
 import { GUARD, MISSION_TIMING, VOLLEY } from '../src/lib/bowobharata-game/tuning';
 import { kickRiuh, riuhLevel, stepRiuh } from '../src/lib/bowobharata-game/riuh';
@@ -161,6 +161,9 @@ function runBot(
 }
 
 const count = (events: readonly GameEvent[], type: GameEvent['type']) => events.filter((e) => e.type === type).length;
+/** The real gates of a chapter's courses. */
+const realGates = (ch: number) =>
+  defOf(ch).steps.reduce((n, s) => n + (s.kind === 'course' ? s.days.flatMap((d) => d.gates).filter((g) => g.real).length : 0), 0);
 
 /** A first-time player: slower, a 0.4 s reaction. CARELESS ignores the lures; CAREFUL keeps the dodge and sight. */
 const CARELESS: Partial<AutoOpts> = { speedCap: 0.6, reaction: 0.4, useSight: false, avoidDecoys: false };
@@ -262,6 +265,9 @@ describe('every lakon can be won under pressure', () => {
       const r = runBot(ch, seed, desktop, CARELESS, firstLimit(ch));
       expect(r.events.filter((e) => e.type === 'failed' && e.reason === 'muddied')).toEqual([]);
       expectWon(r, firstLimit(ch));
+      // Every real target recorded, a course's through each real gate.
+      expect(r.state.run.recorded).toHaveLength(totalReal(defOf(ch)));
+      expect(count(r.events, 'gate')).toBe(realGates(ch));
     }
   }, BOT_TIMEOUT);
 
@@ -312,35 +318,82 @@ describe('every lakon can be won under pressure', () => {
 });
 
 describe('the gates, the letter and the laps meet the bots', () => {
-  it.each([2, 4, 5, 7])('chapter %i: the first-time bot records every real target and crosses no rewrite gate', (ch) => {
-    for (const seed of SEEDS) {
-      const r = runBot(ch, seed, desktop, CARELESS, firstLimit(ch));
-      expectWon(r, firstLimit(ch));
-      expect(r.state.run.recorded).toHaveLength(RECORDS[ch]);
-      expect(count(r.events, 'gate')).toBe(ch === 4 ? 9 : ch === 7 ? 2 : 0);
-    }
-  }, BOT_TIMEOUT);
-
-  it('pickReal off: the bot rides through the gate nearer it, rewrites and all, and from t 45 each one counts', () => {
-    // No volleys, so every rewrite taken is a gate.
+  it('pickReal off: the bot rides through the gate nearer it, rewrites and all, and from t 45 three fail the lakon', () => {
+    // No volleys, so every rewrite taken is a gate; the lakon starts at the end of the grace, so every one counts.
     const def = { ...defOf(4), riuh: { ...defOf(4).riuh, volleys: false } };
     let s = startChapter(def, def.start, 1, desktop);
+    for (let k = 0; k < 300 && s.run.phase !== 'active'; k++) s = step(s, input({}, { skip: true }));
+    s = { ...s, run: { ...s.run, t: MISSION_TIMING.grace } };
     const bot = createBot({ pickReal: false });
-    const taken: number[] = [];
-    for (let k = 0; k < 150 / DT && s.run.phase !== 'done' && s.run.phase !== 'failed'; k++) {
+    let rewrites = 0;
+    for (let k = 0; k < 120 / DT && s.run.phase === 'active'; k++) {
       const r = advance(s, bot(s, desktop), DT, desktop);
       const gates = r.events.filter((e) => e.type === 'gate' && !e.real);
       expect(count(r.events, 'rewriteTaken')).toBe(gates.length);
-      taken.push(...gates.map(() => r.state.run.t));
+      rewrites += gates.length;
       s = r.state;
     }
-    expect(taken.length).toBeGreaterThanOrEqual(2);
-    const counted = taken.filter((t) => t >= MISSION_TIMING.grace).length;
-    expect(s.run.decoysTaken).toBe(counted);
-    if (counted >= 3) expect([s.run.phase, s.run.failReason]).toEqual(['failed', 'muddied']);
+    expect(rewrites).toBe(3);
+    expect([s.run.phase, s.run.failReason, s.run.decoysTaken]).toEqual(['failed', 'muddied', 3]);
     // The default bot picks the real gate or the outer lane: none.
     const picked = runBot(4, 1, desktop, undefined, 240);
     expect(picked.events.filter((e) => e.type === 'gate' && !e.real)).toEqual([]);
+  }, BOT_TIMEOUT);
+
+  it.each([
+    [4, 14],
+    [7, 3],
+  ])('chapter %i: a time fail past day %i retries from the last day passed, and the first-time bots finish in the time given', (ch, day) => {
+    for (const opts of [CARELESS, CAREFUL]) {
+      const def = defOf(ch);
+      let s = startChapter(def, def.start, 1, desktop);
+      const bot = createBot(opts);
+      for (let k = 0; k < 300 / DT && s.run.dayIndex < day; k++) s = advance(s, bot(s, desktop), DT, desktop).state;
+      expect(s.run.dayIndex).toBe(day);
+      const cp = s.run.checkpoint!;
+      expect(cp.dayIndex).toBe(day);
+      // The clock runs out; the retry resumes past the last day passed with the least time a retry gives.
+      const failed = step({ ...s, run: { ...s.run, t: def.softTime! + 0.1 } }, IDLE);
+      expect(failed.run.failReason).toBe('time');
+      const back = retryFromCheckpoint(failed, desktop);
+      expect([back.car.x, back.car.z, back.car.yaw, back.run.dayIndex]).toEqual([cp.car.x, cp.car.z, cp.car.yaw, day]);
+      // The least a retry gives (restore rounds it up to the millisecond).
+      const given = timeLeft(back.run)!;
+      expect(given).toBeGreaterThanOrEqual(MISSION_TIMING.retryMinSeconds);
+      expect(given).toBeLessThan(MISSION_TIMING.retryMinSeconds + 0.01);
+      const again = createBot(opts);
+      let r = back;
+      const events: GameEvent[] = [];
+      for (let k = 0; k < (given + 5) / DT && r.run.phase === 'active'; k++) {
+        const out = advance(r, again(r, desktop), DT, desktop);
+        events.push(...out.events);
+        r = out.state;
+      }
+      expect(r.run.phase, `${opts.useSight === false ? 'careless' : 'careful'}`).toBe('outro');
+      expect(events.filter((e) => e.type === 'failed')).toEqual([]);
+      expect(r.run.recorded).toHaveLength(totalReal(def));
+      expect(r.run.t - back.run.t).toBeLessThan(given);
+    }
+  }, BOT_TIMEOUT);
+
+  it('the return from day 18 to a missed day-6 gate, and on to day 8, takes no rewrite', () => {
+    // No volleys, so a rewrite taken could only be a gate's; the grace is long over.
+    const def = { ...defOf(4), riuh: { ...defOf(4).riuh, volleys: false } };
+    const days = (def.steps[0] as Extract<StepDef, { kind: 'course' }>).days;
+    const missed = [days[5], days[7]].map((d) => d.gates.find((g) => g.real)!.id);
+    let s = startChapter(def, def.start, 1, desktop);
+    for (let k = 0; k < 300 && s.run.phase !== 'active'; k++) s = step(s, input({}, { skip: true }));
+    const recorded = realTargets(def).map((t) => t.id).filter((id) => !missed.includes(id));
+    s = { ...s, car: initChariot(-4, 40, Math.PI), run: { ...s.run, dayIndex: 18, recorded, t: 100 } };
+    const log: GameEvent[] = [];
+    for (let k = 0; k < 150 / DT && s.run.phase !== 'done'; k++) s = step(s, autopilot(s, desktop), desktop, log);
+    expect(s.run.phase).toBe('done');
+    expect(log.filter((e) => e.type === 'gate')).toEqual([
+      { type: 'gate', real: true, day: 6 },
+      { type: 'gate', real: true, day: 8 },
+    ]);
+    expect(count(log, 'rewriteTaken')).toBe(0);
+    expect(s.run.recorded).toEqual(expect.arrayContaining(missed));
   }, BOT_TIMEOUT);
 });
 
