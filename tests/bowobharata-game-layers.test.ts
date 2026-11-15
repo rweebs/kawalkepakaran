@@ -11,10 +11,11 @@ import type { ChariotMotion, ChariotRig } from '../src/lib/bowobharata/scene/cha
 import { angleDiff, forward, rightOf, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
 import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
-import { createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
+import { DEFAULT_ASPECT, advance, createWorld, startChapter, timeScaleOf, viewOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { createBot } from '../src/lib/bowobharata-game/autopilot';
 import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
-import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
+import { CHARIOT_SILHOUETTE, chaseView, initChase, stepChase, type ChaseCam, type ChaseOpts } from '../src/lib/bowobharata-game/chase';
 import { hullCircles } from '../src/lib/bowobharata-game/collide';
 import { CHASE, DRIVE, MISSION_TIMING, VOLLEY } from '../src/lib/bowobharata-game/tuning';
 import { arrowPoint, scriptedVolley, telegraphAt, type Cloud, type Volley } from '../src/lib/bowobharata-game/volley';
@@ -1686,10 +1687,61 @@ describe('pickups', () => {
     /** v's offsets from a point on a line's centre, across the line's heading and along it. */
     const lateral = (v: XZ, c: XZ, heading: number) => (v.x - c.x) * rightOf(heading).x + (v.z - c.z) * rightOf(heading).z;
     const along = (v: XZ, c: XZ, heading: number) => (v.x - c.x) * forward(heading).x + (v.z - c.z) * forward(heading).z;
-    /** The riders' tops (CHARIOT_SILHOUETTE: Krishna's feather) and the chase camera's lowest (m over the ground). */
+    /** The riders' tops (CHARIOT_SILHOUETTE: Krishna's feather), m over the ground under the chariot. */
     const RIDERS = Math.max(...CHARIOT_SILHOUETTE.map((p) => p.y));
-    const CAMERA = CHASE.heightAtTop;
     const hueOf = (c: THREE.Color) => c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).h;
+    /** The chase camera's settled boom and height (chase.ts): at rest, at top speed, and in a surge. */
+    const BOOMS = [
+      { boom: CHASE.distance, height: CHASE.height, boosting: false },
+      { boom: CHASE.distanceAtTop, height: CHASE.heightAtTop, boosting: false },
+      { boom: CHASE.distanceAtTop + CHASE.boostExtra, height: CHASE.heightAtTop + CHASE.boostLift, boosting: true },
+    ];
+    /**
+     * The height (world y) the chase camera passes over p at, at its lowest, crossing along `heading` either way: chaseView's
+     * pose with the chariot a boom's length past p, its height counted over the ground under the chariot, at rest, at top
+     * speed and in a surge. On a slope that is not p's own ground.
+     */
+    function cameraOver(p: XZ, heading: number): number {
+      let low = Infinity;
+      for (const yaw of [heading, heading + Math.PI]) {
+        const f = forward(yaw);
+        for (const b of BOOMS) {
+          const c = car(p.x + f.x * b.boom, p.z + f.z * b.boom, yaw);
+          const cam: ChaseCam = { yaw, dist: b.boom, height: b.height, fov: CHASE.fov, boostK: b.boosting ? 1 : 0, shake: 0, boom: b.boom, look: yaw };
+          const { pos } = chaseView(cam, c, { aspect: DEFAULT_ASPECT, boosting: b.boosting, ground: groundHeight, tall: [] }).pose;
+          expect(Math.hypot(pos.x - p.x, pos.z - p.z)).toBeLessThan(1e-6);
+          low = Math.min(low, pos.y);
+        }
+      }
+      return low;
+    }
+    /** Each stamp's reach from its centre at whole size, in the shapes' units (times its scale in the scene). */
+    const reachOf = (geo: THREE.BufferGeometry) => Math.max(...vertices(new THREE.Mesh(geo)).map((v) => v.length()));
+    const REACH = { 'stamp-lotus': reachOf(shapes.lotusGeo()), 'stamp-ring': reachOf(shapes.brokenRingGeo()) } as const;
+    /** Every stamp drawn at more than 5% of its whole size: its centre, its size and how far it reaches from its centre. */
+    function stampsOut(root: THREE.Object3D): { name: string; at: THREE.Vector3; size: number; reach: number }[] {
+      const out: { name: string; at: THREE.Vector3; size: number; reach: number }[] = [];
+      for (const name of ['stamp-lotus', 'stamp-ring'] as const) {
+        const mesh = meshOf(root, name);
+        if (!shown(mesh)) continue;
+        for (let k = 0; k < mesh.count; k++) {
+          const p = new THREE.Vector3();
+          const scale = new THREE.Vector3();
+          matrixAt(mesh, k).decompose(p, new THREE.Quaternion(), scale);
+          if (scale.x > 0.05 * 2.6) out.push({ name, at: p, size: scale.x, reach: REACH[name] * scale.x });
+        }
+      }
+      return out;
+    }
+    /** The least gap from the camera at `cam` to any stamp drawn: from its centre, less its reach. */
+    const stampGap = (root: THREE.Object3D, cam: { x: number; y: number; z: number }) =>
+      Math.min(Infinity, ...stampsOut(root).map((s) => Math.hypot(s.at.x - cam.x, s.at.y - cam.y, s.at.z - cam.z) - s.reach));
+    /** The scene camera where the runtime puts it after the layers are drawn: at the view's pose, looking at its look. */
+    function placeCamera(game: SceneGame, pose: { pos: { x: number; y: number; z: number }; look: { x: number; y: number; z: number } }): void {
+      game.camera.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
+      game.camera.lookAt(pose.look.x, pose.look.y, pose.look.z);
+      game.camera.updateMatrixWorld();
+    }
 
     it('parva 4, day 1: the gate-real instances are the open real gates within 120 m of the chariot, each whole at its gate', () => {
       const { game } = fakeGame();
@@ -1747,11 +1799,12 @@ describe('pickups', () => {
             expect(Math.min(...pillar.map(height)), `${g.id} ${side}`).toBeLessThan(-0.1);
             expect(Math.max(...pillar.map(height)), `${g.id} ${side}`).toBeGreaterThan(RIDERS + 0.1);
           }
-          // The way through: nothing between the pillars as low as the riders' heads; the crown under the chase camera.
+          // The way through: nothing between the pillars as low as the riders' heads; the crown 1.5 m under the chase
+          // camera at its lowest over the gate, either way, on the slope as it lies.
           const inside = vs.filter((_, i) => Math.abs(across_[i]) < g.width / 2 - 0.4);
           expect(inside.length, g.id).toBeGreaterThan(0);
           expect(Math.min(...inside.map(height)), g.id).toBeGreaterThan(RIDERS + 0.1);
-          expect(Math.max(...vs.map(height)), g.id).toBeLessThan(CAMERA - 1.5);
+          expect(Math.max(...vs.map((v) => v.y)), g.id).toBeLessThan(cameraOver(g.at, g.heading) - 1.5);
         }
       }
     });
@@ -1804,41 +1857,52 @@ describe('pickups', () => {
       expect(drawn(g7.root, 'gate-rewrite')).toBeGreaterThan(0);
     });
 
-    it('parva 4, day 4, sight on: a stamp-lotus over the arch of each drawn real gate and a stamp-ring over each drawn rewrite gate, grey or mimic; sight off: no gate stamps', () => {
+    it('parva 4, days 1 and 4, sight on: a stamp-lotus over the arch of each drawn real gate and a stamp-ring over each drawn rewrite gate, grey or mimic; sight off: no gate stamps', () => {
       const { game } = fakeGame();
       game.camera.position.set(-60, 30, -10);
       game.camera.lookAt(-70, 0, -50);
+      // Day 1 draws the grey rewrite gates of days 1-3 and the first mimics; by day 4 every drawn rewrite gate is a mimic.
+      // In both the chase camera (9.5 m behind the chariot) is far from every stamp, so none is eased out for it.
+      const days = [
+        { dayIndex: 0, c: car(-70, 45, Math.PI / 2), recorded: [] as string[] },
+        { dayIndex: 3, c: car(-70, -40, Math.PI / 2), recorded: ['D1L', 'D3R'] },
+      ];
+      let t = 0;
       const layer = createPickups(game);
-      const c = car(-70, -40, Math.PI / 2);
-      const s = at(P4_ROAM, { phase: 'active', dayIndex: 3, recorded: ['D1L', 'D3R'] }, { car: c, decoys: [] });
-      let t = hold(layer, s, 0, 1);
-      expect(drawn(game.root, 'stamp-lotus')).toBe(0);
-      expect(drawn(game.root, 'stamp-ring')).toBe(0);
-      t = hold(layer, sighted(s), t, 0.5);
-      const real = GATES_P4.filter((g) => g.real && !['D1L', 'D3R'].includes(g.id) && flatDist(c, g.at) < 120);
-      const rewrites = GATES_P4.filter((g) => !g.real && g.day >= 3 && flatDist(c, g.at) < 120);
-      expect(real.length).toBeGreaterThan(0);
-      expect(rewrites.length).toBeGreaterThan(0);
-      expect(drawn(game.root, 'gate-real')).toBe(real.length);
-      expect(drawn(game.root, 'gate-rewrite') + drawn(game.root, 'gate-mimic')).toBe(rewrites.length);
-      expect(drawn(game.root, 'stamp-lotus')).toBe(real.length);
-      expect(drawn(game.root, 'stamp-ring')).toBe(rewrites.length);
       const lotus = meshOf(game.root, 'stamp-lotus');
       const ring = meshOf(game.root, 'stamp-ring');
-      for (const [gates, stamps] of [[real, lotus], [rewrites, ring]] as const) {
-        for (const g of gates) {
-          const gate = meshOf(game.root, meshFor(g));
-          const crown = Math.max(...vertices(gate, instancesAt(gate, g.at)[0]).map((v) => v.y));
-          const here = instancesAt(stamps, g.at);
-          expect(here, g.id).toHaveLength(1);
-          const p = new THREE.Vector3();
-          const q = new THREE.Quaternion();
-          matrixAt(stamps, here[0]).decompose(p, q, new THREE.Vector3());
-          // Over its arch, whole, turned to the camera, and clear of the chase camera above.
-          const ys = vertices(stamps, here[0]).map((v) => v.y);
-          expect(Math.min(...ys), g.id).toBeGreaterThan(crown);
-          expect(Math.max(...ys) - groundHeight(g.at.x, g.at.z), g.id).toBeLessThan(CAMERA - 0.5);
-          expect(q.angleTo(game.camera.quaternion), g.id).toBeLessThan(1e-3);
+      let s = P4_ROAM;
+      let real: Gate[] = [];
+      for (const { dayIndex, c, recorded } of days) {
+        s = at(P4_ROAM, { phase: 'active', dayIndex, recorded }, { car: c, decoys: [] });
+        t = hold(layer, s, t, 1);
+        expect(drawn(game.root, 'stamp-lotus')).toBe(0);
+        expect(drawn(game.root, 'stamp-ring')).toBe(0);
+        t = hold(layer, sighted(s), t, 0.5);
+        real = GATES_P4.filter((g) => g.real && !recorded.includes(g.id) && flatDist(c, g.at) < 120);
+        const rewrites = GATES_P4.filter((g) => !g.real && g.day >= dayIndex && flatDist(c, g.at) < 120);
+        expect(real.length, `day ${dayIndex + 1}`).toBeGreaterThan(0);
+        expect(rewrites.some((g) => g.mimic), `day ${dayIndex + 1}`).toBe(true);
+        expect(rewrites.some((g) => !g.mimic), `day ${dayIndex + 1}`).toBe(dayIndex === 0);
+        expect(drawn(game.root, 'gate-real')).toBe(real.length);
+        expect(drawn(game.root, 'gate-rewrite') + drawn(game.root, 'gate-mimic')).toBe(rewrites.length);
+        expect(drawn(game.root, 'stamp-lotus')).toBe(real.length);
+        expect(drawn(game.root, 'stamp-ring')).toBe(rewrites.length);
+        for (const [gates, stamps] of [[real, lotus], [rewrites, ring]] as const) {
+          for (const g of gates) {
+            const gate = meshOf(game.root, meshFor(g));
+            const crown = Math.max(...vertices(gate, instancesAt(gate, g.at)[0]).map((v) => v.y));
+            const here = instancesAt(stamps, g.at);
+            expect(here, g.id).toHaveLength(1);
+            const p = new THREE.Vector3();
+            const q = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+            matrixAt(stamps, here[0]).decompose(p, q, scale);
+            // Over its arch, whole, and turned to the camera.
+            expect(Math.min(...vertices(stamps, here[0]).map((v) => v.y)), g.id).toBeGreaterThan(crown);
+            expect(scale.x, g.id).toBeCloseTo(2.6, 5);
+            expect(q.angleTo(game.camera.quaternion), g.id).toBeLessThan(1e-3);
+          }
         }
       }
       // Day 4 passed with sight on: its mimic goes, and its ring with it, the ring's size following the gate's fade, so
@@ -1978,6 +2042,226 @@ describe('pickups', () => {
       for (const g of GATES_P4) expect(last.get(g.id), g.id).toBe(0);
     });
 
+    /** A lakon with no volleys, so a ride through it is the course alone. */
+    const quiet = (def: MissionDef): MissionDef => ({ ...def, riuh: { ...def.riuh, volleys: false } });
+    /** No input but `drive`, as a ride holds its pedals. */
+    const driving = (drive: Partial<ChariotInput>): FrameInput => ({ drive: { ...NO_INPUT, ...drive }, sight: false, skip: false, assist: false, aspect: DEFAULT_ASPECT });
+    /** A stamp's size may change by at most a whole swing in a quarter second. */
+    const SWING = (2.6 * (1 / 64)) / 0.25 + 1e-5;
+
+    /**
+     * Every gate of a course crossed straight through its middle, along its day's heading and back the other way, at
+     * `speed`: the chariot from 6 m short of the gate to 10 m past where its camera crosses it, the chase camera stepped as
+     * the engine steps it (the surge's boom and lift above the top speed) and placed after the layers, as the runtime does.
+     * Every gate stands whole throughout (day 1, nothing recorded), so each of the courses' slopes and every stamp meets the
+     * camera. Returns the least gap from the camera to a drawn stamp, and the steepest a stamp's size swung in a frame.
+     */
+    function sweep(def: MissionDef, speed: number): { least: number; swing: number; passes: number } {
+      const roam = roamOf(def);
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const surge = speed > DRIVE.topSpeed;
+      const opts: ChaseOpts = { aspect: DEFAULT_ASPECT, boosting: surge, ground: groundHeight, tall: [] };
+      const dt = 1 / 64;
+      const sizes = () => {
+        const out = new Map<string, number>();
+        for (const name of ['stamp-lotus', 'stamp-ring']) {
+          const mesh = meshOf(game.root, name);
+          if (!shown(mesh)) continue;
+          for (let k = 0; k < mesh.count; k++) {
+            const p = new THREE.Vector3();
+            const scale = new THREE.Vector3();
+            matrixAt(mesh, k).decompose(p, new THREE.Quaternion(), scale);
+            out.set(`${name} ${Math.round(p.x * 10)} ${Math.round(p.z * 10)}`, scale.x);
+          }
+        }
+        return out;
+      };
+      let t = 0;
+      let least = Infinity;
+      let swing = 0;
+      let passes = 0;
+      let last = new Map<string, number>();
+      for (const g of gatesOf(def)) {
+        for (const yaw of [g.heading, g.heading + Math.PI]) {
+          const f = forward(yaw);
+          let c: ChariotState = { ...car(g.at.x - f.x * 6, g.at.z - f.z * 6, yaw, speed), boostT: surge ? DRIVE.boostTime : 0 };
+          let cam = initChase(c, opts);
+          const frames = Math.ceil(((6 + cam.dist + 10) / speed) * 64);
+          for (let k = 0; k < frames; k++) {
+            c = { ...c, x: c.x + c.vx * dt, z: c.z + c.vz * dt };
+            cam = stepChase(cam, c, dt, opts);
+            t += dt;
+            layer.sync(sighted(at(roam, { phase: 'active', dayIndex: 0, recorded: [] }, { car: c, cam, decoys: [] })), t);
+            const view = chaseView(cam, c, opts);
+            placeCamera(game, view.pose);
+            least = Math.min(least, stampGap(game.root, view.pose.pos));
+            // Once sight has brought the stamps out (their opacity eases in over a quarter second, a test of its own), no
+            // stamp's size swings faster than that.
+            const now = sizes();
+            if ((meshOf(game.root, 'stamp-lotus').material as THREE.MeshBasicMaterial).opacity >= 1) {
+              for (const key of new Set([...now.keys(), ...last.keys()])) swing = Math.max(swing, Math.abs((now.get(key) ?? 0) - (last.get(key) ?? 0)));
+            }
+            last = now;
+          }
+          passes++;
+        }
+      }
+      return { least, swing, passes };
+    }
+
+    for (const speed of [13, 17, 25]) {
+      it(`keeps every gate stamp at least 1.5 m from the chase camera, easing it out before the camera comes: every gate of parva 4 and parva 7 crossed both ways at ${speed} m/s`, { timeout: 60_000 }, () => {
+        for (const def of [P4, P7]) {
+          const { least, swing, passes } = sweep(def, speed);
+          expect(passes, `parva ${def.chapter}`).toBe(gatesOf(def).length * 2);
+          expect(least, `parva ${def.chapter}`).toBeGreaterThanOrEqual(1.5);
+          // Eased, never popped: no stamp's size swings faster than a whole swing in a quarter second.
+          expect(swing, `parva ${def.chapter}`).toBeLessThanOrEqual(SWING);
+        }
+      });
+    }
+
+    /**
+     * The autopilot riding a course from its start until the course is done (or `limit` s), at most `cap` of the top
+     * speed; with `surge`, the surge held wherever the bot does not brake, the camera on the surge's boom. Volleys are off
+     * and the layer is synced with sight on, so every stamp is out; the camera is placed after the layers, as the runtime
+     * places it. Returns the least gap from the camera to a drawn stamp, the fastest the chariot went, and the run.
+     */
+    function ride(def: MissionDef, cap: number, surge: boolean, limit = 150): { least: number; fastest: number; run: GameState['run'] } {
+      let s = startChapter(quiet(def), def.start, 3, WORLD);
+      const bot = createBot({ speedCap: cap, useSight: false });
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const real = 1 / 64;
+      let t = 0;
+      let least = Infinity;
+      let fastest = 0;
+      for (let k = 0; k < limit * 64 && s.run.step === 0 && s.run.phase !== 'failed'; k++) {
+        let input = bot(s, WORLD);
+        if (surge && s.run.phase === 'active') {
+          const braking = input.drive.brake > 0;
+          input = { ...input, drive: { ...input.drive, boost: !braking } };
+          s = { ...s, car: { ...s.car, boostT: braking ? 0 : DRIVE.boostTime, cooldown: 0 } };
+        }
+        s = advance(s, input, real, WORLD).state;
+        t += real * timeScaleOf(s);
+        layer.sync(sighted(s), t);
+        const view = viewOf(s, WORLD, DEFAULT_ASPECT);
+        placeCamera(game, view.pose);
+        least = Math.min(least, stampGap(game.root, view.pose.pos));
+        fastest = Math.max(fastest, Math.hypot(s.car.vx, s.car.vz));
+      }
+      return { least, fastest, run: s.run };
+    }
+
+    for (const [speed, cap, surge] of [[13, 13 / 17, false], [17, 1, false], [25, DRIVE.boostTop / DRIVE.topSpeed, true]] as const) {
+      it(`keeps every gate stamp at least 1.5 m from the chase camera while the autopilot rides parva 4 and parva 7 at up to ${speed} m/s`, { timeout: 120_000 }, () => {
+        for (const def of [P4, P7]) {
+          const { least, fastest, run } = ride(def, cap, surge);
+          // It rode the course through, every day passed and every real gate recorded, at the speed asked for: within
+          // 1 m/s of it on parva 4, and within a tenth on parva 7, whose haze holds the chariot to 0.55 of its top speed.
+          expect(run.step, `parva ${def.chapter} at ${speed}`).toBe(1);
+          expect(fastest, `parva ${def.chapter} at ${speed}`).toBeGreaterThan(def === P4 ? speed - 1 : speed * 0.9);
+          expect(least, `parva ${def.chapter} at ${speed}`).toBeGreaterThanOrEqual(1.5);
+        }
+      });
+    }
+
+    it('keeps the stamps from the camera when a future day’s rewrite gates are crossed early: the engine riding the left lane of parva 4’s first straight at 17 and 25 m/s, day 1 held', { timeout: 60_000 }, () => {
+      for (const surge of [false, true]) {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        const speed = surge ? DRIVE.boostTop : DRIVE.topSpeed;
+        const c = { ...car(-74.5, 40, Math.PI / 2, speed), boostT: surge ? DRIVE.boostTime : 0 };
+        const start = startChapter(quiet(P4), { x: c.x, z: c.z, yaw: c.yaw }, 3, WORLD);
+        const cam = initChase(c, { aspect: DEFAULT_ASPECT, boosting: surge, ground: groundHeight, tall: WORLD.tall });
+        let s: GameState = { ...start, car: c, cam, run: { ...start.run, phase: 'active', dayIndex: 0 } };
+        let t = 0;
+        let least = Infinity;
+        for (let k = 0; k < 64 * 12 && s.car.z > -90; k++) {
+          if (surge) s = { ...s, car: { ...s.car, boostT: DRIVE.boostTime } };
+          s = advance(s, driving({ throttle: 1, boost: surge }), 1 / 64, WORLD).state;
+          // Day 1 held: every rewrite gate on the lane is a later day's, taken early, and stands whole.
+          s = { ...s, run: { ...s.run, dayIndex: 0 } };
+          t += 1 / 64;
+          layer.sync(sighted(s), t);
+          const view = viewOf(s, WORLD, DEFAULT_ASPECT);
+          placeCamera(game, view.pose);
+          least = Math.min(least, stampGap(game.root, view.pose.pos));
+        }
+        expect(s.car.z, `surge ${surge}`).toBeLessThanOrEqual(-90);
+        for (const id of ['D2L', 'D3L', 'D5L']) expect(s.run.taken, `${id}, surge ${surge}`).toContain(id);
+        expect(least, `surge ${surge}`).toBeGreaterThanOrEqual(1.5);
+      }
+    });
+
+    it('keeps the stamps from the camera that leads the chariot in reverse: backing through parva 4’s day 4 real gate', { timeout: 60_000 }, () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const D4L = GATES_P4.find((g) => g.id === 'D4L')!;
+      const f = forward(D4L.heading);
+      // 15 m past the gate on its day's heading, facing on: the camera hangs 9.5 m behind, toward the gate.
+      const start = startChapter(quiet(P4), { x: D4L.at.x + f.x * 15, z: D4L.at.z + f.z * 15, yaw: D4L.heading }, 3, WORLD);
+      let s: GameState = { ...start, run: { ...start.run, phase: 'active', dayIndex: 3 } };
+      let t = 0;
+      let least = Infinity;
+      let slowest = 0;
+      for (let k = 0; k < 64 * 10; k++) {
+        s = advance(s, driving({ brake: 1 }), 1 / 64, WORLD).state;
+        t += 1 / 64;
+        layer.sync(sighted(s), t);
+        const view = viewOf(s, WORLD, DEFAULT_ASPECT);
+        placeCamera(game, view.pose);
+        least = Math.min(least, stampGap(game.root, view.pose.pos));
+        slowest = Math.min(slowest, speedOf(s.car));
+      }
+      // It backed through at the reverse's top speed and 15 m on: the camera crossed the gate first, then the hull.
+      expect(slowest).toBeLessThan(-DRIVE.reverseTop + 0.5);
+      expect((s.car.x - D4L.at.x) * f.x + (s.car.z - D4L.at.z) * f.z).toBeLessThan(-15);
+      expect(s.run.recorded).toContain('D4L');
+      expect(least).toBeGreaterThanOrEqual(1.5);
+    });
+
+    it('eases records’ and copies’ stamps with them: with sight on, a recorded record’s lotus and a filed copy’s ring shrink as they go and a new copy’s ring grows as it comes, none faster than in a quarter second', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const lotus = meshOf(game.root, 'stamp-lotus');
+      const ring = meshOf(game.root, 'stamp-ring');
+      /** The size of the stamp of `mesh` whose centre stands within 1.5 m of p across the ground; 0 while none does. */
+      const sizeNear = (mesh: THREE.InstancedMesh, p: XZ) => {
+        if (!shown(mesh)) return 0;
+        for (let k = 0; k < mesh.count; k++) {
+          const at_ = new THREE.Vector3();
+          const scale = new THREE.Vector3();
+          matrixAt(mesh, k).decompose(at_, new THREE.Quaternion(), scale);
+          if (flatDist(at_, p) <= 1.5) return scale.x;
+        }
+        return 0;
+      };
+      const s = sighted(prologue([]));
+      const lesson = s.decoys[0];
+      const L5 = ITEMS.find((it) => it.id === 'L5')!;
+      const born: Decoy = { id: 9, at: { x: -40, z: 30 }, born: 0, life: null, state: 'open', mimic: false };
+      const t = hold(layer, s, 0, 0.5);
+      expect(sizeNear(lotus, L5.at)).toBeCloseTo(2.6, 5);
+      expect(sizeNear(ring, lesson.at)).toBeCloseTo(2.6, 5);
+      expect(sizeNear(ring, born.at)).toBe(0);
+      // L5 recorded, the lesson filed and a volley's copy out, all at once.
+      const going = sighted({ ...prologue(['L5']), decoys: [{ ...lesson, state: 'filed' }, born] });
+      const dt = 1 / 64;
+      let last = { record: 2.6, copy: 2.6, born: 0 };
+      for (let k = 1; k <= 48; k++) {
+        layer.sync(going, t + k * dt);
+        const now = { record: sizeNear(lotus, L5.at), copy: sizeNear(ring, lesson.at), born: sizeNear(ring, born.at) };
+        for (const part of ['record', 'copy', 'born'] as const) expect(Math.abs(now[part] - last[part]), `${part} at frame ${k}`).toBeLessThanOrEqual(SWING);
+        last = now;
+      }
+      expect(last.record).toBe(0);
+      expect(last.copy).toBe(0);
+      expect(last.born).toBeCloseTo(2.6, 5);
+    });
+
     it('parva 5: 5 lap-posts pairs, two poles 8 m apart across each post’s heading with a ribbon over the riders; an amber beam over the next post alone', () => {
       const { game } = fakeGame();
       game.camera.position.set(-70, 25, 40);
@@ -2006,11 +2290,12 @@ describe('pickups', () => {
           expect(Math.min(...pole.map(height))).toBeLessThan(-0.1);
           expect(Math.max(...pole.map(height))).toBeGreaterThan(RIDERS + 0.3);
         }
-        // The ribbon between them, all of it over the riders' heads and under the chase camera.
+        // The ribbon between them, all of it over the riders' heads; the whole pair 1.5 m under the chase camera at its
+        // lowest over the post, either way, on the slope as it lies.
         const ribbon = vs.filter((_, i) => Math.abs(side_[i]) <= half - 0.5);
         expect(ribbon.length).toBeGreaterThan(0);
         expect(Math.min(...ribbon.map(height))).toBeGreaterThan(RIDERS + 0.1);
-        expect(Math.max(...vs.map(height))).toBeLessThan(CAMERA - 1.5);
+        expect(Math.max(...vs.map((v) => v.y))).toBeLessThan(cameraOver(p.at, p.heading) - 1.5);
       }
       // Two colours in one mesh: bamboo poles and a ribbon of another hue.
       expect((mesh.material as THREE.MeshStandardMaterial).vertexColors).toBe(true);
@@ -2284,7 +2569,7 @@ describe('pickups', () => {
       expect(beam.geometry).toBe(meshOf(game.root, 'record-beams').geometry);
     });
 
-    it('draws parva 4’s course in 7 calls with sight (3 for its gates), parva 5’s laps in 4 (2 for the posts and their beam), and the letter in 1 more', () => {
+    it('draws parva 4’s course in 7 calls with sight (3 for its gates) and parva 7’s in 6, parva 5’s laps in 4 (2 for the posts and their beam), and the letter in 1 more', () => {
       const calls = (root: THREE.Object3D) => {
         let n = 0;
         root.traverse((o) => {
@@ -2298,6 +2583,11 @@ describe('pickups', () => {
       hold(createPickups(g4), sighted(at(P4_ROAM, { phase: 'active' }, { car: car(-70, 0), decoys: [] })), 0, 1);
       for (const n of ['gate-real', 'gate-mimic', 'gate-rewrite', 'stamp-lotus', 'stamp-ring']) expect(drawn(g4.root, n), n).toBeGreaterThan(0);
       expect(calls(named(g4.root, 'pickups'))).toBe(7);
+      // Parva 7 has no mimics: its real and grey gates, their stamps, the tower's beam and circle.
+      const { game: g7 } = fakeGame();
+      hold(createPickups(g7), sighted(at(P7_ROAM, { phase: 'active' }, { car: car(93, 12, Math.PI), decoys: [] })), 0, 1);
+      for (const n of ['gate-real', 'gate-rewrite', 'stamp-lotus', 'stamp-ring']) expect(drawn(g7.root, n), n).toBeGreaterThan(0);
+      expect(calls(named(g7.root, 'pickups'))).toBe(6);
       // The posts, the beam over P1, the tower's beam and circle.
       const { game: g5 } = fakeGame();
       hold(createPickups(g5), at(P5_ROAM, { phase: 'active' }, { decoys: [] }), 0, 1);

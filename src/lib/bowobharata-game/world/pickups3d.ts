@@ -19,7 +19,7 @@ import type { ChariotState } from '../drive';
 import type { GameState } from '../engine';
 import { openTargets, type Decoy, type Phase, type RunState } from '../mission-run';
 import { across, type DayDef, type GateDef, type MissionDef, type PickupDef } from '../missions';
-import { MISSION_TIMING } from '../tuning';
+import { CHASE, MISSION_TIMING } from '../tuning';
 import { ANCHORS, RECORD_CIRCLE } from '../world';
 import { disposeGroup } from './dispose';
 import { fadeOn, fading, instanced } from './instancing';
@@ -92,6 +92,16 @@ const STAMP = { scale: 2.6, over: 0.9, fade: 0.25 } as const;
  * goes over `fade` s: a passed day's rewrite gates go no faster.
  */
 const GATE = { pillar: 0.17, sink: 0.35, spring: 3.9, rise: 0.7, tube: 0.1, far: 120, fade: 0.6 } as const;
+/**
+ * The camera rule for a gate's stamp. A stamp floats over its arch, where the chase camera passes: the camera flies
+ * CHASE.heightAtTop over the ground under the chariot, a boom's length past the gate, so on the courses' slopes it passes
+ * as little as 0.17 m over a stamp's top. A stamp the camera's way over the next `lead` s comes within `near` m of (from
+ * its centre) eases out over `ease` s, and back once the camera has gone. So it is gone before the camera comes, at a
+ * surge's 25 m/s, in reverse (when the camera leads the chariot) or round a turn, and none is drawn within 1.5 m of the
+ * camera: a stamp reaches 0.6 m from its centre. A move of more than `jump` m between syncs (a retry, a teleport, the cut
+ * from a lakon's shot) gives no way.
+ */
+const CLEAR = { near: 3, lead: 0.4, ease: 0.3, jump: 6 } as const;
 /**
  * A pair of lap posts (m): two poles `pole` round standing `tall` out of the ground and sunk `sink`, the posts' width
  * apart, and a ribbon `deep` deep and `thick` thick tied between them at `hang`, sagging `sag` at its middle: over the
@@ -176,8 +186,9 @@ interface GateSlot {
   pose: THREE.Matrix4;
   /** Where its stamp floats, over its arch. */
   stamp: THREE.Vector3;
-  /** How far out it is, 0 to 1. */
+  /** How far out it is, and how clear of the camera its stamp is (CLEAR), each 0 to 1. */
   shown: number;
+  clear: number;
 }
 
 /** One pair of lap posts, laid out when the lakon starts. */
@@ -185,7 +196,6 @@ interface PostSlot {
   /** The lap course's step, and the post's place in its order (0 is P1, as run.lapPost counts). */
   step: number;
   index: number;
-  at: XZ;
   pose: THREE.Matrix4;
   beam: THREE.Vector3;
   /** How far out the pair is, and how lit its amber beam (while it is the next post to cross), each 0 to 1. */
@@ -320,9 +330,12 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   const UP = new THREE.Vector3(0, 1, 0);
   const ONE = new THREE.Vector3(1, 1, 1);
   const ARROW_SIZE = new THREE.Vector3().setScalar(ARROW.scale);
-  const STAMP_SIZE = new THREE.Vector3().setScalar(STAMP.scale);
   const GOLD = new THREE.Color(COLOR.gold);
   const AMBER = new THREE.Color(COLOR.amber);
+  /** The camera this sync and the last, and its way over the next CLEAR.lead s (see cameraOf). */
+  const camAt = new THREE.Vector3();
+  const camWas = new THREE.Vector3();
+  const camWay = new THREE.Vector3();
 
   const lit = (color: string, glow: string, glowK: number, roughness: number, metalness = 0) =>
     fading(new THREE.MeshStandardMaterial({ color, emissive: glow, emissiveIntensity: glowK, roughness, metalness }));
@@ -371,8 +384,10 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   const realFade = fadeOn(realGeo, CAP.gates);
   const mimicFade = fadeOn(mimicGeo, CAP.gates);
   const greyFade = fadeOn(greyGeo, CAP.gates);
-  const gateReal = fxLayer(instanced(play, 'gate-real', realGeo, lit(COLOR.gold, COLOR.amber, 1.2, 0.4, 0.5), CAP.gates));
-  const mimicMat = lit(COLOR.gold, COLOR.amber, 1.2, 0.4, 0.5);
+  /** The gates' gold, lit #ffb84a × 1.2: a mimic's is made by the same call, a twin by construction that shimmers alone. */
+  const gold = () => lit(COLOR.gold, COLOR.amber, 1.2, 0.4, 0.5);
+  const gateReal = fxLayer(instanced(play, 'gate-real', realGeo, gold(), CAP.gates));
+  const mimicMat = gold();
   mimicMat.opacity = SHIMMER.base;
   const gateMimic = fxLayer(instanced(play, 'gate-mimic', mimicGeo, mimicMat, CAP.gates));
   const gateGrey = fxLayer(instanced(play, 'gate-rewrite', greyGeo, lit(COLOR.copy, COLOR.copyGlow, 0.4, 0.9), CAP.gates));
@@ -471,7 +486,7 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   let fresh = true;
   const copyIn = new Map<number, number>();
   const copyOut = new Map<number, number>();
-  /** The last sync's scene time, and whether there has been one (the first takes no step). */
+  /** The last sync's scene time, and whether there has been one (the first takes no step, and finds the camera no way). */
   let clock = 0;
   let synced = false;
   /** How far out Mata's stamps are, 0 to 1. */
@@ -537,7 +552,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     turn.setFromAxisAngle(UP, d.heading);
     const pose = new THREE.Matrix4().compose(spot.set(c.x, ground, c.z), turn, size.set(1, 1, g.width / MISSION_TIMING.gateWidth));
     const crown = ground + GATE.spring + GATE.rise + GATE.tube;
-    return { id: g.id, step, day, real: g.real, mimic: g.mimic, at: c, pose, stamp: new THREE.Vector3(c.x, crown + STAMP.over, c.z), shown: 0 };
+    const stamp = new THREE.Vector3(c.x, crown + STAMP.over, c.z);
+    return { id: g.id, step, day, real: g.real, mimic: g.mimic, at: c, pose, stamp, shown: 0, clear: 1 };
   }
 
   /** Lap post `index` of the lap course at step `step`: the pair standing on the ground across its heading, its beam over it. */
@@ -547,7 +563,6 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     return {
       step,
       index,
-      at: { x: p.at.x, z: p.at.z },
       pose: new THREE.Matrix4().compose(spot.set(p.at.x, ground, p.at.z), turn, ONE),
       beam: new THREE.Vector3(p.at.x, ground - BEAM.sunk + BEAM.h / 2, p.at.z),
       shown: 0,
@@ -660,7 +675,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
       beamAt[nBeam * 3 + 1] = r.beam.y;
       beamAt[nBeam * 3 + 2] = r.beam.z;
       beams.setColorAt(nBeam++, tint.copy(GOLD).multiplyScalar(left));
-      if (isOpen && stamped) lotus.setMatrixAt(nLotus++, m4.compose(r.stamp, facing, size.setScalar(STAMP.scale * come)));
+      // Its lotus comes and goes with it, never in a frame.
+      if (stamped) lotus.setMatrixAt(nLotus++, m4.compose(r.stamp, facing, size.setScalar(STAMP.scale * left)));
     }
     for (let k = nHalo; k < halos.length; k++) halos[k].visible = false;
 
@@ -674,18 +690,21 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
       if (phase === 'roam' || level <= 0 || nCopy === CAP.copies) continue;
       copies.setMatrixAt(nCopy, stand(m4, d.at, ARROW.spread * Math.sin(d.id * GOLDEN)));
       copyFade.setX(nCopy++, level);
-      if (stamped && d.state === 'open') {
+      // Its ring comes and goes with it: growing as a new copy comes out, shrinking as a filed or taken one goes.
+      if (stamped) {
         spot.addScaledVector(dir, TAIL.copy * ARROW.scale);
         spot.y += STAMP.over;
-        rings.setMatrixAt(nRing++, m4.compose(spot, facing, STAMP_SIZE));
+        rings.setMatrixAt(nRing++, m4.compose(spot, facing, size.setScalar(STAMP.scale * level)));
       }
     }
 
     // A course's gates, read from the run: a real gate stands until it is recorded, from either side and on any day; a
     // rewrite gate until its day is passed. Each eases in and out, within GATE.far of the chariot; a mimic shimmers as the
-    // copies do, and each gate's stamp grows and shrinks with it.
+    // copies do. Each gate's stamp grows and shrinks with it, and keeps clear of the camera (CLEAR), its clearness kept
+    // current while it is not drawn, for when sight or the gate comes out.
     const playing = phase === 'intro' || phase === 'active' || phase === 'failed';
     mimicMat.opacity = shimmerAt(t);
+    cameraOf(s, dt);
     let nReal = 0;
     let nMimic = 0;
     let nGrey = 0;
@@ -693,6 +712,7 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
       const g = gates[i];
       const standing = playing && g.step === run.step && (g.real ? !run.recorded.includes(g.id) : g.day >= run.dayIndex);
       g.shown = ease(g.shown, standing && Math.hypot(g.at.x - s.car.x, g.at.z - s.car.z) < GATE.far, dt, GATE.fade);
+      g.clear = ease(g.clear, !cameraNear(g.stamp), dt, CLEAR.ease);
       if (g.shown <= 0) continue;
       if (g.real) {
         gateReal.setMatrixAt(nReal, g.pose);
@@ -704,8 +724,9 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
         gateGrey.setMatrixAt(nGrey, g.pose);
         greyFade.setX(nGrey++, g.shown);
       }
-      if (!stamped) continue;
-      m4.compose(g.stamp, facing, size.setScalar(STAMP.scale * g.shown));
+      const grown = g.shown * g.clear;
+      if (!stamped || grown <= 0) continue;
+      m4.compose(g.stamp, facing, size.setScalar(STAMP.scale * grown));
       if (g.real) lotus.setMatrixAt(nLotus++, m4);
       else rings.setMatrixAt(nRing++, m4);
     }
@@ -736,6 +757,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     const carried = (phase === 'active' || phase === 'failed') && current !== undefined && current.kind === 'reach' && current.place === 'gate';
     if (!carried) letterFrom = NaN;
     else if (Number.isNaN(letterFrom)) letterFrom = fresh ? -Infinity : t + FADE;
+    // Not ease(): the letter hangs on game.chariot.root from lakon to lakon, outside what a new lakon lays out afresh. So a
+    // lakon's first sync shows it at once only if it is carried; one still out from the last lakon goes eased, not snapped.
     letterK = fresh && carried ? 1 : clamp(letterK + (carried && t >= letterFrom ? dt : -dt) / FADE, 0, 1);
     letterFade.setX(0, letterK);
 
@@ -808,6 +831,40 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   function ease(k: number, on: boolean, dt: number, seconds: number): number {
     if (fresh) return on ? 1 : 0;
     return clamp(k + (on ? dt : -dt) / seconds, 0, 1);
+  }
+
+  /**
+   * Where the camera is this frame, as viewOf will place it once the layers are drawn: chaseView's boom behind the chariot,
+   * cam.height over the ground under it and never under CHASE.groundClear over its own (its shake, under 0.2 m, left out),
+   * or during a lakon's shot the scene camera where the last frame left it. Its way over the next CLEAR.lead s comes from
+   * how far it moved since the last sync: forward, backing (the camera first) or swinging round a turn alike.
+   */
+  function cameraOf(s: GameState, dt: number): void {
+    if (s.shot) {
+      camAt.copy(game.camera.position);
+    } else {
+      // forward(yaw) = (cos, −sin): the boom runs back along −forward(cam.yaw).
+      const x = s.car.x - Math.cos(s.cam.yaw) * s.cam.boom;
+      const z = s.car.z + Math.sin(s.cam.yaw) * s.cam.boom;
+      camAt.set(x, Math.max(groundHeight(s.car.x, s.car.z) + s.cam.height, groundHeight(x, z) + CHASE.groundClear), z);
+    }
+    if (dt > 0 && camAt.distanceTo(camWas) <= CLEAR.jump) camWay.subVectors(camAt, camWas).multiplyScalar(CLEAR.lead / dt);
+    else camWay.set(0, 0, 0);
+    camWas.copy(camAt);
+  }
+
+  /** Whether the camera's way over the next CLEAR.lead s comes within CLEAR.near m of p. */
+  function cameraNear(p: THREE.Vector3): boolean {
+    const dx = p.x - camAt.x;
+    const dy = p.y - camAt.y;
+    const dz = p.z - camAt.z;
+    const way = camWay.lengthSq();
+    // The point of the way nearest p: the camera itself while it is still.
+    const u = way > 0 ? clamp((dx * camWay.x + dy * camWay.y + dz * camWay.z) / way, 0, 1) : 0;
+    const ex = dx - u * camWay.x;
+    const ey = dy - u * camWay.y;
+    const ez = dz - u * camWay.z;
+    return ex * ex + ey * ey + ez * ez < CLEAR.near * CLEAR.near;
   }
 
   /** The pose of an arrow standing in the ground at `at`, its tail leaning toward `lean`; leaves its entry point in `spot` and its tail's direction in `dir`. */
