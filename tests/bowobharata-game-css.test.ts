@@ -513,6 +513,27 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect([within(base, '.bg-objective .bg-actions', 'margin-top'), within(base, '.bg-objective .bg-actions', 'margin-bottom')]).toEqual(['0', '0.15rem']);
   });
 
+  it('keeps the Pause and Full screen row first on screen as in the markup: no rule reorders the objective panel or anything in it', () => {
+    // The row is the panel's first child (the screens test), and the model places it at the panel's top. A rule that
+    // moved it down (order, a grid row or area, or a reversed flow) would put it back over the steer zone with every
+    // other test still passing. Any rule that can reach into the panel counts, in any @media or @container block too: one
+    // naming .bg-objective, or whose subject holds a class the panel holds or no class at all (an element, *, an attribute).
+    const inPanel = ['bg-objective', 'bg-actions', 'btn', 'bg-objective__line', 'bg-hint', 'bg-timer', 'bg-frame', 'bg-replay'];
+    const reaches = (sel: string) => {
+      if (sel.includes('.bg-objective')) return true;
+      const subject = sel.split(/\s*[\s>+~]\s*/).at(-1)!;
+      const classes = [...subject.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
+      return classes.length === 0 || classes.some((c) => inPanel.includes(c));
+    };
+    const reorders = /(?:^|;)\s*(?:order|grid-row|grid-row-start|grid-row-end|grid-area)\s*:|(?:^|;)\s*flex-(?:direction|flow)\s*:[^;]*-reverse/;
+    const reaching = rules.filter((r) => r.selector.split(',').some((s) => reaches(s.trim())));
+    // The check reads the panel's own rules and the page-wide ones its parts share.
+    for (const sel of ['.bg-objective', '.bg-objective .bg-actions', '.bg-actions', '.bg-hint', '.bg-hud button', '.bg-game .btn', '.bg-objective p, .bg-gauges p']) {
+      expect(reaching.some((r) => r.selector === sel), sel).toBe(true);
+    }
+    expect(reaching.filter((r) => reorders.test(r.body)).map((r) => `${r.selector} { ${r.body} }`)).toEqual([]);
+  });
+
   it('on touch: the radar at top right with the speed under it, then the toasts below them in the right column (Task 34)', () => {
     const slot = '.bg-radar-slot';
     // The slot stacks the radar and, on touch, the speed pill under it.
@@ -565,7 +586,7 @@ describe('bowobharata-game.css stage and HUD', () => {
         expect.soft(b.right, `${where}: ${what}, right`).toBeLessThanOrEqual(s.w - 8);
         expect.soft(b.bottom, `${where}: ${what}, bottom`).toBeLessThanOrEqual(s.h - 8);
       };
-      // The panel's last row is the Pause and Full screen buttons, so the panel inside the stage keeps them whole.
+      // The panel inside the stage keeps whole the Pause and Full screen row that opens it and every line under the row.
       inside(L.panel, 'the objective panel');
       inside(L.slot, 'the radar and its speed');
       inside(L.toasts, 'the toasts');
@@ -623,8 +644,8 @@ describe('bowobharata-game.css stage and HUD', () => {
     // stage is 288×489 in the page and 320×568 in full screen. The rest of the layout does not fit there (Task 38).
     for (const s of [{ name: '320×568 in the page', vw: 320, vh: 568, w: 288, h: 489 }, { name: '320×568 in full screen', vw: 320, vh: 568, w: 320, h: 568 }]) {
       const L = lay(s);
-      // No 184 px cap: the panel is 46% wide as in round 1, so it is no taller than it was. Laju may lie partly under its
-      // background: the touch layer is above the HUD, so Laju keeps its taps.
+      // No 184 px cap: the panel is 46% wide as in round 1, so it is no taller than it was. Laju may reach over the panel's
+      // background: the touch layer is above the HUD, so Laju draws over the panel and keeps its taps.
       expect(L.panelW, s.name).toBeCloseTo(0.46 * s.w, 6);
       for (const [k, row] of L.rows.entries()) {
         const where = `${s.name}, ${LANGS[k]}`;

@@ -515,14 +515,20 @@ describe('toast pacing: the island\'s own pump, every toast the newest for 1.5 s
     expect(TOAST_GAP_MS).toBe(1500);
     expect(src).toContain('const TOAST_MAX = 2;');
     expect(src).toContain('const TOAST_MS = 4000;');
-    expect(src).toMatch(/toastPump\(\{ now: \(\) => performance\.now\(\), schedule: later, push: \(t\) => pushToast\(t\.text\) \}\)/);
+    // One pump for the island's life, made on its first render: a pump made afresh on each render would forget its queue,
+    // the time of its last push (the 1.5 s gap) and whether the game is paused.
+    expect(src).toContain('const [pump] = useState(() => toastPump({ now: () => performance.now(), schedule: later, push: (t) => pushToast(t.text) }));');
+    expect(src.match(/toastPump\(/g)).toHaveLength(1);
     expect(src.match(/pushToast\(/g)).toHaveLength(1);
     expect(src).toMatch(/pump\.add\(toasts\);/);
-    expect(src).toMatch(/pump\.hold\(flow\.paused\);/);
+    // It holds on every pause and lets go on every resume: the effect runs whenever flow.paused changes.
+    expect(src).toMatch(/useEffect\(\(\) => \{\s*pump\.hold\(flow\.paused\);\s*\}, \[flow\.paused, pump\]\);/);
     const reset = /const resetPlay = \(\) => \{([\s\S]*?)\n  \};/.exec(src)?.[1] ?? '';
     expect(reset).toContain('timers.current.clear();');
     expect(reset).toContain('pump.clear();');
+    // Leaving play, and every new play, runs resetPlay: no toast from one play waits into the next screen or play.
     expect(src).toMatch(/if \(!playing3d\) resetPlay\(\);/);
+    expect(src).toMatch(/else if \(flow\.screen === 'play' && data\) \{\s*resetPlay\(\);/);
   });
 });
 

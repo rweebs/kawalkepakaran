@@ -476,10 +476,10 @@ export function Ring({ kind, label, fill, lit }: { kind: 'surge' | 'sight'; labe
 
 /**
  * The driving HUD at the stage's corners, from one snapshot: counts, timers and speeds only, never a name, a title or a
- * date. Top left, the objective panel: the objective, the muted hint line, the timer, the frame line, pause and full
- * screen. Top right, the radar slot: the round radar with the clamour's arc on its rim, and on touch the speed under it.
- * Bottom right on a desk, the speed with the Laju and Mata rings (on touch the buttons carry the rings). The toasts sit
- * in a polite live region, bottom left (on touch, in the right column under the radar).
+ * date. Top left, the objective panel: pause and full screen first, then the objective, the muted hint line, the timer
+ * and the frame line. Top right, the radar slot: the round radar with the clamour's arc on its rim, and on touch the
+ * speed under it. Bottom right on a desk, the speed with the Laju and Mata rings (on touch the buttons carry the rings).
+ * The toasts sit in a polite live region, bottom left (on touch, in the right column under the radar).
  */
 export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscreen, canFullscreen, fullscreen = false }: {
   locale: Locale; hud: HudSnapshot; touch: boolean; paused: boolean; toasts: readonly HudToast[];

@@ -175,7 +175,7 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
 }
 /* On touch the objective panel stops 8 px short of Laju's column (168 px in, past the inset) where 46% would not: below
    184 / 0.54 = 340.7 px. On 320-wide stages the cap would make it narrower and so taller still, so it keeps 46% there:
-   Laju may lie partly under its background and keeps its taps, the touch layer being above the HUD. */
+   Laju may reach over its background, and draws over the panel and keeps its taps, the touch layer being above the HUD. */
 @container bg-hud (width > 320px) and (width < 341px) {
   .bg-hud[data-touch] .bg-objective { max-width: min(22rem, 46%, calc(100% - 184px)); }
 }
