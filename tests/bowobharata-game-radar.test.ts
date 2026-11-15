@@ -1,21 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { initChariot } from '../src/lib/bowobharata-game/drive';
-import { clamp, forward, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
+import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
+import { clamp, forward, rightOf, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
 import { advance, createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
 import { autopilot } from '../src/lib/bowobharata-game/autopilot';
+import { fieldEdge, hullClearance } from '../src/lib/bowobharata-game/collide';
 import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import { openTargets, type Decoy, type RunState } from '../src/lib/bowobharata-game/mission-run';
-import { ANCHORS, TOWER_EXIT, distToCollider, type Collider } from '../src/lib/bowobharata-game/world';
+import { ANCHORS, PLAY, TOWER_EXIT, distToCollider, type Collider } from '../src/lib/bowobharata-game/world';
 import { levelEffects, riuhLevel } from '../src/lib/bowobharata-game/riuh';
+import { routeTo } from '../src/lib/bowobharata-game/route';
+import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import {
   GATE_DAYS,
   RADAR_PX,
+  RANGE_LAG,
   ROUTE_POINTS,
   radarItems,
   radarPoint,
   radarRange,
   sameRadar,
+  HOLD,
   type RadarItem,
 } from '../src/lib/bowobharata-game/radar';
 
@@ -57,6 +62,80 @@ function expectAt(list: readonly RadarItem[], places: readonly XZ[], car: Pose) 
 /** Facing north the radar reads as a map: a point dx m east and dz m south of the chariot lies at (C + dx·k, C + dz·k). */
 const NORTH = Math.PI / 2;
 const mapPx = (p: XZ, car: XZ, range = 70) => ({ x: C + ((p.x - car.x) * R) / range, y: C + ((p.z - car.z) * R) / range });
+
+/** Real seconds between HUD snapshots, as the runtime sends them. */
+const HUD_DT = 0.1;
+/** The state with the chariot moving forward at v m/s where it stands. */
+const atSpeed = (s: GameState, v: number): GameState => {
+  const f = forward(s.car.yaw);
+  return { ...s, car: { ...s.car, vx: f.x * v, vz: f.z * v } };
+};
+
+/**
+ * Show/hide flicker, counted as the re-review of fix round 1 counted it: each snapshot's items are keyed by their field
+ * place (to 0.1 m, read back from the radar at its own range) or, for the ranks, by their block; the route has no key.
+ * A cycle is three changes of one key's shown state within 0.5 s: in, out and in again (or out, in, out).
+ */
+class Flicker {
+  cycles = 0;
+  changes = 0;
+  readonly examples: string[] = [];
+  private seen = new Map<string, { on: boolean; at: number[] }>();
+  private first = true;
+  constructor(private readonly tag: string) {}
+  sample(t: number, s: GameState, hud: HudSnapshot) {
+    const now = new Set<string>();
+    for (const i of hud.radar) {
+      const k = keyOf(i, s, hud.radarM);
+      if (k) now.add(k);
+    }
+    for (const k of new Set([...now, ...this.seen.keys()])) {
+      const on = now.has(k);
+      const rec = this.seen.get(k);
+      if (!rec) {
+        this.seen.set(k, { on, at: this.first ? [] : [t] });
+        if (!this.first) this.changes++;
+        continue;
+      }
+      if (rec.on === on) continue;
+      rec.on = on;
+      rec.at.push(t);
+      this.changes++;
+      const n = rec.at.length;
+      if (n >= 3 && rec.at[n - 1] - rec.at[n - 3] < 0.5 - 1e-9) {
+        this.cycles++;
+        if (this.examples.length < 4) this.examples.push(`${this.tag}: ${k} at t ${t.toFixed(1)} s, ${speedOf(s.car).toFixed(2)} m/s`);
+      }
+    }
+    this.first = false;
+  }
+}
+
+/** An item's identity across snapshots: its kind and field place, read back from the radar at `range`; the ranks' block. */
+function keyOf(i: RadarItem, s: GameState, range: number): string | null {
+  if (i.kind === 'route') return null;
+  if (i.kind === 'ranks') {
+    let best = -1;
+    let gap = Infinity;
+    w.figures.forEach((c, k) => {
+      const g = Math.abs(Math.max(0, distToCollider(s.car, c)) - i.dist);
+      if (g < gap) {
+        gap = g;
+        best = k;
+      }
+    });
+    return `ranks#${best}`;
+  }
+  const side = ((i.x - C) * range) / R;
+  const ahead = ((C - i.y) * range) / R;
+  const len = Math.hypot(side, ahead);
+  const f = forward(s.car.yaw);
+  const r = rightOf(s.car.yaw);
+  const ux = len > 0 ? (f.x * ahead + r.x * side) / len : 0;
+  const uz = len > 0 ? (f.z * ahead + r.z * side) / len : 0;
+  const round = (v: number) => (Math.round(v * 10) / 10 + 0).toFixed(1);
+  return `${i.kind}@${round(s.car.x + ux * i.dist)},${round(s.car.z + uz * i.dist)}`;
+}
 
 describe('radarRange', () => {
   it('is 70 m at rest, 107.4 m at the top speed and 125 m at the surge', () => {
@@ -366,6 +445,36 @@ describe('radarItems', () => {
       });
     });
 
+    it('the cut follows the rim in arcs: a point between crossings, chords of 15° at most', () => {
+      // At level 5 the radius shown is 55% of the inner one, 38.5 m at rest. From 30 m north of the Kurawa block it cuts
+      // the 16 m-wide block across, an arc of about 25°, and the Pandawa block's corner, an arc of about 18°.
+      const car: Pose = { x: 11, z: 45, yaw: NORTH };
+      const radius = 0.55 * R;
+      const ranks = ofKind(items(loud(stateAt(1, car), 5)), 'ranks');
+      expect(ranks).toHaveLength(2);
+      /** The angle (radians) two radar points subtend at the centre. */
+      const angle = (p: { x: number; y: number }, q: { x: number; y: number }) =>
+        Math.acos(clamp(((p.x - C) * (q.x - C) + (p.y - C) * (q.y - C)) / (fromCentre(p) * fromCentre(q)), -1, 1));
+      let chords = 0;
+      w.figures.forEach((c, k) => {
+        const pts = ranks[k].points ?? [];
+        const sides = cornersOf(c).map((p) => mapPx(p, car));
+        const onSide = (p: { x: number; y: number }) =>
+          sides.some((a, j) => segPointDist(toXZ(p), toXZ(a), toXZ(sides[(j + 1) % 4])) < 1e-6);
+        const onRim = (p: { x: number; y: number }) => Math.abs(fromCentre(p) - radius) < 1e-6;
+        // A point on the rim and off the block's sides lies on an arc.
+        expect(pts.filter((p) => onRim(p) && !onSide(p)).length, `block ${k}`).toBeGreaterThanOrEqual(1);
+        pts.forEach((p, j) => {
+          const q = pts[(j + 1) % pts.length];
+          // Two rim points in a row whose chord is not the block's own side: a chord of the arc.
+          if (!onRim(p) || !onRim(q) || onSide({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 })) return;
+          chords++;
+          expect(angle(p, q), `block ${k}, chord ${j}`).toBeLessThanOrEqual((15 * Math.PI) / 180 + 1e-9);
+        });
+      });
+      expect(chords).toBeGreaterThanOrEqual(4);
+    });
+
     it('inside a block it is anchored at the chariot, 0 m off; far from both blocks there are none', () => {
       const inside = ofKind(items(stateAt(1, { x: 11, z: -15, yaw: 0.3 })), 'ranks')[1];
       expect(inside).toMatchObject({ x: C, y: C, clamped: false, dist: 0 });
@@ -413,46 +522,209 @@ describe('radarItems', () => {
     });
   });
 
-  describe('the edge holds while the speed wobbles', () => {
-    /** The state with the chariot at `at`, moving forward at v m/s. */
-    const moving = (s: GameState, at: Pose, v: number): GameState => {
-      const f = forward(at.yaw);
-      return { ...s, car: { ...initChariot(at.x, at.z, at.yaw), vx: f.x * v, vz: f.z * v } };
-    };
-    /** 0 to 2.2 m/s: the range runs from 70 m to 74.84 m. */
-    const SPEEDS = Array.from({ length: 23 }, (_, k) => k / 10);
+  describe('the range shown eases toward the speed', () => {
+    const base = stateAt(1, { x: 0, z: 0, yaw: 0 });
+    /** The HUD's snapshots, one each HUD_DT s, each eased from the one before, from the chariot's speed at each. */
+    function chain(speeds: readonly number[], at: GameState = base, first?: HudSnapshot): HudSnapshot[] {
+      const out: HudSnapshot[] = [];
+      let prev = first;
+      for (const v of speeds) {
+        prev = hudOf(atSpeed(at, v), w, prev, HUD_DT);
+        out.push(prev);
+      }
+      return out;
+    }
+    /** The times of the snapshots over `seconds` s, from HUD_DT on. */
+    const ticks = (seconds: number) => Array.from({ length: Math.round(seconds / HUD_DT) }, (_, k) => (k + 1) * HUD_DT);
 
-    it('at level 4 a record just past the edge of the static stays hidden, and shows from the next step of range', () => {
-      // Record A (52, 44) lies 49.5 m from (52, −5.5): past 70% of 70 m, though within 70% of 74.84 m. B lies 45.6 m off.
-      const at: Pose = { x: 52, z: -5.5, yaw: 0 };
-      const base = loud(stateAt(1, at), 4.2);
-      expect(SPEEDS.map((v) => ofKind(items(moving(base, at, v)), 'record').length)).toEqual(SPEEDS.map(() => 1));
-      // From 75 m of range (2.28 m/s) the edge lies at 52.5 m.
-      expect(ofKind(items(moving(base, at, 2.4)), 'record')).toHaveLength(2);
-      // Nothing shown ever lies past the static's inner edge.
-      for (const v of [...SPEEDS, 2.4]) {
-        for (const i of items(moving(base, at, v))) {
-          expect(fromCentre(i), `${i.kind} at ${v} m/s`).toBeLessThanOrEqual(0.7 * R + EPS);
-          for (const p of i.points ?? []) expect(fromCentre(p), `${i.kind} at ${v} m/s`).toBeLessThanOrEqual(0.7 * R + EPS);
-        }
+    it('follows the target with a first-order lag of 1 s; the first snapshot starts at the target', () => {
+      expect(RANGE_LAG).toBe(1);
+      const first = hudOf(atSpeed(base, 17), w);
+      expect(first.radarM).toBeCloseTo(radarRange(17), 12);
+      const next = hudOf(atSpeed(base, 25), w, first, 0.4);
+      expect(next.radarM).toBeCloseTo(radarRange(17) + (radarRange(25) - radarRange(17)) * (1 - Math.exp(-0.4)), 12);
+      expect(hudOf(atSpeed(base, 25), w, first, 0).radarM).toBe(first.radarM);
+      // The radar is drawn at the range shown, not at the speed's.
+      expect(next.radar).toEqual(radarItems(atSpeed(base, 25), w, RADAR_PX, next.radarM));
+      expect(next.radar).not.toEqual(radarItems(atSpeed(base, 25), w, RADAR_PX));
+    });
+
+    it('a monotone ramp of speed gives a monotone range', () => {
+      const up = chain(ticks(6).map((t) => Math.min(25, 5 * t)));
+      const down = chain(ticks(6).map((t) => Math.max(0, 25 - 6 * t)));
+      for (let k = 1; k < up.length; k++) {
+        expect(up[k].radarM).toBeGreaterThanOrEqual(up[k - 1].radarM);
+        expect(down[k].radarM).toBeLessThanOrEqual(down[k - 1].radarM);
+      }
+      expect(up.at(-1)!.radarM).toBeGreaterThan(up[0].radarM + 40);
+      expect(down.at(-1)!.radarM).toBeLessThan(down[0].radarM - 40);
+    });
+
+    it('a ±1 m/s wobble at 3 Hz round 12 m/s moves it by 0.3 m at most', () => {
+      const settled = hudOf(atSpeed(base, 12), w);
+      const wobble = chain(ticks(10).map((t) => 12 + Math.sin(2 * Math.PI * 3 * t)), base, settled).map((h) => h.radarM);
+      // From where it had settled (0.20 m at most), and from crest to trough once the wobble's start has died away
+      // (0.26 m; 0.33 m with the abrupt start's own swing).
+      expect(Math.max(...wobble.map((m) => Math.abs(m - settled.radarM)))).toBeLessThanOrEqual(0.3);
+      const late = wobble.slice(30);
+      expect(Math.max(...late) - Math.min(...late)).toBeLessThanOrEqual(0.3);
+    });
+
+    it('from rest to 25 m/s it comes within 3 m of the target within 4 s, without a jump', () => {
+      const rest = hudOf(base, w);
+      expect(rest.radarM).toBe(70);
+      const climb = chain(ticks(4).map(() => 25), base, rest);
+      expect(climb[0].radarM).toBeLessThan(76);
+      expect(Math.abs(climb.at(-1)!.radarM - radarRange(25))).toBeLessThanOrEqual(3);
+    });
+
+    it('a place at the edge stays put through small speed changes', () => {
+      // At level 4 the edge lies at 70% of the range shown: 67.48 m round 12 m/s. Record A stands 0.25 m past it, then
+      // 0.25 m within it, while the speed wobbles ±1 m/s at 3 Hz; record B stays near.
+      for (const [off, shown] of [[0.25, 1], [-0.25, 2]] as const) {
+        const at = loud(stateAt(1, { x: 52, z: 44 - (0.7 * radarRange(12) + off), yaw: NORTH }), 4.2);
+        const counts = chain(
+          ticks(5).map((t) => 12 + Math.sin(2 * Math.PI * 3 * t)),
+          at,
+          hudOf(atSpeed(at, 12), w),
+        ).map((h) => ofKind(h.radar, 'record').length);
+        expect(counts, `A ${off} m off the edge`).toEqual(counts.map(() => shown));
       }
     });
+  });
 
-    it('at level 4 a block just past the edge of the static stays out', () => {
-      // The Kurawa block's east face lies 49.5 m west of (68.8, −15); the Pandawa block lies 71.7 m off.
-      const at: Pose = { x: 19.3 + 49.5, z: -15, yaw: Math.PI };
-      const base = loud(stateAt(1, at), 4.2);
-      expect(SPEEDS.map((v) => ofKind(items(moving(base, at, v)), 'ranks').length)).toEqual(SPEEDS.map(() => 0));
-      expect(ofKind(items(moving(base, at, 2.4)), 'ranks')).toHaveLength(1);
+  describe('the hold at the edge', () => {
+    // Level 4 at rest: the edge lies at 49 m. Record A (52, 44) stands 48.5 m from (52, −4.5), within the edge but not
+    // HOLD m within it; record B (62, −50) stands 46.6 m off.
+    const near: Pose = { x: 52, z: -4.5, yaw: NORTH };
+    const base = loud(stateAt(1, near), 4.2);
+    const shownA = hudOf(loud(stateAt(1, { x: 52, z: 0, yaw: NORTH }), 4.2), w);
+    const hiddenA = hudOf(loud(stateAt(1, { x: 52, z: -9, yaw: NORTH }), 4.2), w);
+    const recordKeys = (h: HudSnapshot) => ofKind(h.radar, 'record').map((i) => i.key);
+
+    it('every item has a key of its own, the same from one snapshot to the next', () => {
+      expect(HOLD).toBe(1);
+      const s = sighted(stateAt(1, { x: 55, z: 0, yaw: NORTH }, { route: { target: 'A', points: [{ x: 55, z: 0 }, { x: 52, z: 44 }] } }));
+      const keys = items(s).map((i) => i.key);
+      expect(keys.every((k) => typeof k === 'string' && k.length > 0)).toBe(true);
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(keys).toEqual(expect.arrayContaining(['tower', 'route', 'record:A', 'record:B', 'decoy:1', 'shelter:camp', 'ranks:army-adharma']));
+      expect(items(atSpeed(s, 3)).map((i) => i.key)).toEqual(keys);
     });
 
-    it('in sight, a copy just past the range stays out, and shows from the next step of range', () => {
-      const at: Pose = { x: 0, z: 0, yaw: 0 };
-      const copy: Decoy = { id: 9, at: { x: 70.5, z: 0 }, born: 0, life: 20, state: 'open', mimic: false };
-      const s = { ...sighted(stateAt(1, at)), decoys: [copy] };
-      expect(SPEEDS.map((v) => ofKind(items(moving(s, at, v)), 'decoy').length)).toEqual(SPEEDS.map(() => 0));
-      expect(ofKind(items(moving(s, at, 2.4)), 'decoy')).toHaveLength(1);
+    it('a place the last snapshot did not show appears only HOLD m within the edge; one it showed stays up to the edge', () => {
+      // From (52, 0) record A lies 44 m off and B 51 m off; from (52, −9) A lies 53 m off.
+      expect(recordKeys(shownA)).toEqual(['record:A']);
+      expect(recordKeys(hiddenA)).toEqual(['record:B']);
+      expect(recordKeys(hudOf(base, w))).toEqual(['record:A', 'record:B']);
+      expect(recordKeys(hudOf(base, w, shownA, HUD_DT))).toEqual(['record:A', 'record:B']);
+      expect(recordKeys(hudOf(base, w, hiddenA, HUD_DT))).toEqual(['record:B']);
+      // HOLD m within the edge it shows whatever came before.
+      const deeper = loud(stateAt(1, { x: 52, z: -3.9, yaw: NORTH }), 4.2);
+      expect(recordKeys(hudOf(deeper, w, hiddenA, HUD_DT))).toEqual(['record:A', 'record:B']);
+      // Past the edge nothing shows, whatever came before.
+      const past = loud(stateAt(1, { x: 52, z: -5.2, yaw: NORTH }), 4.2);
+      expect(recordKeys(hudOf(past, w, shownA, HUD_DT))).toEqual(['record:B']);
     });
+
+    it('a route to a place the hold leaves out stops HOLD m within the edge, short of it', () => {
+      const route = { target: 'A', points: [{ x: 52, z: -4.5 }, { x: 52, z: 44 }] };
+      const held = ofKind(hudOf({ ...base, route }, w, hiddenA, HUD_DT).radar, 'route')[0];
+      expect(held.clamped).toBe(true);
+      expect(fromCentre(held)).toBeCloseTo(((49 - HOLD) * R) / 70, 9);
+      const reached = ofKind(hudOf({ ...base, route }, w, shownA, HUD_DT).radar, 'route')[0];
+      expect(reached.clamped).toBe(false);
+      expect(fromCentre(reached)).toBeCloseTo((48.5 * R) / 70, 9);
+    });
+  });
+
+  describe('no place at the edge flickers', () => {
+    const FPS = 60;
+    const EDGE_OF_FIELD = fieldEdge(PLAY);
+    const hold = (v: number, target: number): ChariotInput =>
+      v < target - 0.05 ? { ...NO_INPUT, throttle: 1 } : v > target + 0.05 ? { ...NO_INPUT, brake: 0.3 } : NO_INPUT;
+    /** The re-review's manoeuvres: each from v0 m/s for `seconds` s; `input` reads the time and the forward speed. */
+    const DRIVES: { name: string; v0: number; seconds: number; input: (t: number, v: number) => ChariotInput }[] = [
+      { name: 'launch from rest', v0: 0, seconds: 5, input: () => ({ ...NO_INPUT, throttle: 1 }) },
+      { name: 'hard brake from 17 m/s', v0: 17, seconds: 1.5, input: () => ({ ...NO_INPUT, brake: 1 }) },
+      { name: 'surge at 17 m/s, then the overspeed drag', v0: 17, seconds: 3.5, input: (t) => ({ ...NO_INPUT, throttle: 1, boost: t < 0.05 }) },
+      { name: 'coast from 17 m/s', v0: 17, seconds: 5, input: () => NO_INPUT },
+      { name: 'hold 1.0 m/s', v0: 1, seconds: 5, input: (_t, v) => hold(v, 1) },
+      { name: 'hold 2.27 m/s', v0: 5 / 2.2, seconds: 5, input: (_t, v) => hold(v, 5 / 2.2) },
+      { name: 'keyboard taps round 12.6 m/s', v0: 12.6, seconds: 6, input: (t) => ({ ...NO_INPUT, throttle: Math.floor(t / 0.15) % 2 === 0 ? 1 : 0 }) },
+    ];
+    /** Thirty open copies a lakon's volleys could leave, 40 m apart across the field, for the drives in sight. */
+    const COPIES: Decoy[] = [];
+    for (let x = -120; x <= 120; x += 40) {
+      for (let z = -130; z <= 110; z += 40) {
+        if (Math.hypot(x - PLAY.cx, z - PLAY.cz) <= 130) COPIES.push({ id: 100 + COPIES.length, at: { x: x + 7, z: z + 3 }, born: 0, life: null, state: 'open', mimic: false });
+      }
+    }
+    /** How each drive is shown: the clamour forced, sight off or on. */
+    const VIEWS = [
+      { tag: 'level 4', view: (s: GameState) => loud(s, 4.5) },
+      { tag: 'level 5', view: (s: GameState) => loud(s, 5) },
+      { tag: 'riuh 0', view: (s: GameState) => loud(s, 0) },
+      { tag: 'in sight, with copies', view: (s: GameState) => sighted(loud({ ...s, decoys: COPIES }, 4.5)) },
+    ];
+
+    /**
+     * Each drive from places 25 m apart within 120 m of the field's centre, at four headings, 3 m clear of everything;
+     * a run stops before the guard, the field's edge or a collider would touch it. The HUD is read every HUD_DT s of
+     * the 60 fps drive, each snapshot eased from the one before, as the runtime does.
+     */
+    function flickerOf(drive: (typeof DRIVES)[number]): { flicker: Flicker[]; runs: number } {
+      const base = stateAt(0, { x: 0, z: 0, yaw: 0 });
+      const flicker = VIEWS.map((v) => new Flicker(`${drive.name}, ${v.tag}`));
+      let runs = 0;
+      for (let x = -120; x <= 120; x += 25) {
+        for (let z = -130; z <= 110; z += 25) {
+          if (Math.hypot(x - PLAY.cx, z - PLAY.cz) > 120) continue;
+          for (let a = 0; a < 4; a++) {
+            const start = initChariot(x, z, (a * Math.PI) / 2 + 0.3);
+            if (hullClearance(start.x, start.z, start.yaw, w.colliders) < 3) continue;
+            runs++;
+            const f = forward(start.yaw);
+            let car: ChariotState = { ...start, vx: f.x * drive.v0, vz: f.z * drive.v0 };
+            const runFlicker = VIEWS.map((v) => new Flicker(`${drive.name}, ${v.tag}, from (${x}, ${z}) heading ${a}`));
+            const prev: (HudSnapshot | undefined)[] = VIEWS.map(() => undefined);
+            let since = HUD_DT;
+            for (let k = 0; k < drive.seconds * FPS; k++) {
+              const t = k / FPS;
+              if (since >= HUD_DT - 1e-9) {
+                since = 0;
+                const s: GameState = { ...base, car };
+                VIEWS.forEach((v, j) => {
+                  const shown = v.view(s);
+                  prev[j] = hudOf(shown, w, prev[j], HUD_DT);
+                  runFlicker[j].sample(t, shown, prev[j]!);
+                });
+              }
+              car = stepChariot(car, drive.input(t, speedOf(car)), 1 / FPS, { cloud: false, guard: w.guard, edge: EDGE_OF_FIELD });
+              since += 1 / FPS;
+              const off = Math.hypot(car.x - PLAY.cx, car.z - PLAY.cz) > 140;
+              if (car.held > 0 || car.edgeCut > 0 || off || hullClearance(car.x, car.z, car.yaw, w.colliders) < 1) break;
+            }
+            runFlicker.forEach((r, j) => {
+              flicker[j].cycles += r.cycles;
+              flicker[j].changes += r.changes;
+              flicker[j].examples.push(...r.examples);
+            });
+          }
+        }
+      }
+      return { flicker, runs };
+    }
+
+    for (const drive of DRIVES) {
+      it(`${drive.name}: no show, hide and show again within 0.5 s, at levels 4 and 5, at riuh 0 and in sight`, () => {
+        const { flicker, runs } = flickerOf(drive);
+        expect(runs).toBeGreaterThan(200);
+        // Places do cross the edges: the count is of flicker, not of nothing happening.
+        expect(flicker.reduce((a, f) => a + f.changes, 0)).toBeGreaterThan(100);
+        for (const f of flicker) expect(f.cycles, f.examples.join('; ')).toBe(0);
+      }, 60_000);
+    }
   });
 
   describe('the route', () => {
@@ -526,35 +798,100 @@ describe('radarItems', () => {
     expect(JSON.stringify(s)).toBe(before);
   });
 
-  it('every lakon, ridden by the autopilot: bounded, inside the radius shown, copies only in sight, the route at most 12 points', () => {
-    let frames = 0;
+  /**
+   * Whether every route item that is not cut ends on an item shown there, unless it leads to a course's lane (a day of two
+   * rewrites, which the radar does not mark).
+   */
+  function routesEndShown(s: GameState, list: readonly RadarItem[]): string[] {
+    const first = openTargets(s.run)[0];
+    if (first?.kind === 'gate' && !first.real) return [];
+    const faults: string[] = [];
+    for (const r of list) {
+      if (r.kind !== 'route' || r.clamped) continue;
+      const end = r.points!.at(-1)!;
+      const there = list.some((i) => i.kind !== 'route' && i.kind !== 'ranks' && Math.hypot(i.x - end.x, i.y - end.y) < 1e-6);
+      if (!there) faults.push(`a route ends at (${end.x.toFixed(1)}, ${end.y.toFixed(1)}) with nothing shown there`);
+    }
+    return faults;
+  }
+
+  it('every lakon ridden by the autopilot, two seeds each: bounded, within the radius shown, no flicker at levels 4 and 5', () => {
+    let samples = 0;
     let withCopies = 0;
-    for (const ch of [0, 1, 2, 4, 5, 7]) {
-      let s = startChapter(defOf(ch), defOf(ch).start, 1, w);
-      for (let k = 0; k < 75 * 30 && s.run.phase !== 'done'; k++) {
-        s = advance(s, autopilot(s, w), 1 / 30, w).state;
-        if (k % 5 !== 0) continue;
-        frames++;
-        const list = items(s);
-        // Bounded by the data: the ranks, the shelters, the route, the tower, at most 9 records or gates, and the copies.
-        expect(list.length).toBeLessThanOrEqual(2 + 3 + 1 + 1 + 9 + s.decoys.length);
-        // The radius shown: the inner radius, or the static's inner edge with sight off.
-        const shown = (s.sight.on ? 1 : 1 - levelEffects(riuhLevel(s.riuh.value)).radarStatic) * R;
-        for (const i of list) {
-          expect(fromCentre(i), i.kind).toBeLessThanOrEqual(shown + EPS);
-          for (const p of i.points ?? []) expect(fromCentre(p), `${i.kind} point`).toBeLessThanOrEqual(shown + EPS);
-          expect(i.clamped || i.dist <= radarRange(0) + 2.2 * 25 + EPS).toBe(true);
-          if (i.kind === 'route') expect(i.points!.length).toBeLessThanOrEqual(ROUTE_POINTS);
+    let routes = 0;
+    const faults: string[] = [];
+    const flicker = [new Flicker('level 4'), new Flicker('level 5')];
+    for (const ch of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+      for (const seed of [1, 2]) {
+        let s = startChapter(defOf(ch), defOf(ch).start, seed, w);
+        // The HUD as the lakon has it, and as levels 4 and 5 with sight off would show it, each eased from its last.
+        const views = [(x: GameState) => x, (x: GameState) => loud({ ...x, sight: { ...x.sight, on: false } }, 4.5), (x: GameState) => loud({ ...x, sight: { ...x.sight, on: false } }, 5)];
+        const prev: (HudSnapshot | undefined)[] = views.map(() => undefined);
+        const runFlicker = [new Flicker(`chapter ${ch}, seed ${seed}, level 4`), new Flicker(`chapter ${ch}, seed ${seed}, level 5`)];
+        let since = HUD_DT;
+        for (let k = 0; k < 180 * 30 && s.run.phase !== 'done'; k++) {
+          const t = k / 30;
+          if (since >= HUD_DT - 1e-9) {
+            since = 0;
+            samples++;
+            views.forEach((view, j) => {
+              const shownState = view(s);
+              const hud = hudOf(shownState, w, prev[j], HUD_DT);
+              prev[j] = hud;
+              const list = hud.radar;
+              // The radius shown: the inner radius, or the static's inner edge with sight off.
+              const shown = (shownState.sight.on ? 1 : 1 - levelEffects(riuhLevel(shownState.riuh.value)).radarStatic) * R;
+              for (const i of list) {
+                if (fromCentre(i) > shown + EPS) faults.push(`${i.kind} at ${fromCentre(i)} px, past ${shown}`);
+                for (const p of i.points ?? []) if (fromCentre(p) > shown + EPS) faults.push(`${i.kind} point past ${shown}`);
+                if (i.kind === 'ranks' && i.clamped) faults.push('ranks clamped');
+                if (i.kind === 'route' && i.points!.length > ROUTE_POINTS) faults.push('route over 12 points');
+                if (i.kind === 'route' && !i.clamped) routes++;
+              }
+              // Bounded by the data: the ranks, the shelters, the route, the tower, at most 9 targets, and the copies.
+              if (list.length > 2 + 3 + 1 + 1 + 9 + shownState.decoys.length) faults.push(`${list.length} items`);
+              const copies = ofKind(list, 'decoy').length;
+              if (!shownState.sight.on && copies > 0) faults.push('copies out of sight');
+              if (j === 0 && copies > 0) withCopies++;
+              faults.push(...routesEndShown(shownState, list));
+              if (j > 0) runFlicker[j - 1].sample(t, shownState, hud);
+            });
+          }
+          s = advance(s, autopilot(s, w), 1 / 30, w).state;
+          since += 1 / 30;
         }
-        const copies = ofKind(list, 'decoy').length;
-        if (!s.sight.on) expect(copies).toBe(0);
-        if (copies > 0) withCopies++;
+        runFlicker.forEach((r, j) => {
+          flicker[j].cycles += r.cycles;
+          flicker[j].changes += r.changes;
+          flicker[j].examples.push(...r.examples);
+        });
       }
     }
-    expect(frames).toBeGreaterThan(1000);
-    // The bot uses sight near the copies, so the radar shows some.
+    expect(faults.slice(0, 5)).toEqual([]);
+    expect(samples).toBeGreaterThan(5000);
+    // The bot uses sight near the copies, so the radar shows some; and it rides routes that end on what they lead to.
     expect(withCopies).toBeGreaterThan(0);
-  }, 60_000);
+    expect(routes).toBeGreaterThan(1000);
+    for (const f of flicker) {
+      expect(f.changes, f.examples.join('; ')).toBeGreaterThan(100);
+      expect(f.cycles, f.examples.join('; ')).toBe(0);
+    }
+  }, 120_000);
+
+  it('a route under static never ends past the edge on nothing: it is cut there, or its record shows', () => {
+    // The re-review's case: chapter 1 at (52, −5.5) facing east, level 4, record A 49.5 m off, at 0 to 2.2 m/s.
+    const at = loud(stateAt(1, { x: 52, z: -5.5, yaw: 0 }), 4.2);
+    const target = openTargets(at.run)[0];
+    expect(target.id).toBe('A');
+    const route = routeTo(w.nav, w.colliders, at.car, target.at);
+    expect(route).not.toBeNull();
+    for (let v = 0; v <= 2.2 + EPS; v += 0.1) {
+      const list = hudOf(atSpeed({ ...at, route: { target: target.id, points: route! } }, v), w).radar;
+      const [r] = ofKind(list, 'route');
+      expect(r, `${v.toFixed(1)} m/s`).toBeDefined();
+      expect(routesEndShown(at, list), `${v.toFixed(1)} m/s`).toEqual([]);
+    }
+  });
 
   it('reads no clock and no randomness', () => {
     const src = readFileSync('src/lib/bowobharata-game/radar.ts', 'utf8');

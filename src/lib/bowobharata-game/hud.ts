@@ -5,7 +5,7 @@ import { hullMid } from './collide';
 import { speedOf } from './drive';
 import { timeLeft, totalReal, type HintKey, type Phase, type RunState } from './mission-run';
 import type { MissionType } from './missions';
-import { RADAR_PX, bearingOf, radarItems, radarRange, sameRadar, type RadarItem } from './radar';
+import { RADAR_PX, bearingOf, easeRange, radarItems, radarRange, sameRadar, type RadarItem } from './radar';
 import { levelEffects, riuhLevel } from './riuh';
 import { DRIVE } from './tuning';
 import type { GameState, World } from './engine';
@@ -42,7 +42,10 @@ export interface HudSnapshot {
   staticFrac: number;
   /** What the radar shows, on its RADAR_PX square, in drawing order (radarItems). */
   radar: RadarItem[];
-  /** The radar's range in metres, at its inner radius: radarRange of the chariot's forward speed. */
+  /**
+   * The radar's range in metres, at its inner radius: radarRange of the chariot's forward speed, eased from the last
+   * snapshot's with a lag of RANGE_LAG (1 s); the speed's own on a first snapshot. The radar is drawn at it.
+   */
   radarM: number;
   /** The chariot's heading as a compass bearing in whole degrees: 0 north, 90 east, clockwise. */
   heading: number;
@@ -92,11 +95,18 @@ function timerOf(run: RunState): number | null {
   return left === null ? null : Math.max(0, Math.ceil(left - 1e-9));
 }
 
-/** The snapshot of this frame; the world gives the radar its ranks and shelters. */
-export function hudOf(s: GameState, w: World): HudSnapshot {
+/**
+ * The snapshot of this frame; the world gives the radar its ranks and shelters. `prev` is the snapshot sent before this
+ * one and `dt` the real seconds since it: the radar's range eases on from prev's, and a place prev did not show appears
+ * only HOLD m within the radar's edge (radarItems). Without prev (the first snapshot of a start or a retry), the range is
+ * the speed's and nothing is held.
+ */
+export function hudOf(s: GameState, w: World, prev?: HudSnapshot, dt = 0): HudSnapshot {
   const { run, car, sight } = s;
   const shown = s.hintsShown;
   const level = riuhLevel(s.riuh.value);
+  const target = radarRange(speedOf(car));
+  const radarM = prev ? easeRange(prev.radarM, target, dt) : target;
   return {
     phase: run.phase,
     chapter: run.def.chapter,
@@ -113,8 +123,8 @@ export function hudOf(s: GameState, w: World): HudSnapshot {
     riuh: s.riuh.value,
     level,
     staticFrac: levelEffects(level).radarStatic,
-    radar: radarItems(s, w, RADAR_PX),
-    radarM: radarRange(speedOf(car)),
+    radar: radarItems(s, w, RADAR_PX, radarM, prev?.radar),
+    radarM,
     heading: bearingOf(car.yaw),
   };
 }

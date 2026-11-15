@@ -7,10 +7,11 @@ import { createDetail } from '../src/lib/bowobharata/scene/materials';
 import { gameQuality, qualityFor, type Quality } from '../src/lib/bowobharata/scene/quality';
 import { dharmaMix, groundHeight, type Pose } from '../src/lib/bowobharata/stage-math';
 import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
-import { NO_INPUT } from '../src/lib/bowobharata-game/drive';
+import { NO_INPUT, speedOf } from '../src/lib/bowobharata-game/drive';
 import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
 import { worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
+import { radarRange } from '../src/lib/bowobharata-game/radar';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
 import { scriptedVolley } from '../src/lib/bowobharata-game/volley';
 import type { GameEvent } from '../src/lib/bowobharata-game/mission-run';
@@ -475,6 +476,53 @@ describe('runtime', () => {
     for (const [e] of h.onEvents.mock.calls) expect(e.length).toBeGreaterThan(0);
     expect(types(h.events)).toContain('introEnd');
     expect(h.events).toContainEqual({ type: 'hint', key: 'ride' });
+  });
+
+  it('eases the radar range from one HUD snapshot to the next, and starts it afresh at a start and a retry', () => {
+    const h = harness();
+    /** The frame's HUD snapshot, if it sent one. */
+    const step = (): HudSnapshot | null => {
+      const before = h.onHud.mock.calls.length;
+      h.frame();
+      return h.onHud.mock.calls.length > before ? h.onHud.mock.calls.at(-1)![0] : null;
+    };
+    const target = () => radarRange(speedOf(h.rt.state()!.car));
+    h.rt.start(0, [], 1);
+    let last = step()!;
+    expect(last.radarM).toBe(target());
+    let since = 0;
+    let eased = 0;
+    for (let k = 0; k < 240; k++) {
+      const hud = step();
+      since += 1 / 60;
+      if (!hud) continue;
+      expect(hud.radarM).toBeCloseTo(last.radarM + (target() - last.radarM) * (1 - Math.exp(-since)), 9);
+      if (Math.abs(hud.radarM - target()) > 1) eased++;
+      last = hud;
+      since = 0;
+    }
+    // Driving off, the range shown lags the speed's.
+    expect(eased).toBeGreaterThan(5);
+    expect(last.radarM).toBeLessThan(target() - 1);
+    // A retry puts the chariot at rest at its checkpoint: the range starts there, not from the last snapshot.
+    h.rt.retry();
+    expect(step()!.radarM).toBe(target());
+    for (let k = 0; k < 120; k++) step();
+    expect(h.onHud.mock.calls.at(-1)![0].radarM).toBeLessThan(target() - 1);
+    // So does a new chapter's start.
+    h.rt.start(1, SLUGS_1, 1);
+    expect(step()!.radarM).toBe(target());
+  });
+
+  it('clears the last HUD snapshot at a start and a retry, so the hold at the radar\'s edge starts afresh there too', () => {
+    // The range starts afresh either way (sinceHud is Infinity then). The hold reads the last snapshot's items, which
+    // belong to the place before the jump; it needs a clamour of level 4, out of this harness's reach, so this reads the
+    // code.
+    const src = readFileSync(new URL('../src/lib/bowobharata-game/world/runtime.ts', import.meta.url), 'utf8');
+    for (const head of ['start(chapter, slugs, seed) {', 'retry() {']) {
+      const body = src.slice(src.indexOf(head));
+      expect(body.slice(0, body.indexOf('\n    },')), head).toContain('lastHud = null;');
+    }
   });
 
   it('sets the time scale, the dawn and the camera from the state each frame', () => {

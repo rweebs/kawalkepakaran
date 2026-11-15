@@ -5,9 +5,12 @@
 // tower, and what the lakon leads to: the marker in roam, the open records, the real gates of the next GATE_DAYS days
 // of a course (and any ridden past and still open), the next two lap posts, and the Hastinapura gate while the letter
 // is carried. At a Riuh level with radar static, nothing shows beyond (1 − static) of the inner radius unless sight is
-// on: what lies there is left out, and the route and the ranks' outlines are cut there. Whether a place shows is read on
-// the range in RANGE_STEP steps, so a place at an edge does not flip in and out as the speed wobbles. Positions, kinds
-// and metres only: no text. Pure: no clock, no randomness.
+// on: what lies there is left out, and the route and the ranks' outlines are cut there. The range follows the speed
+// through a 1 s lag (easeRange, carried from one HUD snapshot to the next), so the edge moves smoothly: a place at it
+// crosses it once as the speed ramps, and a wobbling speed barely moves it. Given the last snapshot's items, a place
+// that was not shown appears only HOLD m within the edge, while one that was shown stays up to it: what grazes the edge
+// does not flicker, and nothing ever shows past it. Positions, kinds and metres only: no text. Pure: no clock, no
+// randomness.
 import { clamp, dist, forward, rightOf, type XZ } from './geom';
 import { speedOf } from './drive';
 import { openTargets, type RunState } from './mission-run';
@@ -40,6 +43,11 @@ export interface RadarItem {
    * the same radius.
    */
   points?: { x: number; y: number }[];
+  /**
+   * What it is, the same from one snapshot to the next: its kind and the lakon's id for it (`record:A`, `gate:D3L`,
+   * `post:P2-1`, `decoy:7`, `shelter:camp`, `ranks:army-dharma`), or just `tower`, `marker` or `route`.
+   */
+  key?: string;
 }
 
 /** The radar's square (px): its SVG viewBox; CSS may scale it. */
@@ -54,8 +62,10 @@ export const GATE_DAYS = 3;
 const MAX_COPIES = 64;
 /** The range at rest (m), and what each m/s of speed either way adds. */
 const RANGE = { rest: 70, perSpeed: 2.2 } as const;
-/** Whether a place shows is read on the range floored to steps this long (m): 2.27 m/s of speed each. */
-const RANGE_STEP = 5;
+/** The time constant (s) of the lag the range shown follows the speed's range with. */
+export const RANGE_LAG = 1;
+/** A place not shown in the last snapshot appears this far (m) within the edge; one shown stays up to the edge. */
+export const HOLD = 1;
 /** A cut outline follows the circle in arcs of at most this (radians). */
 const ARC_STEP = Math.PI / 12;
 /** A move this far (px) or farther is a change to the eye. */
@@ -64,6 +74,17 @@ const SHOWN_MOVE = 1;
 /** The radar's range (m) at forward speed v (m/s), either way: 70 m at rest, 107.4 m at 17 m/s, 125 m at 25 m/s. */
 export function radarRange(v: number): number {
   return RANGE.rest + RANGE.perSpeed * (Number.isFinite(v) ? Math.abs(v) : 0);
+}
+
+/**
+ * The range shown (m) `dt` real seconds after `shown`, easing toward `target` (radarRange of the speed) with the time
+ * constant RANGE_LAG: a first-order low-pass. A ramp of speed moves it one way only; a wobble barely moves it. No time
+ * passed, no change; `shown` not a number, the target.
+ */
+export function easeRange(shown: number, target: number, dt: number): number {
+  if (!Number.isFinite(shown)) return target;
+  if (!(dt > 0)) return shown;
+  return shown + (target - shown) * (1 - Math.exp(-dt / RANGE_LAG));
 }
 
 type Pose = { x: number; z: number; yaw: number };
@@ -113,9 +134,9 @@ export function radarPoint(p: XZ, car: Pose, range: number, px: number): { x: nu
   return place(frameOf(car, range, px), p);
 }
 
-const pointItem = (kind: RadarKind, f: Frame, at: XZ, d: number): RadarItem => {
+const pointItem = (kind: RadarKind, key: string, f: Frame, at: XZ, d: number): RadarItem => {
   const q = place(f, at);
-  return { kind, x: q.x, y: q.y, clamped: q.clamped, dist: d };
+  return { kind, x: q.x, y: q.y, clamped: q.clamped, dist: d, key };
 };
 
 function areaMid(a: Area): XZ {
@@ -232,8 +253,8 @@ function clipToCircle(poly: readonly Px[], c: number, r: number): Px[] {
  * An army as the radar draws it: anchored at its nearest point to the chariot, its block's outline cut to the circle of
  * `edge` px (a round one is a point).
  */
-function ranksItem(f: Frame, c: Collider, car: XZ, d: number, edge: number): RadarItem {
-  const item = pointItem('ranks', f, nearestPoint(c, car), d);
+function ranksItem(f: Frame, c: Collider, key: string, car: XZ, d: number, edge: number): RadarItem {
+  const item = pointItem('ranks', key, f, nearestPoint(c, car), d);
   if (c.kind === 'box') {
     const corners = [
       spot(f, { x: c.minX, z: c.minZ }),
@@ -291,79 +312,123 @@ function routeItem(route: readonly XZ[], f: Frame, car: XZ, reach: number): Rada
   if (line.length < 2) return null;
   const points = line.map((p) => spot(f, p));
   const end = points[points.length - 1];
-  return { kind: 'route', x: end.x, y: end.y, clamped: cut, dist: dist(car, route[route.length - 1]), points };
+  return { kind: 'route', x: end.x, y: end.y, clamped: cut, dist: dist(car, route[route.length - 1]), points, key: 'route' };
 }
+
+type Show = (kind: RadarKind, key: string, at: XZ) => void;
 
 /**
  * What the lakon leads to, as openTargets has it: the marker in roam; the open records; the next lap posts; the
  * Hastinapura gate while the letter is carried (the tower is always on the radar). A course's aims give way to its real
  * gates: those of the next GATE_DAYS days still open, and any ridden past and still open. A failed run reads as active,
- * as in the scene: its records stay out through the fail shot.
+ * as in the scene: its records stay out through the fail shot. Returns the item the route leads to (the first open
+ * target's), or null when none is drawn there: a course's lane, or a day whose real gate is already recorded.
  */
-function lakonItems(s: GameState, show: (kind: RadarKind, at: XZ) => void): void {
+function lakonItems(s: GameState, show: Show): { key: string; at: XZ } | null {
   const run: RunState = s.run.phase === 'failed' ? { ...s.run, phase: 'active' } : s.run;
   const step = run.def.steps[run.step];
-  for (const t of openTargets(run)) {
-    if (t.kind === 'marker') show('marker', t.at);
-    else if (t.kind === 'pickup') show('record', t.at);
-    else if (t.kind === 'post') show('post', t.at);
-    else if (t.kind === 'reach' && step?.kind === 'reach' && step.place === 'gate') show('gate', t.at);
+  const targets = openTargets(run);
+  let leads: { key: string; at: XZ } | null = null;
+  for (let k = 0; k < targets.length; k++) {
+    const t = targets[k];
+    let kind: RadarKind | null = null;
+    if (t.kind === 'marker') kind = 'marker';
+    else if (t.kind === 'pickup') kind = 'record';
+    else if (t.kind === 'post') kind = 'post';
+    else if (t.kind === 'reach' && step?.kind === 'reach' && step.place === 'gate') kind = 'gate';
+    else if (t.kind === 'reach' && k === 0) leads = { key: 'tower', at: t.at };
+    if (!kind) continue;
+    const key = kind === 'marker' ? 'marker' : `${kind}:${t.id}`;
+    show(kind, key, t.at);
+    if (k === 0) leads = { key, at: t.at };
   }
-  if (step?.kind !== 'course' || (run.phase !== 'intro' && run.phase !== 'active')) return;
+  if (step?.kind !== 'course' || (run.phase !== 'intro' && run.phase !== 'active')) return leads;
+  // The route leads to the first target: the next day's aim, or a gate ridden past. A real gate standing there is it.
+  const aim = targets[0]?.at;
   const last = Math.min(run.dayIndex + GATE_DAYS, step.days.length);
   for (let k = 0; k < last; k++) {
     const day = step.days[k];
-    for (const g of day.gates) if (g.real && !run.recorded.includes(g.id)) show('gate', across(day.at, day.heading, g.offset));
+    for (const g of day.gates) {
+      if (!g.real || run.recorded.includes(g.id)) continue;
+      const at = across(day.at, day.heading, g.offset);
+      show('gate', `gate:${g.id}`, at);
+      if (aim && at.x === aim.x && at.z === aim.z) leads = { key: `gate:${g.id}`, at };
+    }
   }
+  return leads;
 }
 
 /**
- * What the radar shows, on a square `px` wide, in drawing order: the ranks (each army whose block reaches within the
- * radius shown), the shelters, the route ahead, the copies (in sight, outside roam, open and within the range), the
- * tower, then what the lakon leads to. The ranks and copies show only within the range; everything else stays at the
- * inner radius when beyond it. With static (riuhLevel's radarStatic) and sight off, the radius shown is (1 − static) of
- * the inner radius: nothing beyond it shows, and the route and the ranks' outlines are cut at it. Whether a place shows
- * is read on the range floored to RANGE_STEP m, never past the radius shown, so a place at the edge stays in or out
- * while the speed wobbles; the cut lines follow the exact edge. Bounded by the lakon's data and MAX_COPIES; nothing is
- * sorted.
+ * What the radar shows, on a square `px` wide out to `range` m (the range shown: by default the speed's, radarRange;
+ * the HUD passes its eased one), in drawing order: the ranks (each army whose block reaches within the radius shown),
+ * the shelters, the route ahead, the copies (in sight, outside roam, open and within the radius shown), the tower, then
+ * what the lakon leads to. The ranks and copies show only within the radius shown; everything else stays at the inner
+ * radius when beyond the range. With static (riuhLevel's radarStatic) and sight off, the radius shown is (1 − static)
+ * of the range: nothing beyond it shows. One edge for everything: what shows, the route's cut and the ranks' outlines.
+ * Given `prev`, the last snapshot's items, a place within the edge that `prev` did not show appears only from HOLD m
+ * within it, by its key: the edge holds still for a place grazing it. A route that is not cut ends on what it leads to,
+ * shown. Bounded by the lakon's data and MAX_COPIES; nothing is sorted.
  */
-export function radarItems(s: GameState, w: World, px: number): RadarItem[] {
+export function radarItems(
+  s: GameState,
+  w: World,
+  px: number,
+  range = radarRange(speedOf(s.car)),
+  prev?: readonly RadarItem[],
+): RadarItem[] {
   const { car } = s;
-  const range = radarRange(speedOf(car));
   const f = frameOf(car, range, px);
   const sight = s.sight.on;
   const fog = sight ? 0 : levelEffects(riuhLevel(s.riuh.value)).radarStatic;
-  /**
-   * How far (m) a place may lie and still show (for the ranks and copies always, for the rest under static): the range
-   * floored to RANGE_STEP, so the edge holds still while the speed wobbles, and never past the radius shown.
-   */
-  const keep = (1 - fog) * Math.floor(range / RANGE_STEP) * RANGE_STEP;
-  const out: RadarItem[] = [];
-  const show = (kind: RadarKind, at: XZ) => {
+  /** The radius shown (m): the range, or the static's inner edge while the static shows and sight is off. */
+  const edge = (1 - fog) * range;
+  const was = prev ? new Set(prev.map((i) => i.key)) : null;
+  /** Whether a place `d` m off is within the edge: up to it when it was shown before (or nothing was), else HOLD m in. */
+  const within = (key: string, d: number) => d <= (was === null || was.has(key) ? edge : edge - HOLD);
+  const places: RadarItem[] = [];
+  const shown = new Set<string>();
+  const show: Show = (kind, key, at) => {
     const d = dist(car, at);
-    if (fog === 0 || d <= keep) out.push(pointItem(kind, f, at, d));
+    if (fog > 0 && !within(key, d)) return;
+    places.push(pointItem(kind, key, f, at, d));
+    shown.add(key);
   };
+  show('tower', 'tower', ANCHORS.tower);
+  const leads = lakonItems(s, show);
 
+  const out: RadarItem[] = [];
   for (const c of w.figures) {
+    const key = `ranks:${c.id}`;
     const d = Math.max(0, distToCollider(car, c));
-    if (d <= keep) out.push(ranksItem(f, c, car, d, (1 - fog) * f.r));
+    if (within(key, d)) out.push(ranksItem(f, c, key, car, d, (1 - fog) * f.r));
   }
-  for (const zone of w.zones) if (zone.role === 'shelter') show('shelter', areaMid(zone.area));
-  const route = s.route && routeItem(s.route.points, f, car, (1 - fog) * range);
-  if (route) out.push(route);
+  for (const zone of w.zones) {
+    if (zone.role !== 'shelter') continue;
+    const key = `shelter:${zone.id}`;
+    const at = areaMid(zone.area);
+    const d = dist(car, at);
+    if (fog === 0 || within(key, d)) out.push(pointItem('shelter', key, f, at, d));
+  }
+  if (s.route) {
+    // Where the hold leaves out the place the route leads to, though it lies within the edge, the route stops HOLD m
+    // within the edge, short of it: a route that is not cut ends on what it leads to, shown.
+    const held = leads !== null && !shown.has(leads.key) && dist(car, leads.at) <= edge;
+    const route = routeItem(s.route.points, f, car, held ? edge - HOLD : edge);
+    if (route) out.push(route);
+  }
   if (sight && s.run.phase !== 'roam') {
-    let shown = 0;
+    let copies = 0;
     for (const d of s.decoys) {
-      if (shown === MAX_COPIES) break;
+      if (copies === MAX_COPIES) break;
       if (d.state !== 'open') continue;
+      const key = `decoy:${d.id}`;
       const m = dist(car, d.at);
-      if (m > keep) continue;
-      out.push(pointItem('decoy', f, d.at, m));
-      shown++;
+      if (!within(key, m)) continue;
+      out.push(pointItem('decoy', key, f, d.at, m));
+      copies++;
     }
   }
-  show('tower', ANCHORS.tower);
-  lakonItems(s, show);
+  out.push(...places);
   return out;
 }
 

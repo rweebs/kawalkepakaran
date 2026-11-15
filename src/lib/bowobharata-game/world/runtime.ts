@@ -101,6 +101,8 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
   let around: XZ = { x: ANCHORS.tower.x, z: ANCHORS.tower.z };
   let circled = 0;
   let sinceHud = Infinity;
+  /** The last HUD snapshot sent: the next eases its radar range and holds its radar's edge from it. None after a jump. */
+  let lastHud: HudSnapshot | null = null;
   let failed = false;
   let disposed = false;
 
@@ -141,11 +143,14 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     // 6–7. Mata's and the outro's slow motion, and Parva 8's dawn.
     game.setTimeScale(timeScaleOf(next));
     scene.setProgress(progressForMix(mixOf(next)));
-    // 8–9. The HUD, at most every 0.1 s of real time (a hair under, so float sums of the frames' dt still reach it); the events.
+    // 8–9. The HUD, at most every 0.1 s of real time (a hair under, so float sums of the frames' dt still reach it), its
+    // radar range eased from the last snapshot over the time since it; the events.
     sinceHud += real;
     if (sinceHud >= HUD_EVERY - 1e-9) {
+      const hud = hudOf(next, world, lastHud ?? undefined, sinceHud);
       sinceHud = 0;
-      o.onHud(hudOf(next, world));
+      lastHud = hud;
+      o.onHud(hud);
     }
     if (out.events.length > 0 && !disposed) o.onEvents(out.events);
   }
@@ -205,6 +210,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       current = current ? { ...fresh, hintsShown: [...current.hintsShown] } : fresh;
       mode = 'play';
       sinceHud = Infinity;
+      lastHud = null;
       // The chapter's first second is not timed: the shaders of what it shows compile then.
       watch.hold();
       pickups.setFinale(false);
@@ -220,6 +226,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       current = retryFromCheckpoint(current, world);
       mode = 'play';
       sinceHud = Infinity;
+      lastHud = null;
       volleys.setShown(true);
     },
     skip() {
