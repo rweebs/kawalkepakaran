@@ -2,11 +2,19 @@
 // continuous amber arc on its rim, and a north petal that turns with the heading. It draws the snapshot's kinds and
 // positions only (radarItems): no name, title, date or fact, and no word but the copy's north letter and the clamour's
 // name. Its colours come from the CSS: the site tokens, amber for the clamour, never red or blue.
-// Comfort: nothing changes faster than 2 Hz. A mark fades in or out at one full fade per FADE_MS; the static band, the
-// ranks' clip and the arc ease over EASE_MS from wherever they are; the static's grains are drawn anew at most every
-// STATIC_MS, and never under reduced motion. The snapshot keeps no memory between frames, so the pure model below does:
-// it remembers each mark while it fades, and the component only runs it on the frame clock.
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+// Comfort: nothing changes faster than 2 Hz, and nothing appears, goes or changes its look in one frame.
+// - A mark fades in or out at one full fade per FADE_MS.
+// - A mark whose look changes (a record or shelter reaching the rim, the next lap post, the tower becoming the aim)
+//   cross-fades to its new look.
+// - radar.ts cuts the ranks' outline and the route at the radius shown. When that radius changes (Mata, a level step),
+//   the old shape fades out and the new one in, both under a clip that eases with the static's band over EASE_MS: the
+//   band wipes what it covers, and what it uncovers comes in with it.
+// - The static's grains are drawn anew at most every STATIC_MS, never under reduced motion.
+// The snapshot keeps no memory between frames, so a pure model does. The map (RadarMap) runs it on the frame clock and
+// re-renders only while a mark fades or the static eases. The clamour's fill (ClamourFill) eases its one path through a
+// ref on its own frames, so the clamour's steady motion re-renders nothing. renderToString pins only the first render;
+// all timing is pinned through the pure model.
+import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Locale } from '../../i18n';
 import { GAME_COPY } from '../../lib/bowobharata-game/copy';
 import type { ObjectiveKey } from '../../lib/bowobharata-game/hud';
@@ -18,7 +26,7 @@ import { mulberry32 } from '../../lib/sky/rng';
 const RIM = 8;
 /** One full fade of a mark, in or out (ms): no mark's opacity moves faster than this. */
 export const FADE_MS = 500;
-/** The time (ms) the static band, the ranks' clip and the arc take to reach a new value, from wherever they are. */
+/** The time (ms) the static band, its clip and the arc take to reach a new value, from wherever they are. */
 export const EASE_MS = 500;
 /** The static's grains are drawn anew at most this often (ms): twice a second. */
 export const STATIC_MS = 500;
@@ -30,13 +38,21 @@ const MATCH_PX = 16;
 /** The static's tile (px) and the grains on it: large enough that its repeat does not read as a mesh. */
 const TILE = 24;
 const GRAINS = 60;
-/** Kinds draw in radarItems' order; the lakon's targets share the top layer and keep their own order. */
-const LAYER: Record<RadarKind, number> = { ranks: 0, shelter: 1, route: 2, decoy: 3, tower: 4, replay: 5, marker: 6, record: 6, gate: 6, post: 6 };
+/**
+ * The drawing layers: the ranks and the route first, in the clip that keeps them out of the static; then the points in
+ * radarItems' order. The lakon's targets share the top layer and keep their own order.
+ */
+const LAYER: Record<RadarKind, number> = { ranks: 0, route: 1, shelter: 2, decoy: 3, tower: 4, replay: 5, marker: 6, record: 6, gate: 6, post: 6 };
+/** How far in from the inner radius (px) the north petal is widest, where its letter sits. */
+const PETAL_MID = 1.5;
 
+const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const within = (x: number, lo: number, hi: number) => (Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : lo);
 /** The bearing of (dx, dy) on the square, in degrees clockwise from the top. */
 const bearing = (dx: number, dy: number) => (Math.atan2(dx, -dy) * 180) / Math.PI;
+/** The shapes radar.ts cuts at the radius shown: the ranks' outline and the route. */
+const cutAtEdge = (kind: RadarKind) => kind === 'ranks' || kind === 'route';
 
 /** The point `r` from the centre (c, c), `deg` degrees clockwise from the top. */
 function polar(c: number, r: number, deg: number): { x: number; y: number } {
@@ -52,11 +68,20 @@ export function arcPath(c: number, r: number, from: number, sweep: number): stri
   return `M${r2(a.x)} ${r2(a.y)}A${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${r2(b.x)} ${r2(b.y)}`;
 }
 
+/** The clamour's sweep in degrees: 300° times the clamour over 5, held to the scale. */
+export const arcSweep = (riuh: number) => (ARC.span * within(riuh, 0, RIUH_MAX)) / RIUH_MAX;
+
 /** The static's grains on one TILE-square tile: the same for the same seed. */
 export function noiseGrains(seed: number): { x: number; y: number; s: number }[] {
   const rand = mulberry32(seed);
   return Array.from({ length: GRAINS }, () => ({ x: Math.floor(rand() * TILE), y: Math.floor(rand() * TILE), s: rand() < 0.3 ? 1.5 : 1 }));
 }
+
+/** Whether the static's grains are drawn anew: only while the static shows, and never under reduced motion. */
+export const grainsRun = (on: boolean, reduced: boolean) => on && !reduced;
+
+/** The static shown: the level's share of the inner radius, or none while Mata sees through it. */
+export const fogFor = (staticFrac: number, sight: boolean) => (sight ? 0 : within(staticFrac, 0, 1));
 
 /** A value on its way from `from` (at `at`, ms) to `to`, which it reaches EASE_MS later at an even pace. */
 export interface Eased { from: number; to: number; at: number }
@@ -66,76 +91,128 @@ export function easedAt(e: Eased, now: number): number {
   return k >= 1 ? e.to : k <= 0 ? e.from : e.from + (e.to - e.from) * k;
 }
 
-const settled = (v: number, now: number): Eased => ({ from: v, to: v, at: now });
-const retarget = (e: Eased, to: number, now: number): Eased => (e.to === to ? e : { from: easedAt(e, now), to, at: now });
+/** A value at rest at `v`. */
+export const settled = (v: number, now: number): Eased => ({ from: v, to: v, at: now });
+/** The value turned to `to` at `now`, from wherever it is then. */
+export const retarget = (e: Eased, to: number, now: number): Eased => (e.to === to ? e : { from: easedAt(e, now), to, at: now });
+/** Whether an eased value is still on its way at `now`: its next frame is asked for only then. */
+export const arcBusy = (e: Eased, now: number) => easedAt(e, now) !== e.to;
 
 /**
- * An item as the radar draws it: a key that stays with it while it moves, and its fade. From `from` at `at` (ms), its
- * opacity heads for `to` (1 shown, 0 gone) at one full fade per FADE_MS.
+ * An item as the radar draws it: a key that stays with it while it moves, its look, and its fade. From `from` at `at`
+ * (ms), its opacity heads for `to` (1 shown, 0 gone) at one full fade per FADE_MS.
  */
-export interface RadarMark { key: number; item: RadarItem; from: number; to: 0 | 1; at: number }
+export interface RadarMark {
+  key: number;
+  item: RadarItem;
+  /** The next lap post (drawn brighter), and the tower while it is the aim (drawn with its halo). */
+  next: boolean;
+  aim: boolean;
+  /** For the ranks' outline and the route: the static radar.ts cut them at (0 for every other kind). */
+  cut: number;
+  from: number;
+  to: 0 | 1;
+  at: number;
+}
 
 export function markOpacity(m: RadarMark, now: number): number {
   const d = Math.max(0, now - m.at) / FADE_MS;
   return m.to === 1 ? Math.min(1, m.from + d) : Math.max(0, m.from - d);
 }
 
+type Px = { x: number; y: number };
+
+/** Whether two shapes are the same to the eye: as many points, none apart by half a pixel or more. */
+function sameShape(a: readonly Px[] | undefined, b: readonly Px[] | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.length === b.length && a.every((p, k) => Math.hypot(p.x - b[k].x, p.y - b[k].y) < 0.5);
+}
+
+/** At most two copies of a cut shape on their way out for each one shown (Mata tapped fast): the faintest go first. */
+function capCopies(marks: RadarMark[], now: number): RadarMark[] {
+  let out = marks;
+  for (const kind of ['ranks', 'route'] as const) {
+    const going = marks.filter((m) => m.item.kind === kind && m.to === 0);
+    const room = 2 * Math.max(1, marks.filter((m) => m.item.kind === kind && m.to === 1).length);
+    if (going.length <= room) continue;
+    const drop = new Set([...going].sort((a, b) => markOpacity(a, now) - markOpacity(b, now)).slice(0, going.length - room));
+    out = out.filter((m) => !drop.has(m));
+  }
+  return out;
+}
+
 /**
- * The marks for a new snapshot at `now`. Each item keeps the nearest mark of its kind within MATCH_PX (the route keeps
- * its one mark), a fading one included, which then fades back from where it is. An item with no mark gets a new key and
- * fades in from 0. A mark left over fades out from where it is, at its last place, and stays until it reaches 0. Items
- * keep their order; the marks on their way out follow them.
+ * The marks for a new snapshot at `now`, with the static `fog` it was cut at and whether the tower is the aim.
+ * - Each item keeps the nearest mark of its look within MATCH_PX (the route keeps its one mark at any distance): the same
+ *   kind, clamp, next post and aim, and for a cut shape the same cut. A shape of another cut is kept only if the cut
+ *   left it as it was.
+ * - A mark that was fading out and is kept fades back from where it is. An item with no mark gets a new key and fades in
+ *   from 0, so a new look or a new cut cross-fades with the old one.
+ * - A mark left over fades out from where it is, at its last place and in its last shape, and stays until it reaches 0.
+ * - Items keep their order; the marks on their way out follow them.
  */
-export function trackMarks(prev: readonly RadarMark[], items: readonly RadarItem[], now: number, next: number): { marks: RadarMark[]; next: number } {
+export function trackMarks(
+  prev: readonly RadarMark[], items: readonly RadarItem[], now: number, next: number, fog = 0, aim = false,
+): { marks: RadarMark[]; next: number } {
+  const firstPost = items.findIndex((i) => i.kind === 'post');
   const pool = prev.filter((m) => m.to === 1 || markOpacity(m, now) > 0);
   const taken = new Set<RadarMark>();
   const marks: RadarMark[] = [];
   let key = next;
-  for (const item of items) {
+  items.forEach((item, i) => {
+    const isNext = i === firstPost;
+    const isAim = aim && item.kind === 'tower';
+    const cut = cutAtEdge(item.kind) ? fog : 0;
+    const fits = (m: RadarMark) =>
+      m.item.kind === item.kind && m.item.clamped === item.clamped && m.next === isNext && m.aim === isAim &&
+      (m.cut === cut || (cutAtEdge(item.kind) && sameShape(m.item.points, item.points)));
     let best: RadarMark | null = null;
     let bestD = item.kind === 'route' ? Infinity : MATCH_PX * MATCH_PX;
     for (const m of pool) {
-      if (taken.has(m) || m.item.kind !== item.kind) continue;
+      if (taken.has(m) || !fits(m)) continue;
       const d = (m.item.x - item.x) ** 2 + (m.item.y - item.y) ** 2;
       if (d <= bestD) {
         best = m;
         bestD = d;
       }
     }
-    if (!best) marks.push({ key: key++, item, from: 0, to: 1, at: now });
+    if (!best) marks.push({ key: key++, item, next: isNext, aim: isAim, cut, from: 0, to: 1, at: now });
     else {
       taken.add(best);
-      marks.push(best.to === 1 ? { ...best, item } : { key: best.key, item, from: markOpacity(best, now), to: 1, at: now });
+      marks.push(best.to === 1 ? { ...best, item, cut } : { ...best, item, cut, from: markOpacity(best, now), to: 1, at: now });
     }
-  }
+  });
   for (const m of pool) if (!taken.has(m)) marks.push(m.to === 0 ? m : { ...m, from: markOpacity(m, now), to: 0, at: now });
-  return { marks, next: key };
+  return { marks: capCopies(marks, now), next: key };
 }
 
-/** What the radar remembers between snapshots, at `now` (ms on the frame clock). */
+/** What the map remembers between snapshots, at `now` (ms on the frame clock). The clamour is not part of it. */
 export interface RadarModel {
   now: number;
   items: readonly RadarItem[];
   marks: RadarMark[];
   next: number;
-  /** The clamour the arc shows, and the static's share of the inner radius (0 while Mata sees through it). */
-  riuh: Eased;
+  /** The static shown, as a share of the inner radius (0 while Mata sees through it): the band and the clip follow it. */
   fog: Eased;
+  /** Whether the tower is the aim. */
+  aim: boolean;
 }
 
-/** The first view: its items shown at once, the arc and the static at their values. */
-export function radarModel(items: readonly RadarItem[], riuh: number, fog: number, now = 0): RadarModel {
-  return {
-    now, items, marks: items.map((item, key) => ({ key, item, from: 1, to: 1, at: now })), next: items.length,
-    riuh: settled(riuh, now), fog: settled(fog, now),
-  };
+/** The first view: its items shown at once, the static at its value. */
+export function radarModel(items: readonly RadarItem[], fog: number, aim: boolean, now = 0): RadarModel {
+  const firstPost = items.findIndex((i) => i.kind === 'post');
+  const marks = items.map((item, key): RadarMark => ({
+    key, item, next: key === firstPost, aim: aim && item.kind === 'tower', cut: cutAtEdge(item.kind) ? fog : 0, from: 1, to: 1, at: now,
+  }));
+  return { now, items, marks, next: items.length, fog: settled(fog, now), aim };
 }
 
-/** A new snapshot, clamour or static at `now`: the items tracked into marks, the arc and the static turned to the new values. */
-export function stepModel(m: RadarModel, items: readonly RadarItem[], riuh: number, fog: number, now: number): RadarModel {
+/** A new snapshot, static or aim at `now`: the items tracked into marks, the static turned to its new value. */
+export function stepModel(m: RadarModel, items: readonly RadarItem[], fog: number, aim: boolean, now: number): RadarModel {
   const t = Math.max(now, m.now);
-  const tracked = items === m.items ? { marks: m.marks, next: m.next } : trackMarks(m.marks, items, t, m.next);
-  return { now: t, items, ...tracked, riuh: retarget(m.riuh, riuh, t), fog: retarget(m.fog, fog, t) };
+  const same = items === m.items && fog === m.fog.to && aim === m.aim;
+  const tracked = same ? { marks: m.marks, next: m.next } : trackMarks(m.marks, items, t, m.next, fog, aim);
+  return { now: t, items, ...tracked, fog: retarget(m.fog, fog, t), aim };
 }
 
 /** A frame at `now`: the clock moves on, never back, and the marks that have faded out leave. */
@@ -145,18 +222,56 @@ export function tickModel(m: RadarModel, now: number): RadarModel {
   return { ...m, now: t, marks: marks.length === m.marks.length ? m.marks : marks };
 }
 
-/** Whether anything is still on its way at the model's time: a fade, the arc or the static. */
+/** Whether a fade or the static is still on its way at the model's time: the map's next frame is asked for only then. */
 export function modelBusy(m: RadarModel): boolean {
-  const moving = (e: Eased) => easedAt(e, m.now) !== e.to;
-  return moving(m.riuh) || moving(m.fog) || m.marks.some((k) => markOpacity(k, m.now) !== k.to);
+  return easedAt(m.fog, m.now) !== m.fog.to || m.marks.some((k) => markOpacity(k, m.now) !== k.to);
 }
 
-/** The static's grains: a new seed every STATIC_MS while the static shows, and none under reduced motion. */
+/** A mark as drawn this frame. */
+export interface Drawn { mark: RadarMark; opacity: number }
+
+/**
+ * The marks to draw at the model's time, by layer, none that has faded out. Within a layer they keep the model's order:
+ * the snapshot's, with the marks on their way out after it.
+ */
+export function drawOrder(m: RadarModel): Drawn[] {
+  return m.marks
+    .map((mark) => ({ mark, opacity: markOpacity(mark, m.now) }))
+    .filter((d) => d.mark.to === 1 || d.opacity > 0)
+    .sort((a, b) => LAYER[a.mark.item.kind] - LAYER[b.mark.item.kind]);
+}
+
+/**
+ * What the map draws at the model's time on a `size` square: the static shown (`fog`), the clip's radius (the static's
+ * inner edge, so the clip and the band always agree), the band, the cut shapes (in the clip) and the other marks.
+ */
+export interface MapView {
+  fog: number;
+  clip: number;
+  band: { width: number; opacity: number } | null;
+  edge: Drawn[];
+  points: Drawn[];
+}
+
+export function mapView(m: RadarModel, size: number): MapView {
+  const r = size / 2 - RIM;
+  const fog = easedAt(m.fog, m.now);
+  const drawn = drawOrder(m);
+  return {
+    fog,
+    clip: r2(r * (1 - fog)),
+    band: fog > 0 ? { width: r2(2 * r * fog), opacity: r2(fog) } : null,
+    edge: drawn.filter((d) => cutAtEdge(d.mark.item.kind)),
+    points: drawn.filter((d) => !cutAtEdge(d.mark.item.kind)),
+  };
+}
+
+/** The static's grains: a new seed every STATIC_MS while grainsRun says so. */
 function useGrainSeed(on: boolean): number {
   const [seed, setSeed] = useState(1);
   useEffect(() => {
-    if (!on) return;
-    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!grainsRun(on, reduced)) return;
     const id = window.setInterval(() => setSeed((s) => s + 1), STATIC_MS);
     return () => window.clearInterval(id);
   }, [on]);
@@ -176,15 +291,15 @@ const GLYPH: Record<Exclude<RadarKind, 'ranks' | 'route'>, ReactNode> = {
 };
 const CHEVRON = <path d="M0 -4.5L3.5 2.5L0 1L-3.5 2.5Z" />;
 
-const pointList = (ps: readonly { x: number; y: number }[]) => ps.map((p) => `${r2(p.x)},${r2(p.y)}`).join(' ');
+const pointList = (ps: readonly Px[]) => ps.map((p) => `${r2(p.x)},${r2(p.y)}`).join(' ');
 
 /** A mark's drawing and where it goes: the ranks and the route at their own coordinates, every other kind at its place. */
 function drawing(item: RadarItem, cc: number, aim: boolean): { body: ReactNode; transform?: string } {
   if (item.kind === 'ranks') {
     // radar.ts cuts the outline to the radius shown and anchors the item at the block's nearest point, inside it. The
     // outline is drawn as it comes; one of fewer than 3 points (a block just touching the edge) draws nothing, and a
-    // block given no outline at all (a round one) is a spot at its anchor. The ranks' clip still holds every one of them,
-    // in depth: at rest it is the radius shown, so it cuts nothing the data shows.
+    // block given no outline at all (a round one) is a spot at its anchor. The clip still holds every one of them, in
+    // depth: at rest it is the radius shown, so it cuts nothing the data shows.
     if (item.points) return { body: item.points.length >= 3 ? <polygon points={pointList(item.points)} /> : null };
     return { body: <circle cx={r2(item.x)} cy={r2(item.y)} r={4} /> };
   }
@@ -200,9 +315,6 @@ function drawing(item: RadarItem, cc: number, aim: boolean): { body: ReactNode; 
   const body = item.kind === 'tower' && aim ? <><circle className="bg-radar__halo" r={7} />{GLYPH.tower}</> : GLYPH[item.kind];
   return { body, transform: item.clamped ? `${at} scale(0.8)` : at };
 }
-
-/** How far in from the inner radius (px) the petal is widest, where its letter sits. */
-const PETAL_MID = 1.5;
 
 /**
  * A lotus petal across the rim, drawn for north at the top (the group round it turns it to north): its tip at the
@@ -239,52 +351,53 @@ export interface RadarProps {
   heading: number;
   /** Mata, Krishna's sight, is on: it sees through the static. */
   sight: boolean;
-  /** What the lakon leads to: the tower stands out while it is the aim. */
+  /** What the lakon leads to: the tower stands out only while it is the aim ('tower'; a stop may be at another place). */
   objective?: ObjectiveKey;
 }
 
+type MapProps = Omit<RadarProps, 'riuh'>;
+
 /**
- * The radar, heading-up: the map (an img labelled with its range) and the clamour (a meter from 0 to 5, one continuous
- * arc). The ranks are clipped to the visible radius, which the static's band shares, so nothing leaves the disc and no
- * outline shows under the static unless Mata is on.
+ * The map: an img labelled with its range. Its model takes each new snapshot while rendering, so it shows in the same
+ * frame, and asks for the next frame only while a mark fades or the static eases. The ranks and the route sit in a
+ * clip at the static's inner edge, so nothing of them leaves the disc or shows under the static unless Mata is on.
  */
-export function Radar({ locale, items, riuh, staticFrac, size, m, heading, sight, objective }: RadarProps) {
+const RadarMap = memo(function RadarMap({ locale, items, staticFrac, size, m, heading, sight, objective }: MapProps) {
   const c = GAME_COPY[locale].ride;
-  const value = within(riuh, 0, RIUH_MAX);
-  const fog = sight ? 0 : within(staticFrac, 0, 1);
-  const [model, setModel] = useState(() => radarModel(items, value, fog));
-  // A new snapshot is taken into the model while rendering, so it shows in this very frame.
-  if (model.items !== items || model.riuh.to !== value || model.fog.to !== fog) setModel(stepModel(model, items, value, fog, performance.now()));
+  const fog = fogFor(staticFrac, sight);
+  const aim = objective === 'tower';
+  const [model, setModel] = useState(() => radarModel(items, fog, aim));
+  if (model.items !== items || model.fog.to !== fog || model.aim !== aim) setModel(stepModel(model, items, fog, aim, performance.now()));
   useEffect(() => {
     if (!modelBusy(model)) return;
     const frame = requestAnimationFrame(() => setModel((x) => tickModel(x, performance.now())));
     return () => cancelAnimationFrame(frame);
   }, [model]);
-  const shownFog = easedAt(model.fog, model.now);
-  const shownRiuh = easedAt(model.riuh, model.now);
-  const seed = useGrainSeed(shownFog > 0);
-  const grains = useMemo(() => noiseGrains(seed), [seed]);
+  const view = mapView(model, size);
+  const seed = useGrainSeed(view.fog > 0);
   const uid = useId();
   const ids = { disc: `${uid}disc`, clear: `${uid}clear`, grain: `${uid}grain` };
+  const grains = useMemo(() => noiseGrains(seed), [seed]);
+  const pattern = useMemo(
+    () => (
+      <pattern id={ids.grain} width={TILE} height={TILE} patternUnits="userSpaceOnUse">
+        <rect className="bg-radar__wash" width={TILE} height={TILE} />
+        {grains.map((g, k) => <rect key={k} className="bg-radar__grain" x={g.x} y={g.y} width={g.s} height={g.s} />)}
+      </pattern>
+    ),
+    [grains, ids.grain],
+  );
 
   const cc = size / 2;
   const r = cc - RIM;
-  const arcR = cc - RIM / 2;
-  const sweep = (ARC.span * shownRiuh) / RIUH_MAX;
   const north = polar(cc, r - PETAL_MID, -heading);
-  const aim = objective === 'tower' || objective === 'stop';
-  const shown = model.marks
-    .filter((k) => k.to === 1 || markOpacity(k, model.now) > 0)
-    .sort((a, b) => LAYER[a.item.kind] - LAYER[b.item.kind]);
-  const nextPost = shown.find((k) => k.item.kind === 'post' && k.to === 1)?.key;
-  const mark = (k: RadarMark) => {
-    const o = markOpacity(k, model.now);
-    const { body, transform } = drawing(k.item, cc, aim);
+  const mark = ({ mark: k, opacity: o }: Drawn) => {
+    const { body, transform } = drawing(k.item, cc, k.aim);
     return (
       <g
         key={k.key} className="bg-radar__mark" data-kind={k.item.kind} data-clamped={k.item.clamped ? '' : undefined}
-        data-next={k.key === nextPost ? '' : undefined} data-aim={aim && k.item.kind === 'tower' ? '' : undefined}
-        style={o < 1 ? { opacity: r2(o) } : undefined} transform={transform}
+        data-next={k.next ? '' : undefined} data-aim={k.aim ? '' : undefined} style={o < 1 ? { opacity: r2(o) } : undefined}
+        transform={transform}
       >
         {body}
       </g>
@@ -292,47 +405,90 @@ export function Radar({ locale, items, riuh, staticFrac, size, m, heading, sight
   };
 
   return (
-    <div className="bg-radar">
-      <svg className="bg-radar__map" role="img" aria-label={c.radar({ m })} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <defs>
-          <clipPath id={ids.disc}><circle cx={cc} cy={cc} r={r} /></clipPath>
-          <clipPath id={ids.clear}><circle cx={cc} cy={cc} r={r2(r * (1 - shownFog))} /></clipPath>
-          {shownFog > 0 && (
-            <pattern id={ids.grain} width={TILE} height={TILE} patternUnits="userSpaceOnUse">
-              <rect className="bg-radar__wash" width={TILE} height={TILE} />
-              {grains.map((g, k) => <rect key={k} className="bg-radar__grain" x={g.x} y={g.y} width={g.s} height={g.s} />)}
-            </pattern>
-          )}
-        </defs>
-        <circle className="bg-radar__disc" cx={cc} cy={cc} r={r} />
-        <circle className="bg-radar__ring" cx={cc} cy={cc} r={r / 2} />
-        {/* The static lies under the petal and the marks: the ranks are clipped short of it and no other item stays
-            in it (radarItems drops them), so only a mark fading out crosses it, and the letter and the pips stay clear. */}
-        {shownFog > 0 && (
-          <circle
-            className="bg-radar__static" cx={cc} cy={cc} r={r} stroke={`url(#${ids.grain})`} clipPath={`url(#${ids.disc})`}
-            style={{ strokeWidth: r2(2 * r * shownFog), opacity: r2(shownFog) }}
-          />
-        )}
-        <g className="bg-radar__north" transform={`rotate(${-heading} ${cc} ${cc})`}>
-          <path className="bg-radar__petal" d={petalPath(cc, r)} />
-        </g>
-        <text className="bg-radar__letter" x={r2(north.x)} y={r2(north.y)} dy="0.35em" textAnchor="middle">{c.north}</text>
-        <g className="bg-radar__ranks" clipPath={`url(#${ids.clear})`}>{shown.filter((k) => k.item.kind === 'ranks').map(mark)}</g>
-        {shown.filter((k) => k.item.kind !== 'ranks').map(mark)}
-        <path className="bg-radar__car" d={`M${cc} ${cc - 6}L${cc + 4.5} ${cc + 5}L${cc} ${cc + 2.5}L${cc - 4.5} ${cc + 5}Z`} />
+    <svg className="bg-radar__map" role="img" aria-label={c.radar({ m })} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <defs>
+        <clipPath id={ids.disc}><circle cx={cc} cy={cc} r={r} /></clipPath>
+        <clipPath id={ids.clear}><circle cx={cc} cy={cc} r={view.clip} /></clipPath>
+        {view.band && pattern}
+      </defs>
+      <circle className="bg-radar__disc" cx={cc} cy={cc} r={r} />
+      <circle className="bg-radar__ring" cx={cc} cy={cc} r={r / 2} />
+      {/* The static lies under the petal and the marks: the ranks and the route are clipped short of it and no other item
+          stays in it (radarItems drops them), so only a mark fading out crosses it, and the letter and the pips stay clear. */}
+      {view.band && (
+        <circle
+          className="bg-radar__static" cx={cc} cy={cc} r={r} stroke={`url(#${ids.grain})`} clipPath={`url(#${ids.disc})`}
+          style={{ strokeWidth: view.band.width, opacity: view.band.opacity }}
+        />
+      )}
+      <g className="bg-radar__north" transform={`rotate(${-heading} ${cc} ${cc})`}>
+        <path className="bg-radar__petal" d={petalPath(cc, r)} />
+      </g>
+      <text className="bg-radar__letter" x={r2(north.x)} y={r2(north.y)} dy="0.35em" textAnchor="middle">{c.north}</text>
+      <g className="bg-radar__edge" clipPath={`url(#${ids.clear})`}>{view.edge.map(mark)}</g>
+      {view.points.map(mark)}
+      <path className="bg-radar__car" d={`M${cc} ${cc - 6}L${cc + 4.5} ${cc + 5}L${cc} ${cc + 2.5}L${cc - 4.5} ${cc + 5}Z`} />
+    </svg>
+  );
+});
+
+/**
+ * The clamour's fill: one path that eases to each new value over EASE_MS from wherever it is. It moves through a ref on
+ * its own frames, which stop once it is settled, so the clamour's steady motion re-renders nothing. Its first render
+ * draws the value as given.
+ */
+const ClamourFill = memo(function ClamourFill({ value, cc, r }: { value: number; cc: number; r: number }) {
+  const path = useRef<SVGPathElement>(null);
+  const ease = useRef<Eased | null>(null);
+  const first = useRef({ d: arcPath(cc, r, ARC.from, arcSweep(value)), sweep: r1(arcSweep(value)) }).current;
+  useEffect(() => {
+    const start = performance.now();
+    ease.current = ease.current ? retarget(ease.current, value, start) : settled(value, start);
+    let frame = 0;
+    const draw = () => {
+      const now = performance.now();
+      const e = ease.current!;
+      const sweep = arcSweep(easedAt(e, now));
+      path.current?.setAttribute('d', arcPath(cc, r, ARC.from, sweep));
+      path.current?.setAttribute('data-sweep', String(r1(sweep)));
+      frame = arcBusy(e, now) ? requestAnimationFrame(draw) : 0;
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, [value, cc, r]);
+  return <path ref={path} className="bg-riuh__fill" data-riuh-fill="" data-sweep={first.sweep} d={first.d} />;
+});
+
+/** The clamour: a meter from 0 to 5, one continuous arc on the rim with its name by the arc's start. */
+const ClamourMeter = memo(function ClamourMeter({ locale, riuh, size }: { locale: Locale; riuh: number; size: number }) {
+  const c = GAME_COPY[locale].ride;
+  const value = within(riuh, 0, RIUH_MAX);
+  const cc = size / 2;
+  const arcR = cc - RIM / 2;
+  return (
+    <div
+      className="bg-riuh" role="meter" aria-label={c.riuh} aria-valuemin={0} aria-valuemax={RIUH_MAX}
+      aria-valuenow={Math.round(value * 10) / 10} aria-valuetext={c.riuhLevel({ n: riuhLevel(value) })}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle className="bg-riuh__bed" cx={cc} cy={cc} r={arcR} />
+        <path className="bg-riuh__track" d={arcPath(cc, arcR, ARC.from, ARC.span)} />
+        <ClamourFill value={value} cc={cc} r={arcR} />
+        <text className="bg-riuh__label" x={2} y={size - 3}>{c.riuh}</text>
       </svg>
-      <div
-        className="bg-riuh" role="meter" aria-label={c.riuh} aria-valuemin={0} aria-valuemax={RIUH_MAX}
-        aria-valuenow={Math.round(value * 10) / 10} aria-valuetext={c.riuhLevel({ n: riuhLevel(value) })}
-      >
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-          <circle className="bg-riuh__bed" cx={cc} cy={cc} r={arcR} />
-          <path className="bg-riuh__track" d={arcPath(cc, arcR, ARC.from, ARC.span)} />
-          <path className="bg-riuh__fill" data-riuh-fill="" data-sweep={Math.round(sweep * 10) / 10} d={arcPath(cc, arcR, ARC.from, sweep)} />
-          <text className="bg-riuh__label" x={2} y={size - 3}>{c.riuh}</text>
-        </svg>
-      </div>
+    </div>
+  );
+});
+
+/**
+ * The radar, heading-up: the map and the clamour, stacked in one square. Each re-renders only on its own props, so a
+ * new clamour value never redraws the map and a new snapshot never restarts the arc.
+ */
+export function Radar({ locale, items, riuh, staticFrac, size, m, heading, sight, objective }: RadarProps) {
+  return (
+    <div className="bg-radar">
+      <RadarMap locale={locale} items={items} staticFrac={staticFrac} size={size} m={m} heading={heading} sight={sight} objective={objective} />
+      <ClamourMeter locale={locale} riuh={riuh} size={size} />
     </div>
   );
 }

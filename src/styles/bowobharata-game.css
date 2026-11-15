@@ -66,8 +66,9 @@
 .bg-radar-slot .bg-speed { margin: 0; padding: 0.15rem 0.65rem; border-radius: var(--radius-full); background: rgba(11, 16, 32, 0.72); line-height: 1.4; }
 .bg-gauges { position: absolute; bottom: 0.75rem; right: 0.75rem; display: grid; gap: 0.35rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-toasts { position: absolute; bottom: 0.75rem; left: 0.75rem; display: grid; gap: 0.35rem; max-width: min(22rem, 60%); }
-/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule. The buttons carry the rings, so there is no gauges panel. */
+/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule, in a smaller type so the longest fits a phone's column in four lines. The buttons carry the rings, so there is no gauges panel. */
 .bg-hud[data-touch] .bg-toasts { top: calc(0.75rem + 148px + 2.5rem); bottom: auto; left: auto; right: 0.75rem; max-width: min(22rem, calc(54% - 2rem)); }
+.bg-hud[data-touch] .bg-toast { font-size: 0.8rem; line-height: 1.45; padding: 0.3rem 0.55rem; }
 .bg-hud dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; }
 .bg-hud dl div { display: flex; gap: 0.35rem; }
 .bg-hud dt { color: var(--text-secondary); font-size: 0.85rem; }
@@ -162,11 +163,19 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
   .bg-hud[data-touch] .bg-toasts { top: calc(0.5rem + 148px + 2.5rem); right: 0.5rem; max-width: min(22rem, calc(54% - 1.5rem)); }
   .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
 }
+/* A short upright phone (360×640, 375×667): two toasts would reach Maju or Mata, so only the newest shows, whole. The
+   live region has already read each older one: it was the newest when it came. */
+@media (max-width: 480px) and (max-height: 720px) {
+  .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; }
+}
 /* A short stage (a phone on its side): the buttons' column runs nearly the stage's height, 168 px in from the right
-   (Laju's left edge), so on touch the radar and the toasts under it sit just left of it, past the objective panel. */
+   (Laju's left edge). On touch the objective panel narrows to 40%, the radar and the toasts under it sit just left of
+   the buttons, clear of the panel and the steer zone, and only the newest toast shows. */
 @media (max-height: 520px) {
-  .bg-hud[data-touch] .bg-radar-slot { right: calc(168px + 1rem); }
-  .bg-hud[data-touch] .bg-toasts { right: calc(168px + 1rem); max-width: calc(54% - 168px - 2.5rem); }
+  .bg-hud[data-touch] .bg-objective { max-width: min(22rem, 40%); }
+  .bg-hud[data-touch] .bg-radar-slot { right: calc(168px + 0.5rem); }
+  .bg-hud[data-touch] .bg-toasts { right: calc(168px + 0.5rem); max-width: calc(54% - 168px - 1rem); }
+  .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bg-game * { transition: none !important; animation: none !important; }

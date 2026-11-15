@@ -1,4 +1,6 @@
-// The game's screens, rendered from props only (TouchControls alone keeps pointer state), so they can be checked with renderToString.
+// The game's screens, rendered from props only, so they can be checked with renderToString. Two keep state of their own:
+// TouchControls its pointers, and the Radar (Radar.tsx) a presentational fade and ease state on the frame clock, whose
+// first render renderToString pins and whose timing is pinned through its pure model.
 // Every named person and every block of dossier dates sits in an element marked data-entry together with the allegation
 // line and the reply link, and every event card carries both too. The driving HUD (GameHud) shows counts, timers, speeds
 // and the radar's kinds and positions (Radar), and its toasts (toastText) counts, dates and channels only, never a name

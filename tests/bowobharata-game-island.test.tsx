@@ -440,6 +440,9 @@ describe('island wiring (source)', () => {
     // The frame's events go along, so a rewrite gate's toast covers its rewriteTaken.
     expect(src).toMatch(/toastText\(e, locale, flowRef\.current\.chapter, cardOf, events\)/);
     expect(src).toContain('.slice(-TOAST_MAX)');
+    // The newest toast is always the region's last child, which the short-stage CSS never hides (Task 34): it is added
+    // whole, so the polite live region speaks it; an older one is hidden only after it has been read.
+    expect(src).toContain('[...list, { id, text }].slice(-TOAST_MAX)');
     // The HUD redraws only when the snapshot changes.
     expect(src).toContain('prev && sameHud(prev, h) ? prev : h');
   });

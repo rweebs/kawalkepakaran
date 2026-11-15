@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import type { Perkara } from '../src/lib/perkara';
+import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
+import { gameData } from '../src/lib/bowobharata-game/data-build';
 import { RADAR_PX } from '../src/lib/bowobharata-game/radar';
 
 const css = readFileSync('src/styles/bowobharata-game.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -102,40 +105,105 @@ function px(v: string, of: number): number {
   if (i !== s.length) throw new Error(`not a length: ${v}`);
   return out;
 }
+/** Every @media block, in source order: its condition and its text. */
+const MEDIA = (() => {
+  const out: { cond: string; text: string }[] = [];
+  for (let at = css.indexOf('@media'); at !== -1; at = css.indexOf('@media', blockEnd(at).end)) {
+    const { open, end } = blockEnd(at);
+    out.push({ cond: css.slice(at + '@media'.length, open).trim(), text: css.slice(open + 1, end - 1) });
+  }
+  return out;
+})();
+/** Whether a media condition holds on a vw × vh screen: max-width and max-height in px, joined by `and`. Any other
+ * feature (reduced motion, say) does not hold. */
+function holds(cond: string, vw: number, vh: number): boolean {
+  return cond.split(/\s+and\s+/).every((f) => {
+    const m = /^\((max-width|max-height):\s*(\d+)px\)$/.exec(f.trim());
+    return m !== null && (m[1] === 'max-width' ? vw : vh) <= Number(m[2]);
+  });
+}
 /**
  * The value of `prop` for an element that `sels` match, least specific first, on a vw × vh viewport: the most specific
- * selector that sets it wins, and among its rules the last block (the base, then the 480 px and the short-stage blocks,
- * in their source order).
+ * selector that sets it wins, and among its rules the last block that applies (the base, then each @media block that
+ * holds, in source order). Undefined when nothing sets it.
  */
-function valueOf(sels: readonly string[], prop: string, vw: number, vh: number): string {
-  const blocks = [base, ...(vw <= 480 ? [media('(max-width: 480px)')] : []), ...(vh <= 520 ? [media('(max-height: 520px)')] : [])];
+function maybeValueOf(sels: readonly string[], prop: string, vw: number, vh: number): string | undefined {
+  const blocks = [base, ...MEDIA.filter((b) => holds(b.cond, vw, vh)).map((b) => b.text)];
   for (const sel of [...sels].reverse()) {
     let v: string | undefined;
     for (const b of blocks) v = within(b, sel, prop) ?? v;
     if (v !== undefined) return v;
   }
-  throw new Error(`${sels.join(' / ')}: no ${prop}`);
+  return undefined;
+}
+function valueOf(sels: readonly string[], prop: string, vw: number, vh: number): string {
+  const v = maybeValueOf(sels, prop, vw, vh);
+  if (v === undefined) throw new Error(`${sels.join(' / ')}: no ${prop}`);
+  return v;
 }
 interface Box { left: number; top: number; right: number; bottom: number }
 const overlaps = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-/** The stage on a phone. In the page: the container's width (100% − 2rem) and the height under the site header (100svh −
- * 59 px). In full screen: the whole screen. vw × vh is the viewport the media queries see. */
-const STAGES = [
-  { name: '360×780 portrait, in the page', vw: 360, vh: 780, w: 360 - 32, h: 780 - 59 },
-  { name: '360×780 portrait, full screen', vw: 360, vh: 780, w: 360, h: 780 },
-  { name: '780×360 landscape, in the page', vw: 780, vh: 360, w: 780 - 32, h: 360 - 59 },
-  { name: '780×360 landscape, full screen', vw: 780, vh: 360, w: 780, h: 360 },
-] as const;
+/** The phones the touch HUD must fit (Task 34's ruling), portrait then landscape: vw × vh. */
+const PHONES = [[360, 780], [360, 640], [375, 667], [780, 360], [640, 360], [667, 375]] as const;
+/** The stage on each phone. In the page: the container's width (100% − 2rem) and the height under the site header
+ * (100svh − 59 px). In full screen: the whole screen. vw × vh is the viewport the media queries see. */
+const STAGES = PHONES.flatMap(([vw, vh]) => [
+  { name: `${vw}×${vh} in the page`, vw, vh, w: vw - 32, h: vh - 59 },
+  { name: `${vw}×${vh} in full screen`, vw, vh, w: vw, h: vh },
+]);
+type Stage = (typeof STAGES)[number];
 const BUTTONS = ['rem', 'surge', 'mata', 'ride'] as const;
 /** The buttons' column, from the stage's right edge (px): Laju's left edge, 108 + 60. */
 const CLUSTER = Math.max(...BUTTONS.map((k) => parseFloat(declared(`.bg-touch__btn--${k}`, 'right')[0]) + parseFloat(declared(`.bg-touch__btn--${k}`, 'width')[0])));
-/** The speed pill under the radar (the slot's gap, one line at 1.4, its padding), and two toasts of three lines each. */
+/** The speed pill under the radar: the slot's gap, one line at 1.4 and its padding. */
 const PILL = 0.35 * 16 + 16 * 1.4 + 2 * 0.15 * 16;
-const TOASTS = 2 * (3 * 0.9 * 16 * 1.65 + 2 * 0.4 * 16) + 0.35 * 16;
+
+// The toasts' height model. Every toast the game can show, in both languages: each record's toast with its card's real
+// date and channel at its chapter's largest count, the prologue's count, the fixed lines and the lap lines.
+const GAME = gameData(JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara);
+const TOAST_TEXTS = (['id', 'en'] as const).flatMap((l) => {
+  const t = GAME_COPY[l].toasts;
+  return [
+    ...GAME.events.flatMap((cards) => cards.map((c) => t.recorded({ n: cards.length, total: cards.length, date: c.dateLabel[l], channel: c.channel[l] }))),
+    t.recordedPrologue({ n: 8, total: 8 }), t.filed, t.rewrite, t.ranks, t.checkpoint, t.wall, t.gate, t.letter,
+    t.lap({ n: 5, seconds: 188.8, matched: false }), t.lap({ n: 5, seconds: 188.8, matched: true }),
+  ];
+});
+/**
+ * A glyph's mean width in em. Measured in headless Chrome (system-ui) for every real toast at the touch columns of these
+ * phones, 0.52 never gives fewer lines than the browser, and at most one more.
+ */
+const GLYPH_EM = 0.52;
+/** The lines a text takes at `width` px, words wrapped greedily, each character `glyph` px wide. */
+function linesOf(text: string, width: number, glyph: number): number {
+  const per = Math.max(1, Math.floor(width / glyph));
+  let lines = 1;
+  let len = 0;
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const need = len === 0 ? word.length : len + 1 + word.length;
+    if (need <= per) len = need;
+    else {
+      lines += len === 0 ? 0 : 1;
+      lines += Math.ceil(word.length / per) - 1;
+      len = word.length % per || per;
+    }
+  }
+  return lines;
+}
+/** The height (px) of the tallest real toast in a column `width` px wide, on a vw × vh viewport. */
+function toastHeight(width: number, vw: number, vh: number): number {
+  const sels = ['.bg-toast', '.bg-hud[data-touch] .bg-toast'];
+  const font = px(valueOf(sels, 'font-size', vw, vh), 16);
+  const lineHeight = Number(maybeValueOf(sels, 'line-height', vw, vh) ?? '1.65');
+  const [padY, padX] = valueOf(sels, 'padding', vw, vh).split(' ').map((p) => px(p, 0));
+  const lines = Math.max(...TOAST_TEXTS.map((t) => linesOf(t, width - 2 * padX, GLYPH_EM * font)));
+  return lines * font * lineHeight + 2 * padY;
+}
 /** Where the touch HUD's parts and the touch controls lie on a stage, in px from its top left. */
-function lay(s: (typeof STAGES)[number]) {
+function lay(s: Stage) {
   const v = (sels: readonly string[], prop: string) => valueOf(sels, prop, s.vw, s.vh);
-  const objectiveRight = px(v(['.bg-objective'], 'left'), s.w) + px(v(['.bg-objective'], 'max-width'), s.w);
+  const objSels = ['.bg-objective', '.bg-hud[data-touch] .bg-objective'];
+  const objectiveRight = px(v(objSels, 'left'), s.w) + px(v(objSels, 'max-width'), s.w);
   const slotSels = ['.bg-radar-slot', '.bg-hud[data-touch] .bg-radar-slot'];
   const slotRight = s.w - px(v(slotSels, 'right'), s.w);
   const slotTop = px(v(slotSels, 'top'), s.h);
@@ -143,7 +211,13 @@ function lay(s: (typeof STAGES)[number]) {
   const toastSels = ['.bg-toasts', '.bg-hud[data-touch] .bg-toasts'];
   const toastsRight = s.w - px(v(toastSels, 'right'), s.w);
   const toastsTop = px(v(toastSels, 'top'), s.h);
-  const toasts: Box = { left: toastsRight - px(v(toastSels, 'max-width'), s.w), right: toastsRight, top: toastsTop, bottom: Math.min(s.h, toastsTop + TOASTS) };
+  const column = px(v(toastSels, 'max-width'), s.w);
+  const toastH = toastHeight(column, s.vw, s.vh);
+  const gap = px(v(['.bg-toasts'], 'gap'), 0);
+  // Where the CSS hides the older toasts, only the newest shows.
+  const newestOnly = maybeValueOf(['.bg-hud[data-touch] .bg-toast:not(:last-child)'], 'display', s.vw, s.vh) === 'none';
+  const shown = newestOnly ? 1 : 2;
+  const toasts: Box = { left: toastsRight - column, right: toastsRight, top: toastsTop, bottom: toastsTop + shown * toastH + (shown - 1) * gap };
   const buttons = Object.fromEntries(BUTTONS.map((k): [string, Box] => {
     const sel = `.bg-touch__btn--${k}`;
     const right = s.w - parseFloat(declared(sel, 'right')[0]);
@@ -152,7 +226,7 @@ function lay(s: (typeof STAGES)[number]) {
     return [k, { left: right - size, right, top: bottom - size, bottom }];
   }));
   const steer: Box = { left: 0, right: px(declared('.bg-touch__steer', 'width')[0], s.w), top: s.h - px(declared('.bg-touch__steer', 'height')[0], s.h), bottom: s.h };
-  return { objectiveRight, slot, toasts, buttons, steer };
+  return { objectiveRight, slot, toasts, toastH, gap, newestOnly, buttons, steer };
 }
 
 describe('bowobharata-game.css stage and HUD', () => {
@@ -314,42 +388,75 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(bodies('.bg-radar-slot .bg-speed').length).toBe(1);
     // No gauges panel on touch any more: the buttons carry the rings and the speed moved under the radar.
     expect(rules.filter((r) => r.selector.includes('[data-touch] .bg-gauges'))).toEqual([]);
-    // The toasts start under the radar's square and the speed pill, whatever the inset.
+    // The toasts start under the radar's square and the speed pill, whatever the inset, in a smaller type on touch.
     const t = '.bg-hud[data-touch] .bg-toasts';
     expect(within(base, t, 'top')).toBe(`calc(0.75rem + ${RADAR_PX}px + 2.5rem)`);
     expect(within(base, t, 'bottom')).toBe('auto');
     expect(within(base, t, 'left')).toBe('auto');
     expect(within(base, t, 'right')).toBe('0.75rem');
-    expect(within(media('(max-width: 480px)'), t, 'top')).toBe(`calc(0.5rem + ${RADAR_PX}px + 2.5rem)`);
-    expect(within(media('(max-width: 480px)'), t, 'right')).toBe('0.5rem');
-    // A short stage (a phone on its side): the radar and the toasts move left of the buttons' column.
+    expect(within(base, t, 'max-width')).toBe('min(22rem, calc(54% - 2rem))');
+    const toast = '.bg-hud[data-touch] .bg-toast';
+    expect([within(base, toast, 'font-size'), within(base, toast, 'line-height'), within(base, toast, 'padding')]).toEqual(['0.8rem', '1.45', '0.3rem 0.55rem']);
+    const narrow = media('(max-width: 480px)');
+    expect(within(narrow, t, 'top')).toBe(`calc(0.5rem + ${RADAR_PX}px + 2.5rem)`);
+    expect(within(narrow, t, 'right')).toBe('0.5rem');
+    expect(within(narrow, t, 'max-width')).toBe('min(22rem, calc(54% - 1.5rem))');
+    // A short stage (a phone on its side): the objective panel narrows to 40%, and the radar and the toasts sit just
+    // left of the buttons' column.
     const short = media('(max-height: 520px)');
-    expect(within(short, '.bg-hud[data-touch] .bg-radar-slot', 'right')).toBe(`calc(${CLUSTER}px + 1rem)`);
-    expect(within(short, t, 'right')).toBe(`calc(${CLUSTER}px + 1rem)`);
+    expect(within(short, '.bg-hud[data-touch] .bg-objective', 'max-width')).toBe('min(22rem, 40%)');
+    expect(within(short, '.bg-hud[data-touch] .bg-radar-slot', 'right')).toBe(`calc(${CLUSTER}px + 0.5rem)`);
+    expect(within(short, t, 'right')).toBe(`calc(${CLUSTER}px + 0.5rem)`);
+    expect(within(short, t, 'max-width')).toBe(`calc(54% - ${CLUSTER}px - 1rem)`);
   });
 
-  it('at 360×780 and 780×360, in the page and in full screen, the radar, the speed and the toasts clear the buttons, the steer zone and the objective panel', () => {
+  it('at every listed phone, in the page and in full screen, the radar, its speed and the toasts fit and clear every button, the steer zone and the objective panel', () => {
+    expect(STAGES).toHaveLength(12);
     for (const s of STAGES) {
       const L = lay(s);
       const where = `${s.name}`;
-      // The radar slot, the speed pill under it, and the toasts, inside the stage and in the right column.
+      // The radar slot with the speed pill under it, then the toasts, within the stage. No clamp: the toasts end
+      // inside it, at the model's height (the tallest real toast at the column's width).
       expect(L.slot.left, where).toBeGreaterThanOrEqual(0);
       expect(L.slot.right, where).toBeLessThanOrEqual(s.w);
       expect(L.slot.bottom, where).toBeLessThanOrEqual(s.h);
       expect(L.toasts.top, where).toBeGreaterThanOrEqual(L.slot.bottom + 4);
+      expect(L.toasts.bottom, where).toBeLessThanOrEqual(s.h - 8);
       // Clear of the objective panel at its widest (its height depends on its lines, so the columns must not meet).
       expect(L.slot.left, where).toBeGreaterThanOrEqual(L.objectiveRight + 8);
       expect(L.toasts.left, where).toBeGreaterThanOrEqual(L.objectiveRight + 8);
-      // Clear of every button, Maju included, and of the steer zone.
+      // Clear of every button, Maju included (shown with easy control off), and of the steer zone.
       for (const [name, b] of Object.entries(L.buttons)) {
         expect(overlaps(L.slot, b), `${where}: radar and ${name}`).toBe(false);
         expect(overlaps(L.toasts, b), `${where}: toasts and ${name}`).toBe(false);
       }
       expect(overlaps(L.slot, L.steer), `${where}: radar and steer`).toBe(false);
       expect(overlaps(L.toasts, L.steer), `${where}: toasts and steer`).toBe(false);
+      // Where two toasts would not fit above the buttons and inside the stage, only the newest shows.
+      const below = Object.values(L.buttons).filter((b) => b.left < L.toasts.right && L.toasts.left < b.right).map((b) => b.top);
+      const room = Math.min(s.h, ...below) - 8 - L.toasts.top;
+      if (2 * L.toastH + L.gap > room) expect(L.newestOnly, `${where}: two toasts need ${2 * L.toastH + L.gap} of ${room} px`).toBe(true);
     }
-    // Upright, the radar keeps the top right corner.
-    for (const s of STAGES.filter((x) => x.vh > x.vw)) expect(lay(s).slot.right, s.name).toBeGreaterThanOrEqual(s.w - 12);
+    // Upright, the radar keeps the top right corner, and the toasts end above Mata's and Maju's tops.
+    for (const s of STAGES.filter((x) => x.vh > x.vw)) {
+      const L = lay(s);
+      expect(L.slot.right, s.name).toBeGreaterThanOrEqual(s.w - 12);
+      expect(L.toasts.bottom, s.name).toBeLessThanOrEqual(Math.min(L.buttons.mata.top, L.buttons.ride.top) - 8);
+    }
+    // On a tall phone both toasts still show.
+    expect(lay(STAGES[0]).newestOnly).toBe(false);
+  });
+
+  it('never hides the newest toast: only older ones are hidden, whole, so the live region still speaks each new one', () => {
+    const hiding = rules.filter((r) => r.selector.includes('.bg-toast') && /(^|;\s*)display:\s*none/.test(r.body));
+    expect(hiding.length).toBeGreaterThan(0);
+    for (const r of hiding) {
+      for (const sel of r.selector.split(',').map((x) => x.trim())) expect(sel).toBe('.bg-hud[data-touch] .bg-toast:not(:last-child)');
+    }
+    // Hidden whole: nothing clips a toast's height or its text.
+    for (const sel of ['.bg-toast', '.bg-toasts', '.bg-hud[data-touch] .bg-toast', '.bg-hud[data-touch] .bg-toasts']) {
+      for (const p of ['max-height', 'height', 'overflow', 'text-overflow', '-webkit-line-clamp']) expect(declared(sel, p), `${sel} ${p}`).toEqual([]);
+    }
   });
 });
 

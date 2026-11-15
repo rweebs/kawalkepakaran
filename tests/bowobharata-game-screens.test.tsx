@@ -14,14 +14,17 @@ import { hudOf, type HudSnapshot, type ObjectiveKey } from '../src/lib/bowobhara
 import type { GameEvent, HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { CHAPTER_TYPES, missionFor, type MissionType } from '../src/lib/bowobharata-game/missions';
 import { RADAR_PX, radarPoint, type RadarItem, type RadarKind } from '../src/lib/bowobharata-game/radar';
+import { RIUH } from '../src/lib/bowobharata-game/tuning';
 import { ANCHORS } from '../src/lib/bowobharata-game/world';
+import type { XZ } from '../src/lib/bowobharata-game/geom';
 import { mulberry32 } from '../src/lib/sky/rng';
 import {
   FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Radar, Recorded, SanjayaReport, SlowPrompt, TouchControls, cardView, toastText,
   type HudToast, type RadarProps,
 } from '../src/components/bowobharata-game/screens';
 import {
-  EASE_MS, FADE_MS, STATIC_MS, arcPath, easedAt, markOpacity, modelBusy, noiseGrains, radarModel, stepModel, tickModel, trackMarks,
+  EASE_MS, FADE_MS, STATIC_MS, arcBusy, arcPath, arcSweep, drawOrder, easedAt, fogFor, grainsRun, mapView, markOpacity, modelBusy,
+  noiseGrains, radarModel, retarget, settled, stepModel, tickModel, trackMarks, type MapView, type RadarModel,
 } from '../src/components/bowobharata-game/Radar';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
@@ -468,17 +471,24 @@ const ITEMS: RadarItem[] = [
 ];
 const radarWorld = createWorld({ mobile: false });
 /**
- * Chapter ch's lakon, active, its snapshot taken with the chariot at rest at `at` (or where the lakon starts), the
- * clamour at `riuh` and Mata on or off.
+ * Chapter ch's lakon, active (at `step` if given), its snapshot taken with the chariot at rest at `at` (or where the lakon
+ * starts), the clamour at `riuh`, Mata on or off, and the route ahead along `route` (world points) or none.
  */
-function realSnap(ch: number, at: { x: number; z: number; yaw: number } | null, riuh = 0, sight = false): HudSnapshot {
+function realSnap(
+  ch: number, at: { x: number; z: number; yaw: number } | null, o: { riuh?: number; sight?: boolean; step?: number; route?: XZ[] } = {},
+): HudSnapshot {
   // Each chapter's own number of records, as the radar test has them.
   const def = missionFor(ch, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].slice(0, [0, 2, 2, 4, 9, 1, 2, 2, 2][ch]));
   const s = startChapter(def, def.start, 1, radarWorld);
   const car = at ? initChariot(at.x, at.z, at.yaw) : s.car;
-  const state = { ...s, car, route: null, run: { ...s.run, phase: 'active' as const }, riuh: { ...s.riuh, value: riuh }, sight: { ...s.sight, on: sight } };
+  const run = { ...s.run, phase: 'active' as const, ...(o.step === undefined ? {} : { step: o.step }) };
+  const route = o.route ? { target: 'test', points: o.route } : null;
+  const state = { ...s, car, route, run, riuh: { ...s.riuh, value: o.riuh ?? 0 }, sight: { ...s.sight, on: o.sight ?? false } };
   return hudOf(state, radarWorld);
 }
+/** 7 m off the Kurawa block, at rest, facing east, with a route running north from the chariot for 200 m. */
+const BY_RANKS = { x: 24, z: 20, yaw: 0 };
+const NORTH_ROUTE: XZ[] = [{ x: 24, z: 20 }, { x: 24, z: -180 }];
 
 describe('GameHud', () => {
   /** A HUD snapshot of the prologue, 2 of 8 recorded, with any field replaced. */
@@ -617,8 +627,9 @@ describe('GameHud', () => {
     expect(element(map({ riuh: 2.5, level: 2 }), 'data-riuh-fill')).toContain('data-sweep="150"');
     expect(element(map({ riuh: 4.6, level: 4, staticFrac: 0.3 }), 'class="bg-radar__static"')).toContain('opacity:0.3');
     expect(map({ riuh: 4.6, level: 4, staticFrac: 0.3, sight: { on: true, charge: 0.5 } })).not.toContain('bg-radar__static');
-    for (const objective of ['tower', 'stop'] as const) expect(element(map({ objective }), 'data-kind="tower"')).toContain('data-aim');
-    for (const objective of ['collect', 'roam', 'gate'] as const) expect(element(map({ objective }), 'data-kind="tower"')).not.toContain('data-aim');
+    // Only a lakon that leads to the tower makes it stand out; a stop is wherever the step's circle is (Antar's is the gate).
+    expect(element(map({ objective: 'tower' }), 'data-kind="tower"')).toContain('data-aim');
+    for (const objective of ['stop', 'collect', 'roam', 'gate'] as const) expect(map({ objective }), objective).not.toContain('data-aim');
   });
 
   it('a real snapshot: as many record marks as the snapshot has records, the clamped ones marked so, in both locales', () => {
@@ -747,9 +758,9 @@ describe('Radar', () => {
     const html = radar(o);
     return html.includes('bg-radar__static') ? element(html, 'class="bg-radar__static"') : null;
   };
-  /** The radius of the clip path that holds the ranks, and the group it clips. */
-  function ranksClip(html: string): { r: number; group: string } {
-    const group = element(html, 'class="bg-radar__ranks"');
+  /** The radius of the clip path that holds the ranks and the route, and the group it clips. */
+  function edgeClip(html: string): { r: number; group: string } {
+    const group = element(html, 'class="bg-radar__edge"');
     const id = /clip-path="url\(#([^)]+)\)"/.exec(group)![1];
     const r = new RegExp(`<clipPath id="${id}"><circle cx="${C}" cy="${C}" r="([\\d.]+)"`).exec(html)![1];
     return { r: Number(r), group };
@@ -777,12 +788,41 @@ describe('Radar', () => {
     }
   });
 
-  it('draws in the snapshot\'s order of kinds: ranks, shelters, route, copies, tower, replays, then the lakon\'s targets', () => {
+  it('draws in layers: the ranks and the route in the clip, then shelters, copies, tower, replays and the lakon\'s targets', () => {
     const order = [...radar().matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(['ranks', 'shelter', 'shelter', 'route', 'decoy', 'tower', 'replay', 'marker', 'record', 'record', 'gate', 'post', 'post']);
+    expect(order).toEqual(['ranks', 'route', 'shelter', 'shelter', 'decoy', 'tower', 'replay', 'marker', 'record', 'record', 'gate', 'post', 'post']);
     // The next lap post is the brighter one.
     const posts = [...radar().matchAll(/<g[^>]*data-kind="post"[^>]*>/g)].map((m) => m[0]);
     expect(posts.map((g) => g.includes('data-next'))).toEqual([true, false]);
+  });
+
+  it('the route is drawn in the same eased clip as the ranks, so it never shows past the radius shown', () => {
+    for (const o of [{}, { staticFrac: 0.3 }, { staticFrac: 0.45, sight: true }]) {
+      const html = radar(o);
+      const { group } = edgeClip(html);
+      expect(count(group, 'data-kind="route"')).toBe(1);
+      expect(count(group, 'data-kind="ranks"')).toBe(1);
+      expect(count(html, 'data-kind="route"')).toBe(1);
+    }
+  });
+
+  it('the tower stands out only while the lakon leads to it, never at a stop: not at Antar\'s gate', () => {
+    const at = { x: ANCHORS.gate.x, z: ANCHORS.gate.z, yaw: Math.PI };
+    const draw = (hud: HudSnapshot) =>
+      renderToString(<Radar locale="en" items={hud.radar} riuh={hud.riuh} staticFrac={hud.staticFrac} size={RADAR_PX} m={70} heading={hud.heading} sight={false} objective={hud.objective} />);
+    // Antar (chapter 2), step 1: the letter at the Hastinapura gate. In the gate's circle the objective is 'stop'.
+    const stop = realSnap(2, at, { step: 1 });
+    expect(stop.objective).toBe('stop');
+    expect(stop.radar.some((i) => i.kind === 'tower')).toBe(true);
+    const plain = draw(stop);
+    expect(plain).not.toContain('data-aim');
+    expect(plain).not.toContain('bg-radar__halo');
+    // Its last step leads to the tower: from the same place the objective is 'tower', and the tower has its halo.
+    const tower = realSnap(2, at, { step: 3 });
+    expect(tower.objective).toBe('tower');
+    const aimed = draw(tower);
+    expect(element(aimed, 'data-kind="tower"')).toContain('data-aim');
+    expect(element(element(aimed, 'data-kind="tower"'), 'class="bg-radar__halo"')).toBeTruthy();
   });
 
   it('the clamour is a meter from 0 to 5: its value to one decimal, its name and its level from the copy', () => {
@@ -853,14 +893,14 @@ describe('Radar', () => {
     // The disc's radius is radar.ts's inner radius: where a far place is clamped.
     const far = radarPoint({ x: 0, z: -5000 }, { x: 0, z: 0, yaw: Math.PI / 2 }, 70, RADAR_PX);
     expect(Math.hypot(far.x - C, far.y - C)).toBeCloseTo(R, 9);
-    expect(ranksClip(radar()).r).toBe(R);
-    expect(ranksClip(radar({ staticFrac: 0.3 })).r).toBeCloseTo(R * 0.7, 9);
-    expect(ranksClip(radar({ staticFrac: 0.45 })).r).toBeCloseTo(R * 0.55, 9);
-    expect(ranksClip(radar({ staticFrac: 0.45, sight: true })).r).toBe(R);
+    expect(edgeClip(radar()).r).toBe(R);
+    expect(edgeClip(radar({ staticFrac: 0.3 })).r).toBeCloseTo(R * 0.7, 9);
+    expect(edgeClip(radar({ staticFrac: 0.45 })).r).toBeCloseTo(R * 0.55, 9);
+    expect(edgeClip(radar({ staticFrac: 0.45, sight: true })).r).toBe(R);
     // In depth: radar.ts cuts the outline itself, but an item out of that contract (corners past the disc, the anchor
     // clamped to the rim) is still held. Every ranks mark sits in the group, as its outline, nothing drawn at its anchor.
     const html = radar({ staticFrac: 0.3 });
-    const { group } = ranksClip(html);
+    const { group } = edgeClip(html);
     expect(count(html, 'data-kind="ranks"')).toBe(1);
     const mark = element(group, 'data-kind="ranks"');
     expect(mark).toContain('<polygon points="96,4 196,4 196,70 96,70"');
@@ -868,8 +908,8 @@ describe('Radar', () => {
     // A block given no outline (a round one) is a spot in the same group, so the clip holds it too.
     const bare: RadarItem = { kind: 'ranks', ...rim(300), clamped: true, dist: 3 };
     const lone = renderToString(<Radar locale="en" items={[bare]} riuh={4.2} staticFrac={0.3} size={RADAR_PX} m={70} heading={0} sight={false} />);
-    expect(count(ranksClip(lone).group, 'data-kind="ranks"')).toBe(1);
-    expect(element(ranksClip(lone).group, 'data-kind="ranks"')).toContain('<circle');
+    expect(count(edgeClip(lone).group, 'data-kind="ranks"')).toBe(1);
+    expect(element(edgeClip(lone).group, 'data-kind="ranks"')).toContain('<circle');
     expect(count(lone, 'data-kind="ranks"')).toBe(1);
   });
 
@@ -878,13 +918,13 @@ describe('Radar', () => {
     // At rest 7 m off the Kurawa block: level 4 with Mata off and on, level 5, and calm.
     const cases = [[4.2, false, R * 0.7], [4.2, true, R], [5, false, R * 0.55], [0, false, R]] as const;
     for (const [riuh, sight, radius] of cases) {
-      const hud = realSnap(1, { x: 24, z: 20, yaw: 0 }, riuh, sight);
+      const hud = realSnap(1, BY_RANKS, { riuh, sight });
       const ranks = hud.radar.filter((i) => i.kind === 'ranks');
       expect(ranks.length, `${riuh} ${sight}`).toBeGreaterThan(0);
       const html = renderToString(
         <Radar locale="id" items={hud.radar} riuh={hud.riuh} staticFrac={hud.staticFrac} size={RADAR_PX} m={70} heading={hud.heading} sight={sight} />,
       );
-      const clip = ranksClip(html);
+      const clip = edgeClip(html);
       expect(clip.r, `${riuh} ${sight}`).toBeCloseTo(radius, 9);
       for (const k of ranks) {
         expect(k.clamped).toBe(false);
@@ -900,7 +940,7 @@ describe('Radar', () => {
     // A block that just touches the edge comes with fewer than 3 points: it draws nothing.
     const touching: RadarItem = { kind: 'ranks', x: C, y: C - R * 0.7, clamped: false, dist: 49, points: [{ x: C, y: C - R * 0.7 }] };
     const html = renderToString(<Radar locale="en" items={[touching]} riuh={4.2} staticFrac={0.3} size={RADAR_PX} m={70} heading={0} sight={false} />);
-    const mark = element(ranksClip(html).group, 'data-kind="ranks"');
+    const mark = element(edgeClip(html).group, 'data-kind="ranks"');
     expect(mark).not.toMatch(/<polygon|<circle|<path/);
   });
 
@@ -950,27 +990,79 @@ describe('Radar', () => {
 });
 
 describe('Radar fades and eases (the model behind it)', () => {
-  const rec = (x: number, y = 74): RadarItem => ({ kind: 'record', x, y, clamped: false, dist: 10 });
-  const opacities = (m: ReturnType<typeof radarModel>) => new Map(m.marks.map((k) => [k.key, markOpacity(k, m.now)]));
+  const rec = (x: number, y = 74, clamped = false): RadarItem => ({ kind: 'record', x, y, clamped, dist: 10 });
+  const opacities = (m: RadarModel) => new Map(m.marks.map((k) => [k.key, markOpacity(k, m.now)]));
+  const isEdge = (i: RadarItem) => i.kind === 'ranks' || i.kind === 'route';
+  /** How far out (px from the centre) a mark's outline or line reaches. */
+  const reach = (i: RadarItem) => Math.max(...(i.points ?? [i]).map((p) => Math.hypot(p.x - C, p.y - C)));
+  /** The map model's inputs from a snapshot, as the Radar takes them. */
+  const inputs = (h: HudSnapshot) => [h.radar, fogFor(h.staticFrac, h.sight.on), h.objective === 'tower'] as const;
+
+  /**
+   * Runs the map model on a 16 ms frame clock from the first snapshot's time to `until`, taking each later snapshot at
+   * its time, and checks every frame against the one before:
+   * - a ranks or route mark comes in at opacity 0 and leaves only at 0, and no mark's opacity moves faster than one
+   *   full fade per FADE_MS;
+   * - while a mark is seen in both frames its shape never changes (the chariot is at rest, so only a cut could change it);
+   * - every ranks and route mark is drawn in the clip, whose radius is the shown static's inner edge and moves no faster
+   *   than the static's ease.
+   */
+  function run(snaps: { at: number; hud: HudSnapshot }[], until: number): { m: RadarModel; views: MapView[] } {
+    let m = radarModel(...inputs(snaps[0].hud), snaps[0].at);
+    let prev = mapView(m, RADAR_PX);
+    const views = [prev];
+    let next = 1;
+    for (let t = snaps[0].at + 16; t <= until; t += 16) {
+      while (next < snaps.length && snaps[next].at <= t) m = stepModel(m, ...inputs(snaps[next++].hud), t);
+      m = tickModel(m, t);
+      const view = mapView(m, RADAR_PX);
+      const step = 16 / FADE_MS + 1e-9;
+      const was = new Map(prev.edge.map((d) => [d.mark.key, d]));
+      for (const d of view.edge) {
+        const p = was.get(d.mark.key);
+        expect(Math.abs(d.opacity - (p?.opacity ?? 0)), `t ${t} key ${d.mark.key}`).toBeLessThanOrEqual(step);
+        if (p && p.opacity > 0 && d.opacity > 0) expect(d.mark.item.points, `t ${t} key ${d.mark.key}`).toEqual(p.mark.item.points);
+      }
+      const keys = new Set(view.edge.map((d) => d.mark.key));
+      for (const p of prev.edge) if (!keys.has(p.mark.key)) expect(p.opacity, `t ${t} key ${p.mark.key} left`).toBeLessThanOrEqual(step);
+      expect(view.points.some((d) => isEdge(d.mark.item))).toBe(false);
+      expect(view.clip).toBeCloseTo(R * (1 - easedAt(m.fog, m.now)), 1);
+      expect(Math.abs(view.clip - prev.clip), `t ${t} clip`).toBeLessThanOrEqual((R * 0.45 * 16) / EASE_MS + 0.011);
+      views.push(view);
+      prev = view;
+    }
+    return { m, views };
+  }
+  /** At rest: nothing in the static band, the clip at the radius shown, no mark on its way. */
+  function expectAtRest(m: RadarModel, fog: number) {
+    expect(modelBusy(m)).toBe(false);
+    const v = mapView(m, RADAR_PX);
+    expect(v.clip).toBeCloseTo(R * (1 - fog), 1);
+    for (const d of v.edge) {
+      expect(d.opacity).toBe(1);
+      expect(reach(d.mark.item)).toBeLessThanOrEqual(v.clip + 0.01);
+    }
+  }
 
   it('fades over at least a quarter second: FADE_MS and EASE_MS', () => {
     expect(FADE_MS).toBeGreaterThanOrEqual(250);
     expect(EASE_MS).toBeGreaterThanOrEqual(250);
   });
 
-  it('the first view shows its items at once, the static and the arc at their values, and is still', () => {
-    const m = radarModel(ITEMS, 2.5, 0.3);
+  it('the first view shows its items at once and the static at its value, and is still', () => {
+    const m = radarModel(ITEMS, 0.3, false);
     expect(m.marks.map((k) => k.item)).toEqual(ITEMS);
     expect([...opacities(m).values()].every((o) => o === 1)).toBe(true);
-    expect(easedAt(m.riuh, m.now)).toBe(2.5);
     expect(easedAt(m.fog, m.now)).toBe(0.3);
     expect(modelBusy(m)).toBe(false);
+    // Mata sees through the static: none is shown while it is on.
+    expect([fogFor(0.3, false), fogFor(0.3, true), fogFor(0.45, false), fogFor(Number.NaN, false)]).toEqual([0.3, 0, 0.45, 0]);
   });
 
   it('a mark keeps its key while its item moves; a new item fades in and a gone one fades out, both at one fade per FADE_MS', () => {
-    let m = radarModel([rec(40), rec(100)], 0, 0);
+    let m = radarModel([rec(40), rec(100)], 0, false);
     const [a, b] = m.marks.map((k) => k.key);
-    m = stepModel(m, [rec(43, 75), rec(70, 30)], 0, 0, 1000);
+    m = stepModel(m, [rec(43, 75), rec(70, 30)], 0, false, 1000);
     // The first moved 3 px: the same mark, at full. The second vanished; a new one came at (70, 30).
     expect(m.marks.find((k) => k.key === a)!.item.x).toBe(43);
     expect(markOpacity(m.marks.find((k) => k.key === a)!, 1000)).toBe(1);
@@ -984,7 +1076,7 @@ describe('Radar fades and eases (the model behind it)', () => {
     expect(markOpacity(gone, 1000)).toBe(1);
     expect(markOpacity(gone, 1000 + FADE_MS / 4)).toBeCloseTo(0.75, 9);
     expect(modelBusy(m)).toBe(true);
-    // Once faded out it leaves the model; until then the frame clock keeps it.
+    // Once faded out it leaves the model; until then the frame clock keeps it, and once settled no frame is asked for.
     expect(tickModel(m, 1000 + FADE_MS - 1).marks.some((k) => k.key === b)).toBe(true);
     const done = tickModel(m, 1000 + FADE_MS);
     expect(done.marks.some((k) => k.key === b)).toBe(false);
@@ -992,16 +1084,16 @@ describe('Radar fades and eases (the model behind it)', () => {
   });
 
   it('a mark that comes back fades back in from where it was, and the route stays one mark however far its end moves', () => {
-    let m = radarModel([rec(40)], 0, 0);
+    let m = radarModel([rec(40)], 0, false);
     const key = m.marks[0].key;
-    m = stepModel(m, [], 0, 0, 1000);
-    m = stepModel(m, [rec(41)], 0, 0, 1000 + FADE_MS * 0.6);
+    m = stepModel(m, [], 0, false, 1000);
+    m = stepModel(m, [rec(41)], 0, false, 1000 + FADE_MS * 0.6);
     const back = m.marks.find((k) => k.key === key)!;
     expect(markOpacity(back, m.now)).toBeCloseTo(0.4, 9);
     expect(markOpacity(back, m.now + FADE_MS * 0.3)).toBeCloseTo(0.7, 9);
     const route = (x: number): RadarItem => ({ kind: 'route', x, y: 10, clamped: true, dist: 300, points: [{ x: 74, y: 74 }, { x, y: 10 }] });
-    let r = radarModel([route(20)], 0, 0);
-    r = stepModel(r, [route(130)], 0, 0, 500);
+    let r = radarModel([route(20)], 0, false);
+    r = stepModel(r, [route(130)], 0, false, 500);
     expect(r.marks).toHaveLength(1);
     expect(r.marks[0].key).toBe(0);
     expect(markOpacity(r.marks[0], 500)).toBe(1);
@@ -1009,16 +1101,16 @@ describe('Radar fades and eases (the model behind it)', () => {
 
   it('whatever the snapshots do, no mark appears, changes or leaves faster than one full fade per FADE_MS', () => {
     const rand = mulberry32(17);
-    let m = radarModel([], 0, 0);
+    let m = radarModel([], 0, false);
     const seen = new Map<number, { t: number; o: number }>();
     let t = 2000;
     let checked = 0;
     for (let k = 0; k < 600; k++) {
       t += 4 + Math.floor(rand() * 70);
       if (rand() < 0.6) {
-        // Up to six records that jitter by a pixel or two, come, go and come back near where they were.
-        const items = Array.from({ length: Math.floor(rand() * 7) }, (_, i) => rec(18 + i * 19 + rand() * 2, 74 + rand() * 2));
-        m = stepModel(m, rand() < 0.5 ? items : items.reverse(), 0, 0, t);
+        // Up to six records that jitter by a pixel or two, come, go, come back near where they were, and touch the rim.
+        const items = Array.from({ length: Math.floor(rand() * 7) }, (_, i) => rec(18 + i * 19 + rand() * 2, 74 + rand() * 2, rand() < 0.3));
+        m = stepModel(m, rand() < 0.5 ? items : items.reverse(), rand() < 0.2 ? 0.3 : 0, rand() < 0.1, t);
       } else m = tickModel(m, t);
       const live = new Set<number>();
       for (const [key, o] of opacities(m)) {
@@ -1038,29 +1130,206 @@ describe('Radar fades and eases (the model behind it)', () => {
     expect(checked).toBeGreaterThan(500);
   });
 
-  it('the static band and the arc ease to a new value over EASE_MS from wherever they are, never jumping', () => {
-    let m = radarModel([], 1, 0);
-    m = stepModel(m, [], 2.5, 0.3, 1000);
-    expect(easedAt(m.riuh, 1000)).toBe(1);
-    expect(easedAt(m.riuh, 1000 + EASE_MS / 2)).toBeCloseTo(1.75, 9);
-    expect(easedAt(m.riuh, 1000 + EASE_MS)).toBe(2.5);
+  it('the static band and its clip ease to a new value over EASE_MS from wherever they are, never jumping', () => {
+    let m = radarModel([], 0, false);
+    m = stepModel(m, [], 0.3, false, 1000);
+    expect(easedAt(m.fog, 1000)).toBe(0);
     expect(easedAt(m.fog, 1000 + EASE_MS / 2)).toBeCloseTo(0.15, 9);
     // Mata comes on half way: the static turns back from where it is.
     const mid = easedAt(m.fog, 1000 + EASE_MS / 2);
-    m = stepModel(m, [], 2.5, 0, 1000 + EASE_MS / 2);
+    m = stepModel(m, [], 0, false, 1000 + EASE_MS / 2);
     expect(easedAt(m.fog, m.now)).toBeCloseTo(mid, 9);
     expect(modelBusy(m)).toBe(true);
     expect(easedAt(m.fog, m.now + EASE_MS)).toBe(0);
     expect(modelBusy(tickModel(m, m.now + EASE_MS))).toBe(false);
     // The clock never runs back.
     expect(tickModel(m, 0).now).toBe(m.now);
+    // The band and the clip follow the same eased value.
+    const v = mapView(tickModel(m, m.now + EASE_MS / 5), RADAR_PX);
+    expect(v.band!.width).toBeCloseTo(2 * R * v.fog, 1);
+    expect(v.clip).toBeCloseTo(R * (1 - v.fog), 1);
   });
 
   it('trackMarks matches by kind: a record never takes over a copy\'s mark, however near', () => {
     const copy: RadarItem = { kind: 'decoy', x: 50, y: 50, clamped: false, dist: 5 };
-    const { marks, next } = trackMarks(radarModel([copy], 0, 0).marks, [rec(50, 50)], 100, 1);
+    const { marks, next } = trackMarks(radarModel([copy], 0, false).marks, [rec(50, 50)], 100, 1);
     expect(next).toBe(2);
     expect(marks.map((k) => [k.key, k.item.kind, k.to])).toEqual([[1, 'record', 1], [0, 'decoy', 0]]);
+  });
+
+  // ── Ruling 1: the ranks and the route at the static's edge ─────────────────────────────────────────────────────────
+
+  describe('the ranks outline and the route at the static\'s edge', () => {
+    /** At rest by the Kurawa block with a route north: the clamour and Mata as given. */
+    const by = (riuh: number, sight: boolean) => realSnap(1, BY_RANKS, { riuh, sight, route: NORTH_ROUTE });
+
+    it('the scene has ranks and a route, and radar.ts cuts both at the radius shown', () => {
+      for (const [riuh, sight, radius] of [[4.2, true, R], [4.2, false, R * 0.7], [3.9, false, R]] as const) {
+        const h = by(riuh, sight);
+        expect(h.radar.filter((i) => i.kind === 'ranks').length).toBeGreaterThan(0);
+        expect(h.radar.filter((i) => i.kind === 'route')).toHaveLength(1);
+        for (const i of h.radar.filter(isEdge)) expect(reach(i)).toBeLessThanOrEqual(radius + 0.01);
+      }
+      // With Mata on, the outline and the route reach well past the static's inner edge: those are the parts in question.
+      expect(Math.max(...by(4.2, true).radar.filter(isEdge).map(reach))).toBeGreaterThan(R * 0.7 + 10);
+    });
+
+    it('Mata off: the outer outline and route stay, fading out under the clip as the static comes in, and never pop', () => {
+      const { m, views } = run([{ at: 0, hud: by(4.2, true) }, { at: 1000, hud: by(4.2, false) }], 2600);
+      // The first frame after the step still shows the outline and the route out as far as before, at nearly full strength.
+      const i = Math.ceil(1000 / 16);
+      const before = views[i - 1];
+      const after = views[i];
+      const far = (v: MapView, at: number) => Math.max(...v.edge.filter((d) => d.opacity >= at).map((d) => Math.min(reach(d.mark.item), v.clip)));
+      expect(far(after, 0.9)).toBeCloseTo(far(before, 0.9), 0);
+      expect(far(before, 0.9)).toBeGreaterThan(R * 0.7 + 10);
+      expectAtRest(m, 0.3);
+    });
+
+    it('Mata on: the longer outline and route come in under the clip as the static recedes, never at once', () => {
+      const { m, views } = run([{ at: 0, hud: by(4.2, false) }, { at: 1000, hud: by(4.2, true) }], 2600);
+      // Right after the step nothing shows past the old edge; the new parts come in with the clip.
+      const after = views[Math.ceil(1000 / 16)];
+      for (const d of after.edge) expect(Math.min(reach(d.mark.item), after.clip)).toBeLessThanOrEqual(R * 0.7 + 1);
+      expectAtRest(m, 0);
+    });
+
+    it('a level step from 3 to 4 cross-fades the same way, and back from 4 to 3', () => {
+      expectAtRest(run([{ at: 0, hud: by(3.9, false) }, { at: 1000, hud: by(4.2, false) }], 2600).m, 0.3);
+      expectAtRest(run([{ at: 0, hud: by(4.2, false) }, { at: 1000, hud: by(3.9, false) }], 2600).m, 0);
+    });
+
+    it('keeps at most two copies of a cut shape on their way out, however fast its cut and its shape change', () => {
+      // A route shown in full, then reshaped and re-cut at 200, 300, 350 and 380 ms while the chariot moves: each change
+      // leaves the last shape fading out. By 350 ms three would be on their way out (the full one at 0.7, two at 0.1);
+      // the faintest goes, so at most two are.
+      const routeAt = (k: number, clamped: boolean): RadarItem => {
+        const end = { x: 20 + k * 9, y: 10 + k * 4 };
+        return { kind: 'route', ...end, clamped, dist: 300, points: [{ x: C, y: C }, end] };
+      };
+      let m = radarModel([routeAt(0, false)], 0, false, 0);
+      const steps = [[1, 200, true, 0.3], [2, 300, false, 0.45], [3, 350, true, 0], [4, 380, false, 0.3]] as const;
+      for (const [k, t, clamped, fog] of steps) {
+        m = stepModel(m, [routeAt(k, clamped)], fog, false, t);
+        const routes = m.marks.filter((x) => x.item.kind === 'route');
+        expect(routes.filter((x) => x.to === 1), `at ${t}`).toHaveLength(1);
+        expect(routes.filter((x) => x.to === 0).length, `at ${t}`).toBeLessThanOrEqual(2);
+      }
+      // The full one, still the strongest on its way out, is kept.
+      expect(m.marks.some((x) => x.key === 0 && markOpacity(x, m.now) > 0.5)).toBe(true);
+    });
+
+    it('K tapped at 4 Hz for 2 s: never more than three marks per outline or route, and no shape or opacity ever jumps', () => {
+      const on = by(4.2, true);
+      const off = by(4.2, false);
+      const snaps = Array.from({ length: 17 }, (_, k) => ({ at: k * 125, hud: k % 2 === 0 ? off : on }));
+      const ranks = off.radar.filter((i) => i.kind === 'ranks').length;
+      const { m, views } = run(snaps, 2000);
+      for (const v of views) {
+        expect(v.edge.filter((d) => d.mark.item.kind === 'ranks').length).toBeLessThanOrEqual(3 * ranks);
+        expect(v.edge.filter((d) => d.mark.item.kind === 'route').length).toBeLessThanOrEqual(3);
+      }
+      // Then still: it settles with the last snapshot, nothing in the band.
+      expectAtRest(run([...snaps, { at: 2125, hud: off }], 3400).m, 0.3);
+      // In all, bounded: three marks at most per outline and route, and one per point item that Mata brings in or out.
+      expect(m.marks.length).toBeLessThanOrEqual(3 * (ranks + 1) + on.radar.length + off.radar.length);
+    });
+  });
+
+  // ── Ruling 2: only a fade or the static's ease runs the map's frames; the arc runs its own ─────────────────────────
+
+  it('the map stays idle while only the clamour moves: 10 Hz snapshots at the decay and at the watched rate', () => {
+    for (const rate of [-RIUH.decay, RIUH.watched]) {
+      let m = radarModel(ITEMS, 0, false, 0);
+      let arc = settled(2.5, 0);
+      for (let k = 1; k <= 30; k++) {
+        const t = k * 100;
+        // The island's next snapshot: a new array, the items crept a little, the clamour moved at `rate`.
+        const items = ITEMS.map((i) => ({ ...i, x: i.x + 0.05 * k }));
+        m = stepModel(m, items, 0, false, t);
+        arc = retarget(arc, 2.5 + rate * k * 0.1, t);
+        for (let f = 0; f < 100; f += 16) expect(modelBusy(tickModel(m, t + f)), `${rate} at ${t + f}`).toBe(false);
+        expect(arcBusy(arc, t + 16)).toBe(true);
+      }
+      // Once the snapshots stop, the arc settles on the last value and asks for no more frames.
+      const last = 2.5 + rate * 3;
+      expect(easedAt(arc, 3000 + EASE_MS)).toBeCloseTo(last, 9);
+      expect(arcBusy(arc, 3000 + EASE_MS)).toBe(false);
+      expect(arcBusy(arc, 3000 + EASE_MS - 1)).toBe(true);
+    }
+    // The arc's sweep: 300° times the clamour over 5, held to the scale.
+    expect([arcSweep(2.5), arcSweep(0), arcSweep(5), arcSweep(9), arcSweep(-1), arcSweep(Number.NaN)]).toEqual([150, 0, 300, 300, 0, 0]);
+  });
+
+  it('the arc is its own small part: the map is not given the clamour, and the arc moves its one path through a ref', () => {
+    const src = readFileSync('src/components/bowobharata-game/Radar.tsx', 'utf8');
+    const mapProps = /const RadarMap = memo\(function RadarMap\(\{([^}]*)\}/.exec(src)?.[1] ?? '';
+    expect(mapProps).not.toBe('');
+    expect(mapProps).not.toMatch(/\briuh\b/);
+    expect(src).toMatch(/const ClamourFill = memo\(/);
+    expect(src).toMatch(/\.setAttribute\('d', /);
+  });
+
+  // ── Ruling 4: the tower's halo eases ───────────────────────────────────────────────────────────────────────────────
+
+  it('the tower\'s halo eases in and out: a tower that becomes the aim cross-fades to its haloed look over FADE_MS', () => {
+    const tower: RadarItem = { kind: 'tower', ...rim(90), clamped: true, dist: 180 };
+    let m = radarModel([tower], 0, false, 0);
+    m = stepModel(m, [tower], 0, true, 100);
+    const aimed = m.marks.find((k) => k.aim)!;
+    const plain = m.marks.find((k) => !k.aim)!;
+    expect([markOpacity(aimed, 100), markOpacity(plain, 100)]).toEqual([0, 1]);
+    expect([markOpacity(aimed, 100 + FADE_MS), markOpacity(plain, 100 + FADE_MS)]).toEqual([1, 0]);
+    // Released half way: the plain tower comes back from where it is; never more than the two.
+    m = stepModel(m, [tower], 0, false, 100 + FADE_MS / 2);
+    expect(m.marks).toHaveLength(2);
+    expect(markOpacity(m.marks.find((k) => !k.aim)!, m.now)).toBeCloseTo(0.5, 9);
+    expect(markOpacity(m.marks.find((k) => k.aim)!, m.now)).toBeCloseTo(0.5, 9);
+  });
+
+  // ── Ruling 5: a mark that changes its look cross-fades ─────────────────────────────────────────────────────────────
+
+  it('a record turning into a rim chevron and a shelter shrinking at the range edge cross-fade, and never make more than two marks', () => {
+    for (const kind of ['record', 'shelter'] as const) {
+      const inside: RadarItem = { kind, x: C, y: C - 65, clamped: false, dist: 69 };
+      const onRim: RadarItem = { ...inside, y: C - R, clamped: true, dist: 71 };
+      let m = radarModel([inside], 0, false, 0);
+      m = stepModel(m, [onRim], 0, false, 100);
+      const out = m.marks.find((k) => !k.item.clamped)!;
+      const into = m.marks.find((k) => k.item.clamped)!;
+      expect([markOpacity(out, 100), markOpacity(into, 100)], kind).toEqual([1, 0]);
+      expect([markOpacity(out, 100 + FADE_MS), markOpacity(into, 100 + FADE_MS)], kind).toEqual([0, 1]);
+      // The speed wobbles it back and forth at the snapshot rate: still two marks, each fading from where it is.
+      for (let k = 1; k <= 6; k++) m = stepModel(m, [k % 2 ? inside : onRim], 0, false, 100 + k * 100);
+      expect(m.marks.filter((x) => x.item.kind === kind), kind).toHaveLength(2);
+    }
+  });
+
+  it('the next lap post brightens by a cross-fade when the one before is passed', () => {
+    const post = (x: number): RadarItem => ({ kind: 'post', x, y: 40, clamped: false, dist: 30 });
+    let m = radarModel([post(40), post(90)], 0, false, 0);
+    expect(m.marks.map((k) => k.next)).toEqual([true, false]);
+    // P1 is passed: the list is now [P2, P3]. P2's dim mark fades out while its bright one fades in.
+    m = stepModel(m, [post(90), post(120)], 0, false, 100);
+    const p2 = m.marks.filter((k) => k.item.x === 90);
+    expect(p2.map((k) => [k.next, markOpacity(k, 100)]).sort()).toEqual([[false, 1], [true, 0]]);
+    expect(p2.map((k) => [k.next, markOpacity(k, 100 + FADE_MS)]).sort()).toEqual([[false, 0], [true, 1]]);
+  });
+
+  // ── Ruling 6: the drawing order and the grain decision are pure ────────────────────────────────────────────────────
+
+  it('draws by layer whatever the order of the marks: a shelter fading out is drawn before live records', () => {
+    const shelter: RadarItem = { kind: 'shelter', x: 30, y: 100, clamped: false, dist: 40 };
+    let m = radarModel([shelter, rec(60), rec(90)], 0, false, 0);
+    m = stepModel(m, [rec(60), rec(90)], 0, false, 100);
+    expect(m.marks.map((k) => k.item.kind)).toEqual(['record', 'record', 'shelter']);
+    expect(drawOrder(m).map((d) => d.mark.item.kind)).toEqual(['shelter', 'record', 'record']);
+    // A mark faded out is not drawn.
+    expect(drawOrder(tickModel(m, 100 + FADE_MS)).map((d) => d.mark.item.kind)).toEqual(['record', 'record']);
+  });
+
+  it('the grains move only while the static shows and motion is welcome', () => {
+    expect([grainsRun(true, false), grainsRun(true, true), grainsRun(false, false), grainsRun(false, true)]).toEqual([true, false, false, false]);
   });
 });
 
