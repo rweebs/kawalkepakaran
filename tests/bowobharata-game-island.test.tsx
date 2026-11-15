@@ -6,9 +6,12 @@ import { FRAMING_EN } from '../src/lib/bowobharata-en';
 import { kategoriKey, type Perkara } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
+import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { CHAPTER_TYPES } from '../src/lib/bowobharata-game/missions';
+import { RADAR_PX, type RadarItem } from '../src/lib/bowobharata-game/radar';
 import {
   Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, TouchControls, cardView,
+  GameHud, Radar, toastText, type HudToast,
 } from '../src/components/bowobharata-game/screens';
 import BowobharataGame from '../src/components/BowobharataGame';
 
@@ -59,6 +62,53 @@ function expectFramedNames(html: string, locale: 'id' | 'en') {
 
 const sanjaya = (i: number, locale: 'id' | 'en' = 'id') =>
   renderToString(<SanjayaReport locale={locale} chapterIndex={i} chapter={chapters[i]} onNext={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
+
+/** Every radar kind, some on the rim: kinds and positions only, as the snapshot carries them. */
+const RADAR: RadarItem[] = [
+  { kind: 'ranks', x: 131, y: 41, clamped: true, dist: 6, points: [{ x: 96, y: 4 }, { x: 196, y: 4 }, { x: 196, y: 70 }, { x: 96, y: 70 }] },
+  { kind: 'shelter', x: 40, y: 100, clamped: false, dist: 44 },
+  { kind: 'route', x: 74, y: 8, clamped: true, dist: 240, points: [{ x: 74, y: 74 }, { x: 70, y: 40 }, { x: 74, y: 8 }] },
+  { kind: 'decoy', x: 60, y: 50, clamped: false, dist: 25 },
+  { kind: 'tower', x: 140, y: 74, clamped: true, dist: 180 },
+  { kind: 'replay', x: 30, y: 30, clamped: false, dist: 60 },
+  { kind: 'marker', x: 90, y: 110, clamped: false, dist: 40 },
+  { kind: 'record', x: 70, y: 60, clamped: false, dist: 15 },
+  { kind: 'record', x: 74, y: 140, clamped: true, dist: 300 },
+  { kind: 'gate', x: 100, y: 90, clamped: false, dist: 30 },
+  { kind: 'post', x: 50, y: 74, clamped: false, dist: 25 },
+  { kind: 'post', x: 110, y: 50, clamped: false, dist: 45 },
+];
+/**
+ * The HUD in play, three snapshots: the prologue on a desk; parva 4's course under static on touch, with the toasts of its
+ * first two records (their real dates and channels); and Antar's gate at the top of the clamour, in Mata's sight.
+ */
+function inPlay(locale: 'id' | 'en'): string[] {
+  const prologue: HudSnapshot = {
+    phase: 'active', chapter: 0, type: CHAPTER_TYPES[0], objective: 'prologue', done: 3, total: game.prologue.length, lap: null, timer: 95,
+    speedKmh: 31, surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.6 }, hint: 'sight', riuh: 1.2, level: 1, staticFrac: 0,
+    radar: RADAR, radarM: 84.3, heading: 20,
+  };
+  const cards = game.events[4];
+  const cardOf = (k: number) => (cards[k] ? { date: cards[k].dateLabel[locale], channel: cards[k].channel[locale] } : null);
+  const toasts: HudToast[] = [0, 1].flatMap((k) => {
+    const text = toastText({ type: 'recorded', id: `r${k}`, card: k, n: k + 1, total: cards.length }, locale, 4, cardOf);
+    return text === null ? [] : [{ id: k, text }];
+  });
+  expect(toasts).toHaveLength(2);
+  const course = { ...prologue, chapter: 4, type: CHAPTER_TYPES[4], objective: 'course' as const, done: 2, total: cards.length, riuh: 4.6, level: 4, staticFrac: 0.3, heading: 200 };
+  const gate = {
+    ...prologue, chapter: 2, type: CHAPTER_TYPES[2], objective: 'gate' as const, done: 1, total: 2, riuh: 5, level: 5, staticFrac: 0.45,
+    sight: { on: true, charge: 0.4 }, heading: 300,
+  };
+  const hud = (snap: HudSnapshot, touch: boolean, list: HudToast[]) =>
+    renderToString(<GameHud locale={locale} hud={snap} touch={touch} paused={false} toasts={list} onPause={noop} onFullscreen={noop} canFullscreen />);
+  return [
+    hud(prologue, false, []),
+    hud(course, true, toasts),
+    hud(gate, false, []),
+    renderToString(<Radar locale={locale} items={RADAR} riuh={4.6} staticFrac={0.3} size={RADAR_PX} m={96} heading={135} sight={false} objective="tower" />),
+  ];
+}
 
 describe('gate', () => {
   for (const locale of ['id', 'en'] as const) {
@@ -124,7 +174,7 @@ describe("Sanjaya's report", () => {
     expect(sanjaya(empty)).toContain(esc(GAME_COPY.id.sanjayaNone));
   });
 
-  it('no category E name renders on any Sanjaya screen, intro, lakon card, prologue record, fail card or the finale; Sengkuni never leaves the gate', () => {
+  it('no category E name renders on any Sanjaya screen, intro, lakon card, prologue record, fail card, the finale or the HUD and radar in play; Sengkuni never leaves the gate', () => {
     // Whitelist, by ruling: the pause screen (FRAMING) and the event cards, alone or on a parva's Tercatat screen
     // (linimasa titles, each under the allegation line), may contain these names; they are still counted for "Sengkuni".
     // The gate stays out of the sweep: its own test keeps "Sengkuni" inside the labelled poster. Everything else must not.
@@ -147,12 +197,15 @@ describe("Sanjaya's report", () => {
       }
       checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />));
       checked.push(renderToString(<TouchControls locale={locale} manual onChange={noop} surge={{ ready: true, frac: 1 }} sight={{ on: false, charge: 0 }} />));
+      checked.push(...inPlay(locale));
       screens.push(paused(locale));
     }
-    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, Recorded (prologue), FailCard ×2, the finale and TouchControls; then the
-    // whitelisted 24 event cards, 8 Tercatat screens and the pause screen.
+    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, Recorded (prologue), FailCard ×2, the finale, TouchControls, GameHud
+    // for 3 snapshots and the Radar; then the whitelisted 24 event cards, 8 Tercatat screens and the pause screen.
     expect(CHAPTER_TYPES).toHaveLength(COUNT - 1);
-    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + 1 + 2 + 1 + 1));
+    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + 1 + 2 + 1 + 1 + 3 + 1));
+    expect(checked.filter((h) => h.includes('class="bg-hud')).length).toBe(2 * 3);
+    expect(checked.filter((h) => h.includes('class="bg-radar"')).length).toBe(2 * 4);
     expect(screens).toHaveLength(2 * (game.events.flat().length + PARVAS.length + 1));
     const strict = checked.join('\n');
     expect(eNames).toContain('Abil Sudarman');

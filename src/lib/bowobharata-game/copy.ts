@@ -104,8 +104,14 @@ export interface GameCopy {
     laps: (o: { n: number }) => string;
     stop: string;
   };
-  /** The speed unit, then the names of Krishna's sight (Mata), the surge (Laju) and the clamour (Riuh). */
-  ride: { speedUnit: string; sight: string; surge: string; riuh: string };
+  /**
+   * The speed unit, then the names of Krishna's sight (Mata), the surge (Laju) and the clamour (Riuh); the radar's label
+   * with its range in whole metres, the letter on its north petal, and the clamour's level as words for its meter.
+   */
+  ride: {
+    speedUnit: string; sight: string; surge: string; riuh: string;
+    radar: (o: { m: number }) => string; north: string; riuhLevel: (o: { n: number }) => string;
+  };
   /** The touch controls' names (their aria-labels and visible labels): the steer zone, Rem, Laju, Mata and Maju (manual mode). */
   touch: { steer: string; brake: string; surge: string; sight: string; ride: string };
   /** Toasts while driving: counts, dates and channels only, never a name or an event title. */
@@ -203,7 +209,10 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       laps: ({ n }) => `Putaran ${n} mengelilingi tiang: dua putaran beruntun berselisih paling banyak 15%`,
       stop: 'Berhenti sejenak di dalam lingkaran.',
     },
-    ride: { speedUnit: 'km/jam', sight: 'Mata', surge: 'Laju', riuh: 'Riuh' },
+    ride: {
+      speedUnit: 'km/jam', sight: 'Mata', surge: 'Laju', riuh: 'Riuh',
+      radar: ({ m }) => `Peta medan di sekitar kereta, sampai ${m} m`, north: 'U', riuhLevel: ({ n }) => `Tingkat ${n} dari 5`,
+    },
     touch: { steer: 'Kemudi', brake: 'Rem', surge: 'Laju', sight: 'Mata', ride: 'Maju' },
     toasts: {
       recorded: ({ n, total, date, channel }) => `Tercatat ${n}/${total} · ${date} · ${channel}`,
@@ -402,7 +411,10 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       laps: ({ n }) => `Lap ${n} round the posts: two laps in a row within 15% of each other`,
       stop: 'Stop inside the circle for a moment.',
     },
-    ride: { speedUnit: 'km/h', sight: 'Sight', surge: 'Surge', riuh: 'Clamour' },
+    ride: {
+      speedUnit: 'km/h', sight: 'Sight', surge: 'Surge', riuh: 'Clamour',
+      radar: ({ m }) => `Map of the field round the chariot, out to ${m} m`, north: 'N', riuhLevel: ({ n }) => `Level ${n} of 5`,
+    },
     touch: { steer: 'Steer', brake: 'Brake', surge: 'Surge', sight: 'Sight', ride: 'Go' },
     toasts: {
       recorded: ({ n, total, date, channel }) => `Recorded ${n}/${total} · ${date} · ${channel}`,

@@ -61,12 +61,13 @@
 .bg-hud button { pointer-events: auto; }
 .bg-objective { position: absolute; top: 0.75rem; left: 0.75rem; max-width: min(22rem, 46%); display: grid; gap: 0.25rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-hint { margin: 0; color: var(--text-secondary); font-size: 0.8rem; background: none; }
-.bg-radar-slot { position: absolute; top: 0.75rem; right: 0.75rem; }
+/* The radar slot, top right: the radar, and on touch the speed in a pill under it. */
+.bg-radar-slot { position: absolute; top: 0.75rem; right: 0.75rem; display: grid; justify-items: center; gap: 0.35rem; }
+.bg-radar-slot .bg-speed { margin: 0; padding: 0.15rem 0.65rem; border-radius: var(--radius-full); background: rgba(11, 16, 32, 0.72); line-height: 1.4; }
 .bg-gauges { position: absolute; bottom: 0.75rem; right: 0.75rem; display: grid; gap: 0.35rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-toasts { position: absolute; bottom: 0.75rem; left: 0.75rem; display: grid; gap: 0.35rem; max-width: min(22rem, 60%); }
-/* On touch the toasts take the right column, under the radar's band and beside the objective panel (46% wide, so they start past 46% + 1rem), clear of the steer zone, the buttons and the capsule. The speed moves to the bottom left, off the buttons. */
-.bg-hud[data-touch] .bg-toasts { top: 7rem; bottom: auto; left: auto; right: 0.5rem; max-width: min(22rem, calc(54% - 1.5rem)); }
-.bg-hud[data-touch] .bg-gauges { bottom: 0.5rem; left: 0.5rem; right: auto; }
+/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule. The buttons carry the rings, so there is no gauges panel. */
+.bg-hud[data-touch] .bg-toasts { top: calc(0.75rem + 148px + 2.5rem); bottom: auto; left: auto; right: 0.75rem; max-width: min(22rem, calc(54% - 2rem)); }
 .bg-hud dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; }
 .bg-hud dl div { display: flex; gap: 0.35rem; }
 .bg-hud dt { color: var(--text-secondary); font-size: 0.85rem; }
@@ -82,6 +83,38 @@
 .bg-ring { display: grid; justify-items: center; gap: 0.15rem; color: var(--text-secondary); font-size: 0.75rem; }
 .bg-ring[data-lit] { color: var(--accent-amber); }
 .bg-toast { margin: 0; padding: 0.4rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); font-size: 0.9rem; overflow-wrap: anywhere; }
+
+/* The radar (Radar): the map over the clamour's rim, in one square. Its colours are the site tokens; the clamour is
+   amber, never red or blue. Its fades and eases run on the frame clock (Radar.tsx), so no rule here animates. */
+.bg-radar { position: relative; isolation: isolate; }
+.bg-radar__map { position: relative; z-index: 1; display: block; }
+.bg-riuh { position: absolute; inset: 0; z-index: 0; }
+.bg-riuh svg { display: block; }
+.bg-riuh__bed { fill: none; stroke: var(--bg-primary); stroke-opacity: 0.6; stroke-width: 8; }
+.bg-riuh__track { fill: none; stroke: var(--accent-amber); stroke-opacity: 0.25; stroke-width: 4; stroke-linecap: round; }
+.bg-riuh__fill { fill: none; stroke: var(--accent-amber); stroke-width: 4; }
+.bg-riuh__label { fill: var(--text-secondary); font-size: 8px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; paint-order: stroke; stroke: var(--bg-primary); stroke-width: 2.5px; stroke-linejoin: round; }
+.bg-radar__disc { fill: var(--bg-primary); fill-opacity: 0.72; stroke: var(--text-secondary); stroke-opacity: 0.35; stroke-width: 1; }
+.bg-radar__ring { fill: none; stroke: var(--text-secondary); stroke-opacity: 0.14; stroke-width: 1; }
+.bg-radar__petal { fill: var(--text-primary); stroke: var(--bg-primary); stroke-width: 0.75; }
+.bg-radar__letter { fill: var(--bg-primary); font-size: 7px; font-weight: 700; }
+.bg-radar__car { fill: var(--text-primary); stroke: var(--bg-primary); stroke-width: 1; stroke-linejoin: round; }
+.bg-radar__wash { fill: var(--bg-primary); fill-opacity: 0.7; }
+.bg-radar__grain { fill: var(--text-primary); }
+.bg-radar__static { fill: none; }
+.bg-radar__halo { fill: none; stroke: var(--accent-amber); stroke-width: 1.5; }
+/* The marks by kind: the ranks muted, the shelters green, the route and the tower pale, the copies as the grey broken ring of Mata's stamp, the lakon's targets amber. */
+.bg-radar__mark[data-kind='ranks'] { fill: var(--text-secondary); fill-opacity: 0.16; stroke: var(--text-secondary); stroke-opacity: 0.5; stroke-width: 1; stroke-linejoin: round; }
+.bg-radar__mark[data-kind='shelter'] { fill: var(--bg-primary); stroke: var(--accent-green); stroke-width: 1.5; }
+.bg-radar__mark[data-kind='route'] { fill: none; stroke: var(--text-primary); stroke-opacity: 0.6; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.bg-radar__mark[data-kind='decoy'] { fill: none; stroke: var(--text-secondary); stroke-width: 1.4; stroke-dasharray: 3 1.7; }
+.bg-radar__mark[data-kind='tower'] { fill: var(--text-primary); stroke: var(--bg-primary); stroke-width: 1; }
+.bg-radar__mark[data-kind='replay'] { fill: none; stroke: var(--text-secondary); stroke-width: 1.4; }
+.bg-radar__mark[data-kind='marker'] { fill: var(--accent-amber); fill-opacity: 0.25; stroke: var(--accent-amber); stroke-width: 1.8; }
+.bg-radar__mark[data-kind='record'] { fill: var(--accent-amber); stroke: var(--bg-primary); stroke-width: 1; }
+.bg-radar__mark[data-kind='gate'] { fill: none; stroke: var(--accent-amber); stroke-width: 1.6; stroke-linecap: round; }
+.bg-radar__mark[data-kind='post'] { fill: var(--text-secondary); stroke: var(--bg-primary); stroke-width: 1; }
+.bg-radar__mark[data-kind='post'][data-next] { fill: var(--text-primary); }
 .bg-cards { position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0.75rem; display: grid; pointer-events: none; }
 .bg-cards .bg-catch { max-width: 28rem; background: rgba(11, 16, 32, 0.88); pointer-events: auto; }
 /* Above the letterbox bars (2), the lakon card and the wipe (3): a pause during a lakon intro shows the whole panel. */
@@ -126,7 +159,14 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
   .bg-radar-slot { top: 0.5rem; right: 0.5rem; }
   .bg-gauges { bottom: 0.5rem; right: 0.5rem; }
   .bg-toasts { left: 0.5rem; }
+  .bg-hud[data-touch] .bg-toasts { top: calc(0.5rem + 148px + 2.5rem); right: 0.5rem; max-width: min(22rem, calc(54% - 1.5rem)); }
   .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
+}
+/* A short stage (a phone on its side): the buttons' column runs nearly the stage's height, 168 px in from the right
+   (Laju's left edge), so on touch the radar and the toasts under it sit just left of it, past the objective panel. */
+@media (max-height: 520px) {
+  .bg-hud[data-touch] .bg-radar-slot { right: calc(168px + 1rem); }
+  .bg-hud[data-touch] .bg-toasts { right: calc(168px + 1rem); max-width: calc(54% - 168px - 2.5rem); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bg-game * { transition: none !important; animation: none !important; }

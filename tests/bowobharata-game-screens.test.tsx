@@ -8,12 +8,21 @@ import { localizeEvent } from '../src/lib/linimasa-locale';
 import type { Perkara } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
-import type { HudSnapshot, ObjectiveKey } from '../src/lib/bowobharata-game/hud';
+import { initChariot } from '../src/lib/bowobharata-game/drive';
+import { createWorld, startChapter } from '../src/lib/bowobharata-game/engine';
+import { hudOf, type HudSnapshot, type ObjectiveKey } from '../src/lib/bowobharata-game/hud';
 import type { GameEvent, HintKey } from '../src/lib/bowobharata-game/mission-run';
-import { CHAPTER_TYPES, type MissionType } from '../src/lib/bowobharata-game/missions';
+import { CHAPTER_TYPES, missionFor, type MissionType } from '../src/lib/bowobharata-game/missions';
+import { RADAR_PX, radarPoint, type RadarItem, type RadarKind } from '../src/lib/bowobharata-game/radar';
+import { ANCHORS } from '../src/lib/bowobharata-game/world';
+import { mulberry32 } from '../src/lib/sky/rng';
 import {
-  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Recorded, SanjayaReport, SlowPrompt, TouchControls, cardView, toastText, type HudToast,
+  FailCard, Finale, GameHud, Gate, Intro, MissionCard, Paused, Radar, Recorded, SanjayaReport, SlowPrompt, TouchControls, cardView, toastText,
+  type HudToast, type RadarProps,
 } from '../src/components/bowobharata-game/screens';
+import {
+  EASE_MS, FADE_MS, STATIC_MS, arcPath, easedAt, markOpacity, modelBusy, noiseGrains, radarModel, stepModel, tickModel, trackMarks,
+} from '../src/components/bowobharata-game/Radar';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 const game = gameData(data);
@@ -432,6 +441,45 @@ describe('toastText', () => {
   });
 });
 
+// ── The radar ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The radar's centre and inner radius on its RADAR_PX square (radar.ts clamps to the inner radius). */
+const C = RADAR_PX / 2;
+const R = RADAR_PX / 2 - 8;
+const KINDS: RadarKind[] = ['ranks', 'shelter', 'route', 'decoy', 'tower', 'replay', 'marker', 'record', 'gate', 'post'];
+/** A point on the rim, `deg` degrees clockwise from the top. */
+const rim = (deg: number) => ({ x: C + R * Math.sin((deg * Math.PI) / 180), y: C - R * Math.cos((deg * Math.PI) / 180) });
+/** One or two items of every kind on the square, some clamped to the rim: kinds and positions only, as radarItems has them. */
+const ITEMS: RadarItem[] = [
+  // An army block reaching in from the north-east: its middle clamped to the rim, its corners not.
+  { kind: 'ranks', ...rim(60), clamped: true, dist: 6, points: [{ x: 96, y: 4 }, { x: 196, y: 4 }, { x: 196, y: 70 }, { x: 96, y: 70 }] },
+  { kind: 'shelter', x: 40, y: 100, clamped: false, dist: 44 },
+  { kind: 'shelter', ...rim(270), clamped: true, dist: 160 },
+  { kind: 'route', ...rim(0), clamped: true, dist: 240, points: [{ x: 74, y: 74 }, { x: 70, y: 40 }, rim(0)] },
+  { kind: 'decoy', x: 60, y: 50, clamped: false, dist: 25 },
+  { kind: 'tower', ...rim(90), clamped: true, dist: 180 },
+  { kind: 'replay', x: 30, y: 30, clamped: false, dist: 60 },
+  { kind: 'marker', x: 90, y: 110, clamped: false, dist: 40 },
+  { kind: 'record', x: 70, y: 60, clamped: false, dist: 15 },
+  { kind: 'record', ...rim(180), clamped: true, dist: 300 },
+  { kind: 'gate', x: 100, y: 90, clamped: false, dist: 30 },
+  { kind: 'post', x: 50, y: 74, clamped: false, dist: 25 },
+  { kind: 'post', x: 110, y: 50, clamped: false, dist: 45 },
+];
+const radarWorld = createWorld({ mobile: false });
+/**
+ * Chapter ch's lakon, active, its snapshot taken with the chariot at rest at `at` (or where the lakon starts), the
+ * clamour at `riuh` and Mata on or off.
+ */
+function realSnap(ch: number, at: { x: number; z: number; yaw: number } | null, riuh = 0, sight = false): HudSnapshot {
+  // Each chapter's own number of records, as the radar test has them.
+  const def = missionFor(ch, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].slice(0, [0, 2, 2, 4, 9, 1, 2, 2, 2][ch]));
+  const s = startChapter(def, def.start, 1, radarWorld);
+  const car = at ? initChariot(at.x, at.z, at.yaw) : s.car;
+  const state = { ...s, car, route: null, run: { ...s.run, phase: 'active' as const }, riuh: { ...s.riuh, value: riuh }, sight: { ...s.sight, on: sight } };
+  return hudOf(state, radarWorld);
+}
+
 describe('GameHud', () => {
   /** A HUD snapshot of the prologue, 2 of 8 recorded, with any field replaced. */
   const snap = (o: Partial<HudSnapshot> = {}): HudSnapshot => ({
@@ -526,9 +574,72 @@ describe('GameHud', () => {
       expect(count(desk, 'data-ring="sight"')).toBe(1);
       expect(element(desk, 'data-ring="surge"')).toContain(esc(c.ride.surge));
       expect(element(desk, 'data-ring="sight"')).toContain(esc(c.ride.sight));
+      // On touch the buttons carry the rings and the speed sits under the radar (Task 34), so there is no gauges panel.
       const touch = gameHud({ locale: l, touch: true });
-      expect(element(touch, 'class="bg-gauges"')).toContain('data-gauge="speed"');
+      expect(element(touch, 'class="bg-radar-slot"')).toContain('data-gauge="speed"');
+      expect(touch).not.toContain('bg-gauges');
       expect(touch).not.toContain('data-ring');
+    }
+  });
+
+  it('the radar sits in .bg-radar-slot on its RADAR_PX square, labelled with the range in whole metres; the speed stays in the gauges on a desk', () => {
+    for (const l of LOCALES) {
+      const html = gameHud({ locale: l, hud: { radarM: 107.4, radar: ITEMS } });
+      const slot = element(html, 'class="bg-radar-slot"');
+      const map = element(slot, 'role="img"');
+      expect(map).toContain(`width="${RADAR_PX}" height="${RADAR_PX}" viewBox="0 0 ${RADAR_PX} ${RADAR_PX}"`);
+      expect(map).toContain(`aria-label="${esc(GAME_COPY[l].ride.radar({ m: 107 }))}"`);
+      expect(count(slot, 'data-kind=')).toBe(ITEMS.length);
+      expect(slot).toContain('role="meter"');
+      expect(slot).not.toContain('data-gauge');
+      expect(count(html, 'data-gauge="speed"')).toBe(1);
+      expect(element(html, 'class="bg-gauges"')).toContain('data-gauge="speed"');
+    }
+    // 107.5 m reads as 108: the range is rounded, not cut.
+    expect(gameHud({ hud: { radarM: 107.5 } })).toContain(`aria-label="${esc(GAME_COPY.id.ride.radar({ m: 108 }))}"`);
+  });
+
+  it('on touch, GameHud places the speed inside .bg-radar-slot, under the radar', () => {
+    for (const l of LOCALES) {
+      const html = gameHud({ locale: l, touch: true, hud: { speedKmh: 58 } });
+      const slot = element(html, 'class="bg-radar-slot"');
+      expectOrder(slot, ['class="bg-radar"', 'data-gauge="speed"']);
+      const speed = element(slot, 'data-gauge="speed"');
+      expect(speed).toContain('>58<');
+      expect(speed).toContain(esc(GAME_COPY[l].ride.speedUnit));
+      expect(count(html, 'data-gauge="speed"')).toBe(1);
+    }
+  });
+
+  it('hands the radar the heading, the clamour, the static (none while Mata is on) and the tower as the aim', () => {
+    const map = (hud: Partial<HudSnapshot>) => gameHud({ hud: { radar: ITEMS, ...hud } });
+    expect(element(map({ heading: 90 }), 'class="bg-radar__north"')).toContain('transform="rotate(-90 74 74)"');
+    expect(element(map({ riuh: 2.5, level: 2 }), 'data-riuh-fill')).toContain('data-sweep="150"');
+    expect(element(map({ riuh: 4.6, level: 4, staticFrac: 0.3 }), 'class="bg-radar__static"')).toContain('opacity:0.3');
+    expect(map({ riuh: 4.6, level: 4, staticFrac: 0.3, sight: { on: true, charge: 0.5 } })).not.toContain('bg-radar__static');
+    for (const objective of ['tower', 'stop'] as const) expect(element(map({ objective }), 'data-kind="tower"')).toContain('data-aim');
+    for (const objective of ['collect', 'roam', 'gate'] as const) expect(element(map({ objective }), 'data-kind="tower"')).not.toContain('data-aim');
+  });
+
+  it('a real snapshot: as many record marks as the snapshot has records, the clamped ones marked so, in both locales', () => {
+    // The prologue's arrows ring the tower: from the start the near ones are in range and the far ones on the rim; from
+    // the Hastinapura gate all of them are on the rim.
+    const poses = [null, { x: ANCHORS.gate.x - 12, z: ANCHORS.gate.z, yaw: Math.PI }];
+    const records = poses.flatMap((at) => realSnap(0, at).radar.filter((i) => i.kind === 'record'));
+    expect(records.some((i) => i.clamped)).toBe(true);
+    expect(records.some((i) => !i.clamped)).toBe(true);
+    for (const at of poses) {
+      const hud = realSnap(0, at);
+      const records = hud.radar.filter((i) => i.kind === 'record');
+      expect(records.length).toBeGreaterThan(0);
+      for (const l of LOCALES) {
+        const map = element(gameHud({ locale: l, hud }), 'role="img"');
+        expect(count(map, 'data-kind="record"')).toBe(records.length);
+        const marks = [...map.matchAll(/<g[^>]*data-kind="record"[^>]*>/g)].map((m) => m[0]);
+        expect(marks.filter((g) => g.includes('data-clamped')).length).toBe(records.filter((i) => i.clamped).length);
+        expect(count(map, 'data-clamped')).toBe(hud.radar.filter((i) => i.clamped).length);
+        expect(count(map, 'data-kind=')).toBe(hud.radar.length);
+      }
     }
   });
 
@@ -626,6 +737,331 @@ describe('GameHud', () => {
     }
     expect(rendered).toBe(2 * 9 * 4 * OBJECTIVES.length * 2);
   }, 30_000);
+});
+
+describe('Radar', () => {
+  const radar = (o: Partial<RadarProps> = {}) =>
+    renderToString(<Radar locale="id" items={ITEMS} riuh={0} staticFrac={0} size={RADAR_PX} m={70} heading={0} sight={false} {...o} />);
+  /** The static band, or null when none is drawn. */
+  const band = (o: Partial<RadarProps>) => {
+    const html = radar(o);
+    return html.includes('bg-radar__static') ? element(html, 'class="bg-radar__static"') : null;
+  };
+  /** The radius of the clip path that holds the ranks, and the group it clips. */
+  function ranksClip(html: string): { r: number; group: string } {
+    const group = element(html, 'class="bg-radar__ranks"');
+    const id = /clip-path="url\(#([^)]+)\)"/.exec(group)![1];
+    const r = new RegExp(`<clipPath id="${id}"><circle cx="${C}" cy="${C}" r="([\\d.]+)"`).exec(html)![1];
+    return { r: Number(r), group };
+  }
+  /** The start and end of an arc path, in degrees clockwise from the top; the end is null for a bare move. */
+  function arcEnds(d: string): { from: number; to: number | null; large: boolean } {
+    const deg = (x: number, y: number) => ((Math.atan2(x - C, C - y) * 180) / Math.PI + 360) % 360;
+    const m = /^M([\d.-]+) ([\d.-]+)(?:A([\d.]+) ([\d.]+) 0 ([01]) 1 ([\d.-]+) ([\d.-]+))?$/.exec(d)!;
+    return { from: deg(+m[1], +m[2]), to: m[6] === undefined ? null : deg(+m[6], +m[7]), large: m[5] === '1' };
+  }
+  const pathD = (el: string) => / d="([^"]+)"/.exec(el)![1];
+
+  it('the map is an img on the square, labelled with the range from the copy, holding a mark per item by kind', () => {
+    for (const l of LOCALES) {
+      const html = radar({ locale: l, m: 96 });
+      expect(html).toMatch(/^<div class="bg-radar">/);
+      const map = element(html, 'role="img"');
+      expect(map).toMatch(/^<svg class="bg-radar__map" role="img"/);
+      expect(map).toContain(`aria-label="${esc(GAME_COPY[l].ride.radar({ m: 96 }))}"`);
+      expect(map).toContain(`viewBox="0 0 ${RADAR_PX} ${RADAR_PX}"`);
+      for (const kind of KINDS) expect(count(map, `data-kind="${kind}"`), kind).toBe(ITEMS.filter((i) => i.kind === kind).length);
+      expect(count(map, 'data-clamped')).toBe(ITEMS.filter((i) => i.clamped).length);
+      const records = [...map.matchAll(/<g[^>]*data-kind="record"[^>]*>/g)].map((m) => m[0]);
+      expect(records.map((g) => g.includes('data-clamped'))).toEqual([false, true]);
+    }
+  });
+
+  it('draws in the snapshot\'s order of kinds: ranks, shelters, route, copies, tower, replays, then the lakon\'s targets', () => {
+    const order = [...radar().matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]);
+    expect(order).toEqual(['ranks', 'shelter', 'shelter', 'route', 'decoy', 'tower', 'replay', 'marker', 'record', 'record', 'gate', 'post', 'post']);
+    // The next lap post is the brighter one.
+    const posts = [...radar().matchAll(/<g[^>]*data-kind="post"[^>]*>/g)].map((m) => m[0]);
+    expect(posts.map((g) => g.includes('data-next'))).toEqual([true, false]);
+  });
+
+  it('the clamour is a meter from 0 to 5: its value to one decimal, its name and its level from the copy', () => {
+    for (const l of LOCALES) {
+      const c = GAME_COPY[l].ride;
+      const meter = element(radar({ locale: l, riuh: 2.54 }), 'role="meter"');
+      expect(meter).toMatch(/^<div class="bg-riuh" role="meter"/);
+      for (const a of ['aria-valuemin="0"', 'aria-valuemax="5"', 'aria-valuenow="2.5"', `aria-label="${esc(c.riuh)}"`]) expect(meter, a).toContain(a);
+      expect(meter).toContain(`aria-valuetext="${esc(c.riuhLevel({ n: 2 }))}"`);
+      expect(element(radar({ locale: l, riuh: 4.96 }), 'role="meter"')).toContain(`aria-valuetext="${esc(c.riuhLevel({ n: 4 }))}"`);
+    }
+    const now = (riuh: number) => /aria-valuenow="([^"]+)"/.exec(element(radar({ riuh }), 'role="meter"'))![1];
+    expect([now(0), now(3), now(4.96), now(5), now(7), now(-1), now(Number.NaN)]).toEqual(['0', '3', '5', '5', '5', '0', '0']);
+    expect(element(radar({ riuh: 7 }), 'role="meter"')).toContain(`aria-valuetext="${esc(GAME_COPY.id.ride.riuhLevel({ n: 5 }))}"`);
+  });
+
+  it('one continuous arc: a 300° track and one fill path whose sweep is 300·riuh/5 degrees, never in segments', () => {
+    expect(element(radar({ riuh: 2.5 }), 'data-riuh-fill')).toContain('data-sweep="150"');
+    for (const [riuh, sweep] of [[0, 0], [1.25, 75], [3.3, 198], [5, 300], [9, 300]] as const) {
+      expect(element(radar({ riuh }), 'data-riuh-fill'), String(riuh)).toContain(`data-sweep="${sweep}"`);
+    }
+    const html = radar({ riuh: 2.5 });
+    const meter = element(html, 'role="meter"');
+    expect(count(meter, 'data-riuh-fill')).toBe(1);
+    expect(count(meter, '<path')).toBe(2);
+    // The track runs clockwise from 210° (low on the left) round the top to 150°: 300°, the gap of 60° under the chariot.
+    const track = arcEnds(pathD(element(meter, 'class="bg-riuh__track"')));
+    expect(track.from).toBeCloseTo(210, 1);
+    expect(track.to!).toBeCloseTo(150, 1);
+    expect(track.large).toBe(true);
+    // The fill starts where the track does; at 2.5 it ends at the top (150° on), at 5 where the track ends.
+    const fill = (riuh: number) => arcEnds(pathD(element(radar({ riuh }), 'data-riuh-fill')));
+    expect(fill(2.5).from).toBeCloseTo(210, 1);
+    expect(fill(2.5).to!).toBeCloseTo(0, 1);
+    expect(fill(5).to!).toBeCloseTo(150, 1);
+    expect(fill(1).to!).toBeCloseTo(270, 1);
+    expect(fill(0).to).toBeNull();
+    for (const riuh of [0, 2.5, 5]) expect(radar({ riuh })).not.toContain('data-segment');
+    expect(arcPath(C, 70, 210, 300)).toBe(pathD(element(meter, 'class="bg-riuh__track"')));
+  });
+
+  it('the static: a still noise band over the outer staticFrac of the disc, at that opacity, and none while Mata is on', () => {
+    expect(band({ staticFrac: 0 })).toBeNull();
+    // Drawn as a stroke on the rim, clipped to the disc: twice the band's width, so its inner edge is at 66·(1 − f).
+    const four = band({ staticFrac: 0.3 })!;
+    expect(four).toContain('style="stroke-width:39.6;opacity:0.3"');
+    expect(four).toMatch(/stroke="url\(#[^)]+\)"/);
+    expect(band({ staticFrac: 0.45 })).toContain('style="stroke-width:59.4;opacity:0.45"');
+    expect(band({ staticFrac: 0.45, sight: true })).toBeNull();
+    // Still: the same grains every time it is drawn from the same seed, and nothing in it moves on its own.
+    expect(radar({ staticFrac: 0.3 })).toBe(radar({ staticFrac: 0.3 }));
+    expect(noiseGrains(7)).toEqual(noiseGrains(7));
+    expect(noiseGrains(7)).not.toEqual(noiseGrains(8));
+    const html = radar({ staticFrac: 0.45 });
+    expect(html).not.toMatch(/<animate|<set\b/);
+    const grains = noiseGrains(1);
+    expect(count(element(html, '<pattern'), 'class="bg-radar__grain"')).toBe(grains.length);
+    // Redrawn at most twice a second, from one interval, and never under reduced motion.
+    expect(STATIC_MS).toBeGreaterThanOrEqual(500);
+    const src = readFileSync('src/components/bowobharata-game/Radar.tsx', 'utf8');
+    expect(src.match(/setInterval\(/g)).toHaveLength(1);
+    expect(src).toMatch(/setInterval\([^;]*,\s*STATIC_MS\)/);
+    expect(src).toContain("'(prefers-reduced-motion: reduce)'");
+    expect(src).not.toMatch(/Math\.random|Date\.now/);
+  });
+
+  it('the ranks: clipped to the visible radius, so nothing leaves the disc or shows in the static unless Mata is on', () => {
+    // The disc's radius is radar.ts's inner radius: where a far place is clamped.
+    const far = radarPoint({ x: 0, z: -5000 }, { x: 0, z: 0, yaw: Math.PI / 2 }, 70, RADAR_PX);
+    expect(Math.hypot(far.x - C, far.y - C)).toBeCloseTo(R, 9);
+    expect(ranksClip(radar()).r).toBe(R);
+    expect(ranksClip(radar({ staticFrac: 0.3 })).r).toBeCloseTo(R * 0.7, 9);
+    expect(ranksClip(radar({ staticFrac: 0.45 })).r).toBeCloseTo(R * 0.55, 9);
+    expect(ranksClip(radar({ staticFrac: 0.45, sight: true })).r).toBe(R);
+    // In depth: radar.ts cuts the outline itself, but an item out of that contract (corners past the disc, the anchor
+    // clamped to the rim) is still held. Every ranks mark sits in the group, as its outline, nothing drawn at its anchor.
+    const html = radar({ staticFrac: 0.3 });
+    const { group } = ranksClip(html);
+    expect(count(html, 'data-kind="ranks"')).toBe(1);
+    const mark = element(group, 'data-kind="ranks"');
+    expect(mark).toContain('<polygon points="96,4 196,4 196,70 96,70"');
+    expect(mark).not.toContain('<circle');
+    // A block given no outline (a round one) is a spot in the same group, so the clip holds it too.
+    const bare: RadarItem = { kind: 'ranks', ...rim(300), clamped: true, dist: 3 };
+    const lone = renderToString(<Radar locale="en" items={[bare]} riuh={4.2} staticFrac={0.3} size={RADAR_PX} m={70} heading={0} sight={false} />);
+    expect(count(ranksClip(lone).group, 'data-kind="ranks"')).toBe(1);
+    expect(element(ranksClip(lone).group, 'data-kind="ranks"')).toContain('<circle');
+    expect(count(lone, 'data-kind="ranks"')).toBe(1);
+  });
+
+  it('agrees with radar.ts: real ranks come anchored inside and cut to the radius shown, so at rest the clip cuts nothing', () => {
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    // At rest 7 m off the Kurawa block: level 4 with Mata off and on, level 5, and calm.
+    const cases = [[4.2, false, R * 0.7], [4.2, true, R], [5, false, R * 0.55], [0, false, R]] as const;
+    for (const [riuh, sight, radius] of cases) {
+      const hud = realSnap(1, { x: 24, z: 20, yaw: 0 }, riuh, sight);
+      const ranks = hud.radar.filter((i) => i.kind === 'ranks');
+      expect(ranks.length, `${riuh} ${sight}`).toBeGreaterThan(0);
+      const html = renderToString(
+        <Radar locale="id" items={hud.radar} riuh={hud.riuh} staticFrac={hud.staticFrac} size={RADAR_PX} m={70} heading={hud.heading} sight={sight} />,
+      );
+      const clip = ranksClip(html);
+      expect(clip.r, `${riuh} ${sight}`).toBeCloseTo(radius, 9);
+      for (const k of ranks) {
+        expect(k.clamped).toBe(false);
+        expect(Math.hypot(k.x - C, k.y - C)).toBeLessThanOrEqual(clip.r + 0.01);
+        for (const p of k.points ?? []) expect(Math.hypot(p.x - C, p.y - C)).toBeLessThanOrEqual(clip.r + 0.01);
+      }
+      // Drawn as they come: one polygon per outline of 3 points or more, with the data's own points.
+      const polygons = [...clip.group.matchAll(/<polygon points="([^"]+)"/g)].map((m) => m[1]);
+      const outlines = ranks.filter((k) => (k.points?.length ?? 0) >= 3).map((k) => k.points!.map((p) => `${r2(p.x)},${r2(p.y)}`).join(' '));
+      expect(outlines.length).toBeGreaterThan(0);
+      expect(polygons).toEqual(outlines);
+    }
+    // A block that just touches the edge comes with fewer than 3 points: it draws nothing.
+    const touching: RadarItem = { kind: 'ranks', x: C, y: C - R * 0.7, clamped: false, dist: 49, points: [{ x: C, y: C - R * 0.7 }] };
+    const html = renderToString(<Radar locale="en" items={[touching]} riuh={4.2} staticFrac={0.3} size={RADAR_PX} m={70} heading={0} sight={false} />);
+    const mark = element(ranksClip(html).group, 'data-kind="ranks"');
+    expect(mark).not.toMatch(/<polygon|<circle|<path/);
+  });
+
+  it('the north petal turns with the heading, and its letter, from the copy, stays upright on it', () => {
+    for (const l of LOCALES) {
+      const at = (heading: number) => radar({ locale: l, heading });
+      expect(element(at(0), 'class="bg-radar__north"')).toContain(`transform="rotate(0 ${C} ${C})"`);
+      expect(element(at(90), 'class="bg-radar__north"')).toContain(`transform="rotate(-90 ${C} ${C})"`);
+      expect(element(at(225), 'class="bg-radar__north"')).toContain(`transform="rotate(-225 ${C} ${C})"`);
+      const letter = (heading: number) => {
+        const m = /<text class="bg-radar__letter" x="([\d.]+)" y="([\d.]+)"[^>]*>([^<]*)<\/text>/.exec(at(heading))!;
+        return { x: +m[1], y: +m[2], text: m[3] };
+      };
+      expect(letter(0).text).toBe(esc(GAME_COPY[l].ride.north));
+      // Facing north it is at the top; facing east, north lies to the left; facing south, at the bottom.
+      expect(letter(0).x).toBeCloseTo(C, 1);
+      expect(letter(0).y).toBeLessThan(C - R + 4);
+      expect(letter(90).x).toBeLessThan(C - R + 4);
+      expect(letter(90).y).toBeCloseTo(C, 1);
+      expect(letter(180).y).toBeGreaterThan(C + R - 4);
+      expect(element(at(90), 'class="bg-radar__north"')).not.toContain('<text');
+    }
+  });
+
+  it('holds no dossier content: no word but the north letter and the clamour\'s name, no title, and labels from the copy', () => {
+    for (const l of LOCALES) {
+      const c = GAME_COPY[l].ride;
+      for (const o of [{}, { staticFrac: 0.45, riuh: 5 }, { sight: true, riuh: 3.2, objective: 'tower' as const, heading: 200 }]) {
+        const html = radar({ locale: l, ...o });
+        const words = [...html.matchAll(/>([^<>]+)</g)].map((m) => m[1].trim()).filter(Boolean);
+        expect(words.sort()).toEqual([esc(c.north), esc(c.riuh)].sort());
+        expect(html).not.toMatch(/<title|<desc/);
+        const labels = [...html.matchAll(/aria-(?:label|valuetext)="([^"]*)"/g)].map((m) => m[1]).sort();
+        expect(labels).toEqual([esc(c.radar({ m: 70 })), esc(c.riuh), esc(c.riuhLevel({ n: Math.floor(o.riuh ?? 0) }))].sort());
+        for (const n of NAMES) expect(html).not.toContain(esc(n));
+        for (const t of TITLES) expect(html).not.toContain(esc(t));
+      }
+    }
+  });
+
+  it('takes its colours from the CSS: no colour written in the markup', () => {
+    const html = radar({ staticFrac: 0.3, riuh: 4.4, objective: 'stop' });
+    expect(html).not.toMatch(/\s(?:fill|stroke|color|stop-color)="(?!none"|url\()/);
+    expect(html).not.toMatch(/style="[^"]*(?:fill|stroke:|color)/);
+    expect(html).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
+  });
+});
+
+describe('Radar fades and eases (the model behind it)', () => {
+  const rec = (x: number, y = 74): RadarItem => ({ kind: 'record', x, y, clamped: false, dist: 10 });
+  const opacities = (m: ReturnType<typeof radarModel>) => new Map(m.marks.map((k) => [k.key, markOpacity(k, m.now)]));
+
+  it('fades over at least a quarter second: FADE_MS and EASE_MS', () => {
+    expect(FADE_MS).toBeGreaterThanOrEqual(250);
+    expect(EASE_MS).toBeGreaterThanOrEqual(250);
+  });
+
+  it('the first view shows its items at once, the static and the arc at their values, and is still', () => {
+    const m = radarModel(ITEMS, 2.5, 0.3);
+    expect(m.marks.map((k) => k.item)).toEqual(ITEMS);
+    expect([...opacities(m).values()].every((o) => o === 1)).toBe(true);
+    expect(easedAt(m.riuh, m.now)).toBe(2.5);
+    expect(easedAt(m.fog, m.now)).toBe(0.3);
+    expect(modelBusy(m)).toBe(false);
+  });
+
+  it('a mark keeps its key while its item moves; a new item fades in and a gone one fades out, both at one fade per FADE_MS', () => {
+    let m = radarModel([rec(40), rec(100)], 0, 0);
+    const [a, b] = m.marks.map((k) => k.key);
+    m = stepModel(m, [rec(43, 75), rec(70, 30)], 0, 0, 1000);
+    // The first moved 3 px: the same mark, at full. The second vanished; a new one came at (70, 30).
+    expect(m.marks.find((k) => k.key === a)!.item.x).toBe(43);
+    expect(markOpacity(m.marks.find((k) => k.key === a)!, 1000)).toBe(1);
+    const fresh = m.marks.find((k) => k.key !== a && k.key !== b)!;
+    expect(fresh.item).toEqual(rec(70, 30));
+    expect(markOpacity(fresh, 1000)).toBe(0);
+    expect(markOpacity(fresh, 1000 + FADE_MS / 2)).toBeCloseTo(0.5, 9);
+    expect(markOpacity(fresh, 1000 + FADE_MS)).toBe(1);
+    const gone = m.marks.find((k) => k.key === b)!;
+    expect(gone.item).toEqual(rec(100));
+    expect(markOpacity(gone, 1000)).toBe(1);
+    expect(markOpacity(gone, 1000 + FADE_MS / 4)).toBeCloseTo(0.75, 9);
+    expect(modelBusy(m)).toBe(true);
+    // Once faded out it leaves the model; until then the frame clock keeps it.
+    expect(tickModel(m, 1000 + FADE_MS - 1).marks.some((k) => k.key === b)).toBe(true);
+    const done = tickModel(m, 1000 + FADE_MS);
+    expect(done.marks.some((k) => k.key === b)).toBe(false);
+    expect(modelBusy(done)).toBe(false);
+  });
+
+  it('a mark that comes back fades back in from where it was, and the route stays one mark however far its end moves', () => {
+    let m = radarModel([rec(40)], 0, 0);
+    const key = m.marks[0].key;
+    m = stepModel(m, [], 0, 0, 1000);
+    m = stepModel(m, [rec(41)], 0, 0, 1000 + FADE_MS * 0.6);
+    const back = m.marks.find((k) => k.key === key)!;
+    expect(markOpacity(back, m.now)).toBeCloseTo(0.4, 9);
+    expect(markOpacity(back, m.now + FADE_MS * 0.3)).toBeCloseTo(0.7, 9);
+    const route = (x: number): RadarItem => ({ kind: 'route', x, y: 10, clamped: true, dist: 300, points: [{ x: 74, y: 74 }, { x, y: 10 }] });
+    let r = radarModel([route(20)], 0, 0);
+    r = stepModel(r, [route(130)], 0, 0, 500);
+    expect(r.marks).toHaveLength(1);
+    expect(r.marks[0].key).toBe(0);
+    expect(markOpacity(r.marks[0], 500)).toBe(1);
+  });
+
+  it('whatever the snapshots do, no mark appears, changes or leaves faster than one full fade per FADE_MS', () => {
+    const rand = mulberry32(17);
+    let m = radarModel([], 0, 0);
+    const seen = new Map<number, { t: number; o: number }>();
+    let t = 2000;
+    let checked = 0;
+    for (let k = 0; k < 600; k++) {
+      t += 4 + Math.floor(rand() * 70);
+      if (rand() < 0.6) {
+        // Up to six records that jitter by a pixel or two, come, go and come back near where they were.
+        const items = Array.from({ length: Math.floor(rand() * 7) }, (_, i) => rec(18 + i * 19 + rand() * 2, 74 + rand() * 2));
+        m = stepModel(m, rand() < 0.5 ? items : items.reverse(), 0, 0, t);
+      } else m = tickModel(m, t);
+      const live = new Set<number>();
+      for (const [key, o] of opacities(m)) {
+        const prev = seen.get(key);
+        const since = prev ? m.now - prev.t : m.now - m.marks.find((x) => x.key === key)!.at;
+        expect(Math.abs(o - (prev ? prev.o : 0)), `key ${key}`).toBeLessThanOrEqual(since / FADE_MS + 1e-9);
+        seen.set(key, { t: m.now, o });
+        live.add(key);
+        checked++;
+      }
+      for (const [key, s] of seen) {
+        if (live.has(key)) continue;
+        expect(s.o, `key ${key} left`).toBeLessThanOrEqual((m.now - s.t) / FADE_MS + 1e-9);
+        seen.delete(key);
+      }
+    }
+    expect(checked).toBeGreaterThan(500);
+  });
+
+  it('the static band and the arc ease to a new value over EASE_MS from wherever they are, never jumping', () => {
+    let m = radarModel([], 1, 0);
+    m = stepModel(m, [], 2.5, 0.3, 1000);
+    expect(easedAt(m.riuh, 1000)).toBe(1);
+    expect(easedAt(m.riuh, 1000 + EASE_MS / 2)).toBeCloseTo(1.75, 9);
+    expect(easedAt(m.riuh, 1000 + EASE_MS)).toBe(2.5);
+    expect(easedAt(m.fog, 1000 + EASE_MS / 2)).toBeCloseTo(0.15, 9);
+    // Mata comes on half way: the static turns back from where it is.
+    const mid = easedAt(m.fog, 1000 + EASE_MS / 2);
+    m = stepModel(m, [], 2.5, 0, 1000 + EASE_MS / 2);
+    expect(easedAt(m.fog, m.now)).toBeCloseTo(mid, 9);
+    expect(modelBusy(m)).toBe(true);
+    expect(easedAt(m.fog, m.now + EASE_MS)).toBe(0);
+    expect(modelBusy(tickModel(m, m.now + EASE_MS))).toBe(false);
+    // The clock never runs back.
+    expect(tickModel(m, 0).now).toBe(m.now);
+  });
+
+  it('trackMarks matches by kind: a record never takes over a copy\'s mark, however near', () => {
+    const copy: RadarItem = { kind: 'decoy', x: 50, y: 50, clamped: false, dist: 5 };
+    const { marks, next } = trackMarks(radarModel([copy], 0, 0).marks, [rec(50, 50)], 100, 1);
+    expect(next).toBe(2);
+    expect(marks.map((k) => [k.key, k.item.kind, k.to])).toEqual([[1, 'record', 1], [0, 'decoy', 0]]);
+  });
 });
 
 describe('TouchControls', () => {

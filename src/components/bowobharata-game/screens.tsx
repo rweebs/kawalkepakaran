@@ -1,7 +1,8 @@
 // The game's screens, rendered from props only (TouchControls alone keeps pointer state), so they can be checked with renderToString.
 // Every named person and every block of dossier dates sits in an element marked data-entry together with the allegation
-// line and the reply link, and every event card carries both too. The driving HUD (GameHud) shows counts, timers and
-// speeds, and its toasts (toastText) counts, dates and channels only, never a name or an event title.
+// line and the reply link, and every event card carries both too. The driving HUD (GameHud) shows counts, timers, speeds
+// and the radar's kinds and positions (Radar), and its toasts (toastText) counts, dates and channels only, never a name
+// or an event title.
 // The only casting of a real person, Abil Sudarman as Sengkuni, is the page's own labelled poster on the gate.
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { routePath, type Locale } from '../../i18n';
@@ -14,11 +15,15 @@ import type { HudSnapshot } from '../../lib/bowobharata-game/hud';
 import { createTouchPointers, type TouchState } from '../../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../../lib/bowobharata-game/mission-run';
 import type { MissionType } from '../../lib/bowobharata-game/missions';
+import { RADAR_PX } from '../../lib/bowobharata-game/radar';
 import type { Totals } from '../../lib/bowobharata-game/record';
 import type { ChapterReport, ReportData } from '../../lib/bowobharata-game/report-types';
 import { kategoriLabel, type Tahap } from '../../lib/perkara';
 import { BarList, Columns, StatTiles, TimeStrip, type Mark } from './charts';
+import { Radar } from './Radar';
 import { ReportMap } from './ReportMap';
+
+export { Radar, type RadarProps } from './Radar';
 
 /** One event card in one language, as a screen shows it: `date` is the label, `dateTime` the ISO day. */
 export interface CardView { key: string; date: string; dateTime: string; channel: string; title: string; summary: string; href: string }
@@ -468,8 +473,9 @@ export function Ring({ kind, label, fill, lit }: { kind: 'surge' | 'sight'; labe
 /**
  * The driving HUD at the stage's corners, from one snapshot: counts, timers and speeds only, never a name, a title or a
  * date. Top left, the objective panel: the objective, the muted hint line, the timer, the frame line, pause and full
- * screen. Bottom right, the speed with the Laju and Mata rings (on touch the buttons carry the rings). The toasts sit in
- * a polite live region, bottom left (under the objective panel on touch).
+ * screen. Top right, the radar slot: the round radar with the clamour's arc on its rim, and on touch the speed under it.
+ * Bottom right on a desk, the speed with the Laju and Mata rings (on touch the buttons carry the rings). The toasts sit
+ * in a polite live region, bottom left (on touch, in the right column under the radar).
  */
 export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscreen, canFullscreen, fullscreen = false }: {
   locale: Locale; hud: HudSnapshot; touch: boolean; paused: boolean; toasts: readonly HudToast[];
@@ -477,6 +483,7 @@ export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscr
 }) {
   const c = GAME_COPY[locale];
   const line = objectiveLine(hud, locale);
+  const speed = <p className="bg-speed" data-gauge="speed"><b>{hud.speedKmh}</b> {c.ride.speedUnit}</p>;
   return (
     <div className="bg-hud" data-touch={touch ? '' : undefined}>
       <div className="bg-objective">
@@ -489,15 +496,22 @@ export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscr
           {canFullscreen && <button type="button" className="btn" aria-pressed={fullscreen} onClick={onFullscreen}>{c.fullscreen}</button>}
         </div>
       </div>
-      <div className="bg-gauges">
-        <p className="bg-speed" data-gauge="speed"><b>{hud.speedKmh}</b> {c.ride.speedUnit}</p>
-        {!touch && (
+      <div className="bg-radar-slot">
+        <Radar
+          locale={locale} items={hud.radar} riuh={hud.riuh} staticFrac={hud.staticFrac} size={RADAR_PX} m={Math.round(hud.radarM)}
+          heading={hud.heading} sight={hud.sight.on} objective={hud.objective}
+        />
+        {touch && speed}
+      </div>
+      {!touch && (
+        <div className="bg-gauges">
+          {speed}
           <div className="bg-rings">
             <Ring kind="surge" label={c.ride.surge} fill={hud.surge.frac} lit={hud.surge.ready} />
             <Ring kind="sight" label={c.ride.sight} fill={hud.sight.charge} lit={hud.sight.on} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
       <div className="bg-toasts" role="status" aria-live="polite">
         {toasts.map((t) => <p key={t.id} className="bg-toast">{t.text}</p>)}
       </div>

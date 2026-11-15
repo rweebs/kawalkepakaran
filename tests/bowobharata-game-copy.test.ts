@@ -270,7 +270,25 @@ describe('bowobharata-game copy', () => {
       expect(Object.keys(GAME_COPY[l].toasts).sort()).toEqual(
         ['checkpoint', 'filed', 'gate', 'lap', 'letter', 'ranks', 'recorded', 'recordedPrologue', 'rewrite', 'wall'],
       );
+      expect(Object.keys(GAME_COPY[l].ride).sort()).toEqual(['north', 'radar', 'riuh', 'riuhLevel', 'sight', 'speedUnit', 'surge']);
     }
+  });
+
+  it('the radar: its label carries the range in metres, north is one capital letter, and the clamour level reads n of 5', () => {
+    for (const l of LOCALES) {
+      const r = GAME_COPY[l].ride;
+      expect(r.radar({ m: 107 })).toMatch(/\b107 m\b/);
+      expect(r.radar({ m: 107 })).not.toBe(r.radar({ m: 70 }));
+      expect(r.north).toMatch(/^[A-Z]$/);
+      expect(r.riuhLevel({ n: 3 })).toMatch(/\b3\b[^\d]*\b5\b/);
+      expect(r.riuhLevel({ n: 0 })).toMatch(/\b0\b/);
+    }
+    expect(GAME_COPY.id.ride.radar({ m: 70 })).toBe('Peta medan di sekitar kereta, sampai 70 m');
+    expect(GAME_COPY.en.ride.radar({ m: 70 })).toBe('Map of the field round the chariot, out to 70 m');
+    expect(GAME_COPY.id.ride.north).toBe('U');
+    expect(GAME_COPY.en.ride.north).toBe('N');
+    expect(GAME_COPY.id.ride.riuhLevel({ n: 4 })).toBe('Tingkat 4 dari 5');
+    expect(GAME_COPY.en.ride.riuhLevel({ n: 4 })).toBe('Level 4 of 5');
   });
 
   it('the course, lap and lap-toast lines are built from their counts and seconds, in both locales', () => {
