@@ -12,11 +12,11 @@ import { angleDiff, forward, rightOf, yawOf, type XZ } from '../src/lib/bowobhar
 import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
 import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
 import { createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
-import { missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
+import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
 import { CHARIOT_SILHOUETTE } from '../src/lib/bowobharata-game/chase';
 import { hullCircles } from '../src/lib/bowobharata-game/collide';
-import { DRIVE, VOLLEY } from '../src/lib/bowobharata-game/tuning';
+import { CHASE, DRIVE, MISSION_TIMING, VOLLEY } from '../src/lib/bowobharata-game/tuning';
 import { arrowPoint, scriptedVolley, telegraphAt, type Cloud, type Volley } from '../src/lib/bowobharata-game/volley';
 import type { SceneGame } from '../src/lib/bowobharata-game/world/types';
 import { CLEAR, createLandmarks } from '../src/lib/bowobharata-game/world/landmarks3d';
@@ -1621,23 +1621,704 @@ describe('pickups', () => {
     expect(frames.size).toBe(0);
   });
 
-  it('allocates nothing per frame: no new THREE. between function sync( and function dispose(, where every per-frame helper lives', () => {
+  it('allocates nothing per frame: no new, literal, spread or closure from function sync( to function dispose(, where every per-frame helper lives', () => {
     const src = read('src/lib/bowobharata-game/world/pickups3d.ts');
     const from = src.indexOf('function sync(');
     const to = src.indexOf('function dispose(');
     expect(from).toBeGreaterThan(0);
     expect(to).toBeGreaterThan(from);
-    expect(src.slice(from, to)).not.toContain('new THREE.');
-    // So the check reads every function a frame runs: above sync only what runs once, or once a lakon; after dispose, none.
+    const frame = src.slice(from, to);
+    expect(frame).not.toContain('new THREE.');
+    // openTargets, across, forward and rightOf each build their result: a frame reads the gates' and posts' places from
+    // their slots, and the open targets are worked out again only when they can change (retarget, above sync).
+    expect(frameCodeFaults(frame, src.slice(0, from) + src.slice(to), ['openTargets', 'across', 'forward', 'rightOf', 'pickupsOf'])).toEqual([]);
+    // So the check reads every function a frame runs: above sync only what runs once, once a lakon, or when the open
+    // targets can change; after dispose, none.
     const declared = (text: string) => [...text.matchAll(/\bfunction (\w+)\(/g)].map((m) => m[1]);
     const start = src.indexOf('export function createPickups(');
     expect(start).toBeGreaterThan(0);
-    for (const fn of declared(src.slice(0, start))) expect(['shimmerAt', 'pickupsOf', 'markerGeo'], fn).toContain(fn);
-    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['slotOf', 'layOut'], fn).toContain(fn);
+    for (const fn of declared(src.slice(0, start))) {
+      expect(['shimmerAt', 'pickupsOf', 'markerGeo', 'painted', 'gateGeo', 'lapPostGeo', 'letterGeo'], fn).toContain(fn);
+    }
+    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['slotOf', 'gateSlot', 'postSlot', 'layOut', 'retarget'], fn).toContain(fn);
     expect(declared(src.slice(to))).toEqual(['dispose']);
     // shimmerAt, the one module-level function a frame runs, is plain arithmetic.
     const shimmer = src.slice(src.indexOf('export function shimmerAt('));
     expect(shimmer.slice(0, shimmer.indexOf('\n}\n'))).not.toContain('new ');
+  });
+
+  describe('gates, lap posts and the letter', () => {
+    type Layer = ReturnType<typeof createPickups>;
+    const slugs = (n: number) => Array.from({ length: n }, (_, k) => `s${k}`);
+    const roamOf = (def: MissionDef) => startChapter(def, def.start, 1, WORLD);
+    const P2 = missionFor(2, slugs(2));
+    const P4 = missionFor(4, slugs(9));
+    const P5 = missionFor(5, slugs(1));
+    const P7 = missionFor(7, slugs(2));
+    const P2_ROAM = roamOf(P2);
+    const P4_ROAM = roamOf(P4);
+    const P5_ROAM = roamOf(P5);
+    const P7_ROAM = roamOf(P7);
+    /** A course's gate from the lakon's data: its day (0 for day 1), its centre on the day's line, the heading its span lies across. */
+    type Gate = { id: string; day: number; real: boolean; mimic: boolean; at: XZ; heading: number; width: number };
+    const gatesOf = (def: MissionDef): Gate[] =>
+      def.steps.flatMap((s) =>
+        s.kind === 'course'
+          ? s.days.flatMap((d, k) =>
+              d.gates.map((g) => ({ id: g.id, day: k, real: g.real, mimic: g.mimic, at: across(d.at, d.heading, g.offset), heading: d.heading, width: g.width })),
+            )
+          : [],
+      );
+    const GATES_P4 = gatesOf(P4);
+    const GATES_P7 = gatesOf(P7);
+    const POSTS = P5.steps.flatMap((s) => (s.kind === 'laps' ? s.posts : []));
+    const THEN = P5.steps.flatMap((s) => (s.kind === 'laps' ? [s.then] : []))[0];
+    /** The mesh a gate is drawn in: gold if real, gold shimmering if a mimic, grey otherwise. */
+    const meshFor = (g: Gate) => (g.real ? 'gate-real' : g.mimic ? 'gate-mimic' : 'gate-rewrite');
+    const meshOf = (root: THREE.Object3D, name: string) => named<THREE.InstancedMesh>(root, name);
+    const fadeAt = (mesh: THREE.InstancedMesh, k: number) => mesh.geometry.getAttribute('aFade').getX(k);
+    /** Syncs `s` for `seconds` in frames of 1/64 s after t0; returns the time reached. */
+    function hold(layer: Layer, s: GameState, t0: number, seconds: number): number {
+      const n = Math.round(seconds * 64);
+      for (let k = 1; k <= n; k++) layer.sync(s, t0 + k / 64);
+      return t0 + n / 64;
+    }
+    /** v's offsets from a point on a line's centre, across the line's heading and along it. */
+    const lateral = (v: XZ, c: XZ, heading: number) => (v.x - c.x) * rightOf(heading).x + (v.z - c.z) * rightOf(heading).z;
+    const along = (v: XZ, c: XZ, heading: number) => (v.x - c.x) * forward(heading).x + (v.z - c.z) * forward(heading).z;
+    /** The riders' tops (CHARIOT_SILHOUETTE: Krishna's feather) and the chase camera's lowest (m over the ground). */
+    const RIDERS = Math.max(...CHARIOT_SILHOUETTE.map((p) => p.y));
+    const CAMERA = CHASE.heightAtTop;
+    const hueOf = (c: THREE.Color) => c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace).h;
+
+    it('parva 4, day 1: the gate-real instances are the open real gates within 120 m of the chariot, each whole at its gate', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const mesh = meshOf(game.root, 'gate-real');
+      layer.sync(P4_ROAM, 0);
+      // None before the lakon starts.
+      expect(drawn(game.root, 'gate-real')).toBe(0);
+      let t = 0;
+      let beyond = 0;
+      for (const [x, z] of [[P4.start.x, P4.start.z], [0, -20], [-70, -40], [60, 30]]) {
+        const s = at(P4_ROAM, { phase: 'active', dayIndex: 0 }, { car: car(x, z, Math.PI / 2) });
+        t = hold(layer, s, t, 1);
+        const open = GATES_P4.filter((g) => g.real && flatDist({ x, z }, g.at) < 120);
+        beyond += GATES_P4.filter((g) => g.real).length - open.length;
+        expect(open.length, `(${x}, ${z})`).toBeGreaterThan(0);
+        expect(drawn(game.root, 'gate-real'), `(${x}, ${z})`).toBe(open.length);
+        for (const g of open) {
+          const here = instancesAt(mesh, g.at);
+          expect(here, g.id).toHaveLength(1);
+          expect(fadeAt(mesh, here[0]), g.id).toBe(1);
+        }
+      }
+      // Some stood more than 120 m off, and were not drawn.
+      expect(beyond).toBeGreaterThan(0);
+      // A recorded gate is no longer open: from the start, three of the four.
+      const recorded = at(P4_ROAM, { phase: 'active', dayIndex: 1, recorded: ['D1L'] }, { car: car(P4.start.x, P4.start.z, Math.PI / 2) });
+      t = hold(layer, recorded, t, 1);
+      expect(drawn(game.root, 'gate-real')).toBe(3);
+      expect(instancesAt(mesh, GATES_P4.find((g) => g.id === 'D1L')!.at)).toHaveLength(0);
+    });
+
+    it('stands every gate of parva 4 and parva 7 on the ground at its centre, its pillars rooted at the ends of its span across the day’s heading, the arch over the riders and under the chase camera', () => {
+      for (const [def, gates] of [[P4, GATES_P4], [P7, GATES_P7]] as const) {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        const roam = roamOf(def);
+        layer.sync(roam, 0);
+        let t = 0;
+        for (const g of gates) {
+          t = hold(layer, at(roam, { phase: 'active', dayIndex: g.day }, { car: car(g.at.x, g.at.z) }), t, 1);
+          const mesh = meshOf(game.root, meshFor(g));
+          const [k] = instancesAt(mesh, g.at);
+          expect(k, `${def.chapter} ${g.id}`).toBeDefined();
+          expect(Math.abs(over(placeOf(mesh, k), g.at)), g.id).toBeLessThanOrEqual(F32);
+          const vs = vertices(mesh, k);
+          const across_ = vs.map((v) => lateral(v, g.at, g.heading));
+          // Thin along the heading; across it, the width of its span and no more than its plinths beyond.
+          expect(Math.max(...vs.map((v) => Math.abs(along(v, g.at, g.heading)))), g.id).toBeLessThan(0.5);
+          expect(Math.max(...across_.map(Math.abs)), g.id).toBeLessThan(g.width / 2 + 0.5);
+          for (const side of [-1, 1]) {
+            // A pillar on each end of the span, its foot in the ground and its top past the riders.
+            const pillar = vs.filter((_, i) => Math.abs(across_[i] - (side * g.width) / 2) <= 0.35);
+            expect(pillar.length, `${g.id} ${side}`).toBeGreaterThan(0);
+            expect(Math.min(...pillar.map(height)), `${g.id} ${side}`).toBeLessThan(-0.1);
+            expect(Math.max(...pillar.map(height)), `${g.id} ${side}`).toBeGreaterThan(RIDERS + 0.1);
+          }
+          // The way through: nothing between the pillars as low as the riders' heads; the crown under the chase camera.
+          const inside = vs.filter((_, i) => Math.abs(across_[i]) < g.width / 2 - 0.4);
+          expect(inside.length, g.id).toBeGreaterThan(0);
+          expect(Math.min(...inside.map(height)), g.id).toBeGreaterThan(RIDERS + 0.1);
+          expect(Math.max(...vs.map(height)), g.id).toBeLessThan(CAMERA - 1.5);
+        }
+      }
+    });
+
+    it('draws real gates gold lit #ffb84a × 1.2 and rewrites grey; a mimic in the gold material at opacity shimmerAt(time), from the data’s mimic flag', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const gold = meshOf(game.root, 'gate-real').material as THREE.MeshStandardMaterial;
+      const mimic = meshOf(game.root, 'gate-mimic');
+      const mim = mimic.material as THREE.MeshStandardMaterial;
+      const grey = meshOf(game.root, 'gate-rewrite').material as THREE.MeshStandardMaterial;
+      expect(gold.isMeshStandardMaterial).toBe(true);
+      expect(gold.emissive.getHexString()).toBe('ffb84a');
+      expect(gold.emissiveIntensity).toBe(1.2);
+      expect(hueOf(gold.color)).toBeGreaterThanOrEqual(0.1);
+      expect(hueOf(gold.color)).toBeLessThanOrEqual(0.17);
+      // The mimic's is the gold one's twin, its own so that only it shimmers.
+      expect(mim).not.toBe(gold);
+      expect(mim.color.equals(gold.color)).toBe(true);
+      expect(mim.emissive.equals(gold.emissive)).toBe(true);
+      for (const key of ['emissiveIntensity', 'roughness', 'metalness'] as const) expect(mim[key], key).toBe(gold[key]);
+      expect(mim.customProgramCacheKey()).toBe(gold.customProgramCacheKey());
+      // Grey: next to no hue.
+      expect(grey.color.getHSL({ h: 0, s: 0, l: 0 }).s).toBeLessThan(0.15);
+      expect(grey.emissive.getHSL({ h: 0, s: 0, l: 0 }).s).toBeLessThan(0.15);
+      // Parva 4, day 4, the chariot by its line: its rewrites mimic gold, each mimic drawn at its gate.
+      const c = car(-70, -40, Math.PI / 2);
+      const s = at(P4_ROAM, { phase: 'active', dayIndex: 3 }, { car: c });
+      let t = hold(layer, s, 0, 1);
+      const mimics = GATES_P4.filter((g) => g.mimic && g.day >= 3 && flatDist(c, g.at) < 120);
+      expect(mimics.length).toBeGreaterThan(0);
+      expect(drawn(game.root, 'gate-mimic')).toBe(mimics.length);
+      for (const g of mimics) expect(instancesAt(mimic, g.at), g.id).toHaveLength(1);
+      // Its opacity is the copies' shimmer (1.2 Hz, under 2 Hz); the real gates hold still.
+      for (let k = 1; k <= 90; k++) {
+        t += 1 / 60;
+        layer.sync(s, t);
+        expect(mim.opacity).toBe(shimmerAt(t));
+        expect(gold.opacity).toBe(1);
+        expect(grey.opacity).toBe(1);
+      }
+      // Parva 7's rewrite gates are no mimics: all grey.
+      const { game: g7 } = fakeGame();
+      const l7 = createPickups(g7);
+      const c7 = car(93, 12, Math.PI);
+      hold(l7, at(P7_ROAM, { phase: 'active', dayIndex: 0 }, { car: c7 }), 0, 1);
+      expect(GATES_P7.some((g) => g.mimic)).toBe(false);
+      expect(drawn(g7.root, 'gate-mimic')).toBe(0);
+      expect(drawn(g7.root, 'gate-rewrite')).toBe(GATES_P7.filter((g) => !g.real && flatDist(c7, g.at) < 120).length);
+      expect(drawn(g7.root, 'gate-rewrite')).toBeGreaterThan(0);
+    });
+
+    it('parva 4, day 4, sight on: a stamp-lotus over the arch of each drawn real gate and a stamp-ring over each drawn rewrite gate, grey or mimic; sight off: no gate stamps', () => {
+      const { game } = fakeGame();
+      game.camera.position.set(-60, 30, -10);
+      game.camera.lookAt(-70, 0, -50);
+      const layer = createPickups(game);
+      const c = car(-70, -40, Math.PI / 2);
+      const s = at(P4_ROAM, { phase: 'active', dayIndex: 3, recorded: ['D1L', 'D3R'] }, { car: c, decoys: [] });
+      let t = hold(layer, s, 0, 1);
+      expect(drawn(game.root, 'stamp-lotus')).toBe(0);
+      expect(drawn(game.root, 'stamp-ring')).toBe(0);
+      t = hold(layer, sighted(s), t, 0.5);
+      const real = GATES_P4.filter((g) => g.real && !['D1L', 'D3R'].includes(g.id) && flatDist(c, g.at) < 120);
+      const rewrites = GATES_P4.filter((g) => !g.real && g.day >= 3 && flatDist(c, g.at) < 120);
+      expect(real.length).toBeGreaterThan(0);
+      expect(rewrites.length).toBeGreaterThan(0);
+      expect(drawn(game.root, 'gate-real')).toBe(real.length);
+      expect(drawn(game.root, 'gate-rewrite') + drawn(game.root, 'gate-mimic')).toBe(rewrites.length);
+      expect(drawn(game.root, 'stamp-lotus')).toBe(real.length);
+      expect(drawn(game.root, 'stamp-ring')).toBe(rewrites.length);
+      const lotus = meshOf(game.root, 'stamp-lotus');
+      const ring = meshOf(game.root, 'stamp-ring');
+      for (const [gates, stamps] of [[real, lotus], [rewrites, ring]] as const) {
+        for (const g of gates) {
+          const gate = meshOf(game.root, meshFor(g));
+          const crown = Math.max(...vertices(gate, instancesAt(gate, g.at)[0]).map((v) => v.y));
+          const here = instancesAt(stamps, g.at);
+          expect(here, g.id).toHaveLength(1);
+          const p = new THREE.Vector3();
+          const q = new THREE.Quaternion();
+          matrixAt(stamps, here[0]).decompose(p, q, new THREE.Vector3());
+          // Over its arch, whole, turned to the camera, and clear of the chase camera above.
+          const ys = vertices(stamps, here[0]).map((v) => v.y);
+          expect(Math.min(...ys), g.id).toBeGreaterThan(crown);
+          expect(Math.max(...ys) - groundHeight(g.at.x, g.at.z), g.id).toBeLessThan(CAMERA - 0.5);
+          expect(q.angleTo(game.camera.quaternion), g.id).toBeLessThan(1e-3);
+        }
+      }
+      // Day 4 passed with sight on: its mimic goes, and its ring with it, the ring's size following the gate's fade, so
+      // neither pops.
+      const D4R = GATES_P4.find((g) => g.id === 'D4R')!;
+      expect(D4R.mimic).toBe(true);
+      const gate = meshOf(game.root, 'gate-mimic');
+      const dt = 1 / 64;
+      let lastSize = 2.6;
+      let went = 0;
+      for (let k = 1; k <= 48; k++) {
+        layer.sync(sighted(at(s, { dayIndex: 4 })), t + k * dt);
+        const g = shown(gate) ? instancesAt(gate, D4R.at) : [];
+        const r = shown(ring) ? instancesAt(ring, D4R.at) : [];
+        expect(r.length, `frame ${k}`).toBe(g.length);
+        if (g.length === 0) {
+          went++;
+          continue;
+        }
+        const scale = new THREE.Vector3();
+        matrixAt(ring, r[0]).decompose(new THREE.Vector3(), new THREE.Quaternion(), scale);
+        expect(scale.x / 2.6, `frame ${k}`).toBeCloseTo(fadeAt(gate, g[0]), 5);
+        expect(lastSize - scale.x, `frame ${k}`).toBeLessThanOrEqual((2.6 * dt) / 0.25 + 1e-5);
+        lastSize = scale.x;
+      }
+      expect(went).toBeGreaterThan(0);
+      t += 48 * dt;
+      // Sight off: the stamps are gone within a quarter second; the gates stand.
+      hold(layer, s, t, 0.3);
+      expect(drawn(game.root, 'stamp-lotus')).toBe(0);
+      expect(drawn(game.root, 'stamp-ring')).toBe(0);
+      expect(drawn(game.root, 'gate-real')).toBe(real.length);
+    });
+
+    it('eases a passed day’s rewrite gates out over at least 0.6 s and draws them no more; a passed day’s real gate still open stays drawn', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const dt = 1 / 64;
+      for (const [day, c] of [[0, car(-70, 30, Math.PI / 2)], [3, car(-70, -45, Math.PI / 2)]] as const) {
+        const real = GATES_P4.find((g) => g.day === day && g.real)!;
+        const rewrite = GATES_P4.find((g) => g.day === day && !g.real)!;
+        expect(rewrite.mimic).toBe(day >= 3);
+        const gold = meshOf(game.root, 'gate-real');
+        const other = meshOf(game.root, meshFor(rewrite));
+        const state = (dayIndex: number, recorded: string[] = []) => at(P4_ROAM, { phase: 'active', dayIndex, recorded }, { car: c });
+        let t = hold(layer, state(day), 100 * day, 1);
+        expect(instancesAt(other, rewrite.at), rewrite.id).toHaveLength(1);
+        // The day passed, its real gate unrecorded.
+        let last = 1;
+        let gone = NaN;
+        for (let k = 1; k <= 64; k++) {
+          layer.sync(state(day + 1), t + k * dt);
+          const [r] = instancesAt(gold, real.at);
+          expect(r, `${real.id} at frame ${k}`).toBeDefined();
+          expect(fadeAt(gold, r)).toBe(1);
+          const here = shown(other) ? instancesAt(other, rewrite.at) : [];
+          if (here.length === 0) {
+            if (Number.isNaN(gone)) gone = k * dt;
+            continue;
+          }
+          expect(Number.isNaN(gone), `${rewrite.id} came back`).toBe(true);
+          const f = fadeAt(other, here[0]);
+          expect(f).toBeLessThanOrEqual(last);
+          expect(last - f, `${rewrite.id} at frame ${k}`).toBeLessThanOrEqual(dt / 0.6 + 1e-6);
+          last = f;
+        }
+        expect(gone, rewrite.id).toBeGreaterThanOrEqual(0.6);
+        expect(gone, rewrite.id).toBeLessThanOrEqual(0.7);
+        t += 1;
+        // Still drawn long after its day: it can be recorded from either side.
+        t = hold(layer, state(day + 1), t, 4);
+        expect(instancesAt(gold, real.at), real.id).toHaveLength(1);
+        expect(shown(other) ? instancesAt(other, rewrite.at) : [], rewrite.id).toHaveLength(0);
+        // Recorded at last, it goes too, eased.
+        last = 1;
+        gone = NaN;
+        for (let k = 1; k <= 64; k++) {
+          layer.sync(state(day + 1, [real.id]), t + k * dt);
+          const here = instancesAt(gold, real.at);
+          if (here.length === 0) {
+            if (Number.isNaN(gone)) gone = k * dt;
+            continue;
+          }
+          const f = fadeAt(gold, here[0]);
+          expect(last - f, `${real.id} at frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+          last = f;
+        }
+        expect(gone, real.id).toBeGreaterThanOrEqual(0.25);
+        expect(gone, real.id).toBeLessThanOrEqual(0.7);
+      }
+    });
+
+    it('never pops a gate: riding the course, passing days, recording a gate, jumping the chariot and ending the course, no gate’s fade swings faster than in a quarter second', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const NAMES = ['gate-real', 'gate-mimic', 'gate-rewrite'];
+      const key = (name: string, p: XZ) => `${name} ${Math.round(p.x * 10)} ${Math.round(p.z * 10)}`;
+      /** Each gate's fade as drawn, by id: 0 while it is not drawn. */
+      const fades = (): Map<string, number> => {
+        const byPlace = new Map<string, number>();
+        for (const n of NAMES) {
+          const mesh = meshOf(game.root, n);
+          if (!shown(mesh)) continue;
+          for (let k = 0; k < mesh.count; k++) byPlace.set(key(n, placeOf(mesh, k)), fadeAt(mesh, k));
+        }
+        return new Map(GATES_P4.map((g) => [g.id, byPlace.get(key(meshFor(g), g.at)) ?? 0]));
+      };
+      const dt = 1 / 64;
+      let t = 0;
+      let last = fades();
+      const seen = new Set<string>();
+      const frame = (s: GameState) => {
+        t += dt;
+        layer.sync(s, t);
+        const now = fades();
+        for (const g of GATES_P4) {
+          expect(Math.abs(now.get(g.id)! - last.get(g.id)!), `${g.id} at ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+          if (now.get(g.id)! > 0) seen.add(g.id);
+        }
+        last = now;
+      };
+      for (let k = 0; k < 32; k++) frame(P4_ROAM);
+      for (let k = 0; k < 64; k++) frame(at(P4_ROAM, { phase: 'intro' }));
+      // North along x = −70 at 17 m/s, each day passed as the chariot crosses its line, day 1's real gate recorded there.
+      const lines = [25, 0, -25, -50, -75];
+      for (let k = 0; k < 7 * 64; k++) {
+        const z = 58 - 17 * k * dt;
+        const dayIndex = lines.filter((l) => z < l).length;
+        frame(at(P4_ROAM, { phase: 'active', dayIndex, recorded: z < 25 ? ['D1L'] : [] }, { car: car(-70, z, Math.PI / 2, 17) }));
+      }
+      // A jump across the field and back, as a retry or a teleport makes; then the course done.
+      const later = (x: number, z: number, more: Partial<Run> = {}) => at(P4_ROAM, { phase: 'active', dayIndex: 5, recorded: ['D1L'], ...more }, { car: car(x, z) });
+      for (let k = 0; k < 64; k++) frame(later(70, 0));
+      for (let k = 0; k < 64; k++) frame(later(-70, -60));
+      for (let k = 0; k < 64; k++) frame(later(-70, -60, { step: 1, dayIndex: 18 }));
+      expect(seen.size).toBe(GATES_P4.length);
+      for (const g of GATES_P4) expect(last.get(g.id), g.id).toBe(0);
+    });
+
+    it('parva 5: 5 lap-posts pairs, two poles 8 m apart across each post’s heading with a ribbon over the riders; an amber beam over the next post alone', () => {
+      const { game } = fakeGame();
+      game.camera.position.set(-70, 25, 40);
+      const layer = createPickups(game);
+      expect(POSTS).toHaveLength(5);
+      layer.sync(P5_ROAM, 0);
+      expect(drawn(game.root, 'lap-posts')).toBe(0);
+      expect(drawn(game.root, 'lap-beams')).toBe(0);
+      const s = at(P5_ROAM, { phase: 'active' }, { car: car(-84, -10) });
+      let t = hold(layer, s, 0, 1);
+      const mesh = meshOf(game.root, 'lap-posts');
+      expect(drawn(game.root, 'lap-posts')).toBe(5);
+      const half = MISSION_TIMING.postWidth / 2;
+      expect(half).toBe(4);
+      for (const p of POSTS) {
+        const [k] = instancesAt(mesh, p.at);
+        expect(k).toBeDefined();
+        expect(fadeAt(mesh, k)).toBe(1);
+        expect(Math.abs(over(placeOf(mesh, k), p.at))).toBeLessThanOrEqual(F32);
+        const vs = vertices(mesh, k);
+        const side_ = vs.map((v) => lateral(v, p.at, p.heading));
+        expect(Math.max(...vs.map((v) => Math.abs(along(v, p.at, p.heading))))).toBeLessThan(0.3);
+        expect(Math.max(...side_.map(Math.abs))).toBeLessThan(half + 0.3);
+        for (const side of [-1, 1]) {
+          const pole = vs.filter((_, i) => Math.abs(side_[i] - side * half) <= 0.2);
+          expect(Math.min(...pole.map(height))).toBeLessThan(-0.1);
+          expect(Math.max(...pole.map(height))).toBeGreaterThan(RIDERS + 0.3);
+        }
+        // The ribbon between them, all of it over the riders' heads and under the chase camera.
+        const ribbon = vs.filter((_, i) => Math.abs(side_[i]) <= half - 0.5);
+        expect(ribbon.length).toBeGreaterThan(0);
+        expect(Math.min(...ribbon.map(height))).toBeGreaterThan(RIDERS + 0.1);
+        expect(Math.max(...vs.map(height))).toBeLessThan(CAMERA - 1.5);
+      }
+      // Two colours in one mesh: bamboo poles and a ribbon of another hue.
+      expect((mesh.material as THREE.MeshStandardMaterial).vertexColors).toBe(true);
+      const colours = new Set<string>();
+      const col = mesh.geometry.getAttribute('color');
+      for (let i = 0; i < col.count; i++) colours.add(`${col.getX(i).toFixed(3)} ${col.getY(i).toFixed(3)} ${col.getZ(i).toFixed(3)}`);
+      expect(colours.size).toBe(2);
+      // The next post, P1, under an amber beam, alone; the beam stands from under the ground, upright, turned to the camera.
+      const beams = meshOf(game.root, 'lap-beams');
+      expect(drawn(game.root, 'lap-beams')).toBe(1);
+      expect(instancesAt(beams, POSTS[0].at)).toHaveLength(1);
+      const amber = new THREE.Color();
+      beams.getColorAt(0, amber);
+      expect(amber.getHexString()).toBe('ffb84a');
+      expect(Math.min(...vertices(beams, 0).map((v) => over(v, POSTS[0].at)))).toBeLessThan(0);
+      expect(Math.max(...vertices(beams, 0).map((v) => over(v, POSTS[0].at)))).toBeGreaterThanOrEqual(19.5);
+      facesCamera(matrixAt(beams, 0), game.camera.position);
+      // Crossing P1 and P2: the beam moves on to P3, easing out at P1 and in at P3.
+      t = hold(layer, at(s, { lapStart: 1, lapPost: 2 }), t, 0.5);
+      expect(drawn(game.root, 'lap-beams')).toBe(1);
+      expect(instancesAt(beams, POSTS[2].at)).toHaveLength(1);
+      // The laps match: no next post, no beam; the posts stand until the record after them is recorded.
+      t = hold(layer, at(s, { lapStart: 80, lapPost: 1, laps: [40, 41], matched: true }), t, 0.5);
+      expect(drawn(game.root, 'lap-beams')).toBe(0);
+      expect(drawn(game.root, 'lap-posts')).toBe(5);
+      hold(layer, at(s, { step: 1, laps: [40, 41], matched: true, recorded: [THEN.id] }), t, 1);
+      expect(drawn(game.root, 'lap-posts')).toBe(0);
+    });
+
+    it('never pops a lap post or its beam: through the intro, the laps, the match and the step’s end, none swings faster than in a quarter second', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const posts = meshOf(game.root, 'lap-posts');
+      const beams = meshOf(game.root, 'lap-beams');
+      const full = new THREE.Color('#ffb84a').r;
+      const levels = (): number[] =>
+        POSTS.flatMap((p) => {
+          const k = shown(posts) ? instancesAt(posts, p.at)[0] : undefined;
+          const b = shown(beams) ? instancesAt(beams, p.at)[0] : undefined;
+          const c = new THREE.Color();
+          if (b !== undefined) beams.getColorAt(b, c);
+          return [k === undefined ? 0 : fadeAt(posts, k), b === undefined ? 0 : c.r / full];
+        });
+      const dt = 1 / 64;
+      let t = 0;
+      let last = levels();
+      let lit = 0;
+      const frame = (s: GameState) => {
+        t += dt;
+        layer.sync(s, t);
+        const now = levels();
+        now.forEach((v, i) => expect(Math.abs(v - last[i]), `${i} at ${t}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6));
+        lit = Math.max(lit, ...now.filter((_, i) => i % 2 === 1));
+        last = now;
+      };
+      for (let k = 0; k < 32; k++) frame(P5_ROAM);
+      for (let k = 0; k < 64; k++) frame(at(P5_ROAM, { phase: 'intro' }));
+      for (let n = 0; n < 10; n++) for (let k = 0; k < 20; k++) frame(at(P5_ROAM, { phase: 'active', lapStart: n > 0 ? 1 : null, lapPost: n % 5 }));
+      for (let k = 0; k < 64; k++) frame(at(P5_ROAM, { phase: 'active', lapStart: 80, lapPost: 1, laps: [40, 41], matched: true }));
+      for (let k = 0; k < 64; k++) frame(at(P5_ROAM, { phase: 'active', step: 1, laps: [40, 41], matched: true, recorded: [THEN.id] }));
+      expect(lit).toBe(1);
+      expect(last.every((v) => v === 0)).toBe(true);
+    });
+
+    it('parva 5 after the match: the lontar after the laps and its gold beam come out (the open targets are worked out again when the laps match)', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const laps = at(P5_ROAM, { phase: 'active', lapStart: 40, laps: [40], lapPost: 3 }, { car: car(-80, 20) });
+      let t = hold(layer, laps, 0, 0.5);
+      expect(drawn(game.root, 'lontar')).toBe(0);
+      expect(drawn(game.root, 'record-beams')).toBe(0);
+      // Matched: the same step, phase and records as before.
+      const matched = at(laps, { laps: [40, 41], lapStart: 81, lapPost: 1, matched: true });
+      t = hold(layer, matched, t, 0.5);
+      expect(drawn(game.root, 'lontar')).toBe(1);
+      expect(drawn(game.root, 'lontar-posts')).toBe(1);
+      expect(drawn(game.root, 'record-beams')).toBe(1);
+      expect(instancesAt(meshOf(game.root, 'lontar'), THEN.at)).toHaveLength(1);
+      expect(instancesAt(meshOf(game.root, 'record-beams'), THEN.at)).toHaveLength(1);
+      expect(shownNamed(game.root, 'record-halo')).toHaveLength(1);
+    });
+
+    it('eases in a record that comes out after the lakon began, over 0.4 s with its beam and halo: Uji ulang’s lontar after the match, Antar’s record after the gate', () => {
+      const P2_ITEMS = itemsOf(P2.steps);
+      const cases: [GameState, GameState, XZ][] = [
+        [at(P5_ROAM, { phase: 'active', lapStart: 40, laps: [40], lapPost: 3 }), at(P5_ROAM, { phase: 'active', lapStart: 81, laps: [40, 41], lapPost: 1, matched: true }), THEN.at],
+        [at(P2_ROAM, { phase: 'active', step: 1, recorded: ['A'] }), at(P2_ROAM, { phase: 'active', step: 2, recorded: ['A'] }), P2_ITEMS[1].at],
+      ];
+      for (const [before, after, spot] of cases) {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        const boxes = meshOf(game.root, 'lontar');
+        const beams = meshOf(game.root, 'record-beams');
+        let t = hold(layer, before, 0, 1);
+        const dt = 1 / 64;
+        let last = { box: 0, beam: 0, halo: 0 };
+        const gold = new THREE.Color();
+        for (let k = 1; k <= 40; k++) {
+          layer.sync(after, t + k * dt);
+          const [b] = instancesAt(boxes, spot);
+          const [m] = instancesAt(beams, spot);
+          expect(b, `frame ${k}`).toBeDefined();
+          expect(m, `frame ${k}`).toBeDefined();
+          beams.getColorAt(m, gold);
+          const halo = shownNamed(game.root, 'record-halo')[0] as THREE.Sprite;
+          const now = { box: fadeAt(boxes, b), beam: gold.r, halo: (halo.material as THREE.SpriteMaterial).opacity / 0.55 };
+          for (const part of ['box', 'beam', 'halo'] as const) {
+            expect(now[part], `${part} at frame ${k}`).toBeGreaterThanOrEqual(last[part]);
+            expect(now[part] - last[part], `${part} at frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+          }
+          last = now;
+        }
+        expect(last.box).toBe(1);
+        expect(last.halo).toBeCloseTo(1, 9);
+        t += 40 * dt;
+        // Whole from then on, as a record out from the lakon's start is.
+        hold(layer, after, t, 0.5);
+        expect(fadeAt(boxes, instancesAt(boxes, spot)[0])).toBe(1);
+      }
+      // Recorded while still coming out, it goes from as far as it had come (as of the frame it was recorded on): never
+      // brighter on its way out.
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const boxes = meshOf(game.root, 'lontar');
+      const B = P2_ITEMS[1];
+      let t = hold(layer, cases[1][0], 0, 1);
+      t = hold(layer, cases[1][1], t, 0.1);
+      let last = fadeAt(boxes, instancesAt(boxes, B.at)[0]);
+      expect(last).toBeGreaterThan(0);
+      expect(last).toBeLessThan(0.5);
+      let frames = 0;
+      for (let k = 1; k <= 32; k++) {
+        layer.sync(at(P2_ROAM, { phase: 'active', step: 3, recorded: ['A', B.id] }), t + k / 64);
+        const [b] = instancesAt(boxes, B.at);
+        if (b === undefined) break;
+        const f = fadeAt(boxes, b);
+        expect(Math.abs(f - last), `frame ${k}`).toBeLessThanOrEqual(1 / 64 / 0.25 + 1e-6);
+        if (k > 1) expect(f, `frame ${k}`).toBeLessThan(last);
+        last = f;
+        frames++;
+      }
+      expect(frames).toBeGreaterThan(10);
+    });
+
+    it('carries the letter on the chariot in parva 2 only between collecting it and reaching the gate: it eases in once the lontar’s flight is over and out at the gate', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const letter = meshOf(game.chariot.root, 'letter');
+      const level = () => (shown(letter) && letter.count > 0 ? fadeAt(letter, 0) : 0);
+      const A = itemsOf(P2.steps)[0].id;
+      const dt = 1 / 64;
+      // Roam, the intro and the ride to the letter: none.
+      layer.sync(P2_ROAM, 0);
+      expect(level()).toBe(0);
+      let t = hold(layer, at(P2_ROAM, { phase: 'intro' }), 0, 0.5);
+      t = hold(layer, at(P2_ROAM, { phase: 'active' }), t, 1);
+      expect(level()).toBe(0);
+      // Collected: the gate is next. The lontar flies to the prabha over 0.4 s; then the letter eases in.
+      const carried = at(P2_ROAM, { phase: 'active', step: 1, recorded: [A] });
+      let last = 0;
+      let came = NaN;
+      for (let k = 1; k <= 64; k++) {
+        layer.sync(carried, t + k * dt);
+        const now = level();
+        expect(now, `frame ${k}`).toBeGreaterThanOrEqual(last);
+        expect(now - last, `frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        if (now > 0 && Number.isNaN(came)) came = k * dt;
+        last = now;
+      }
+      expect(came).toBeGreaterThanOrEqual(0.4);
+      expect(last).toBe(1);
+      t += 1;
+      // Held through a fail of the leg's clock and its retry.
+      t = hold(layer, at(carried, { phase: 'failed' }), t, 1);
+      expect(level()).toBe(1);
+      t = hold(layer, carried, t, 1);
+      expect(level()).toBe(1);
+      // At the gate: it eases out, gone within half a second.
+      const delivered = at(P2_ROAM, { phase: 'active', step: 2, recorded: [A] });
+      let gone = NaN;
+      for (let k = 1; k <= 48; k++) {
+        layer.sync(delivered, t + k * dt);
+        const now = level();
+        expect(now, `frame ${k}`).toBeLessThanOrEqual(last);
+        expect(last - now, `frame ${k}`).toBeLessThanOrEqual(dt / 0.25 + 1e-6);
+        if (now === 0 && Number.isNaN(gone)) gone = k * dt;
+        last = now;
+      }
+      expect(gone).toBeGreaterThanOrEqual(0.25);
+      expect(gone).toBeLessThanOrEqual(0.5);
+      expect(shown(letter)).toBe(false);
+      t += 1;
+      // Not with the record after the gate, at the tower, in the outro, nor in any other lakon at any step.
+      for (const s of [delivered, at(delivered, { step: 3, recorded: [A, 'B'] }), at(delivered, { phase: 'outro', step: 4, recorded: [A, 'B'] })]) {
+        t = hold(layer, s, t, 0.5);
+        expect(level()).toBe(0);
+      }
+      for (const def of [P4, P5, P7, missionFor(1, ['a', 'b'])]) {
+        const { game: other } = fakeGame();
+        const l = createPickups(other);
+        const roam = roamOf(def);
+        let u = 0;
+        for (let step = 0; step < def.steps.length; step++) {
+          u = hold(l, at(roam, { phase: 'active', step }), u, 0.5);
+          expect(drawn(other.chariot.root, 'letter'), `chapter ${def.chapter} step ${step}`).toBe(0);
+        }
+      }
+    });
+
+    it('rolls the letter across the back of the banner pole, behind the riders: a lontar about 0.9 m long across the chariot, lit like the records, hidden in the finale', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      const letter = meshOf(game.chariot.root, 'letter');
+      // On the chariot itself, so it rides with its every tilt and sway.
+      expect(letter.parent).toBe(game.chariot.root);
+      // In the chariot's frame (forward, up, right): behind the riders (Arjuna stands at −0.55), at the banner pole (−1.05),
+      // over the 1.3 m deck and under the folded flag's foot (2.5 m).
+      expect(letter.position.x).toBeLessThan(-0.9);
+      expect(letter.position.x).toBeGreaterThan(-1.3);
+      expect(letter.position.y).toBeGreaterThan(1.8);
+      expect(letter.position.y).toBeLessThan(2.4);
+      expect(letter.position.z).toBe(0);
+      letter.geometry.computeBoundingBox();
+      const size = letter.geometry.boundingBox!.getSize(new THREE.Vector3());
+      expect(size.z).toBeGreaterThanOrEqual(0.8);
+      expect(size.z).toBeLessThanOrEqual(1);
+      expect(size.x).toBeLessThan(0.25);
+      expect(size.y).toBeLessThan(0.25);
+      // The lontar's look: its leaf colour and glow.
+      const leaf = meshOf(game.root, 'lontar').material as THREE.MeshStandardMaterial;
+      const mat = letter.material as THREE.MeshStandardMaterial;
+      expect(mat).not.toBe(leaf);
+      expect(mat.color.equals(leaf.color)).toBe(true);
+      expect(mat.emissive.equals(leaf.emissive)).toBe(true);
+      expect(mat.emissiveIntensity).toBe(leaf.emissiveIntensity);
+      // Carried, then the finale: hidden with the lakon's targets.
+      const t = hold(layer, at(P2_ROAM, { phase: 'active', step: 1, recorded: ['A'] }), 0, 1);
+      expect(drawn(game.chariot.root, 'letter')).toBe(1);
+      layer.setFinale(true);
+      expect(drawn(game.chariot.root, 'letter')).toBe(0);
+      layer.setFinale(false);
+      layer.sync(at(P2_ROAM, { phase: 'active', step: 1, recorded: ['A'] }), t + 1 / 64);
+      expect(drawn(game.chariot.root, 'letter')).toBe(1);
+    });
+
+    it('puts the gates, lap posts, the next post’s beam and the letter on FX_LAYER, each fading per instance in the shared fade program; the beam an additive shaft', () => {
+      const { game } = fakeGame();
+      createPickups(game);
+      const meshes: [THREE.Object3D, string][] = [
+        [game.root, 'gate-real'], [game.root, 'gate-mimic'], [game.root, 'gate-rewrite'], [game.root, 'lap-posts'], [game.chariot.root, 'letter'],
+      ];
+      for (const [root, n] of meshes) {
+        const mesh = meshOf(root, n);
+        expect(mesh.layers.mask, n).toBe(1 << FX_LAYER);
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        expect(mat.isMeshStandardMaterial, n).toBe(true);
+        expect(mat.transparent, n).toBe(true);
+        expect(mat.customProgramCacheKey(), n).toBe(FADE_KEY);
+        expect((mesh.geometry.getAttribute('aFade') as THREE.InstancedBufferAttribute).isInstancedBufferAttribute, n).toBe(true);
+      }
+      // Each gate mesh its own fade: one shared attribute would fade them all together.
+      const fadesOf = ['gate-real', 'gate-mimic', 'gate-rewrite'].map((n) => meshOf(game.root, n).geometry.getAttribute('aFade'));
+      expect(new Set(fadesOf).size).toBe(3);
+      const beam = meshOf(game.root, 'lap-beams');
+      expect(beam.layers.mask).toBe(1 << FX_LAYER);
+      const mat = beam.material as THREE.MeshBasicMaterial;
+      expect(mat.blending).toBe(THREE.AdditiveBlending);
+      expect(mat.map).toBe(game.textures.shaft);
+      expect(mat.fog).toBe(false);
+      expect(mat.depthWrite).toBe(false);
+      expect(beam.geometry).toBe(meshOf(game.root, 'record-beams').geometry);
+    });
+
+    it('draws parva 4’s course in 7 calls with sight (3 for its gates), parva 5’s laps in 4 (2 for the posts and their beam), and the letter in 1 more', () => {
+      const calls = (root: THREE.Object3D) => {
+        let n = 0;
+        root.traverse((o) => {
+          const inst = o as THREE.InstancedMesh;
+          if (((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite) && shown(o) && (!inst.isInstancedMesh || inst.count > 0)) n++;
+        });
+        return n;
+      };
+      // Days 1–3 grey, the mimics from day 4, the real gates; their stamps; the tower's beam and circle.
+      const { game: g4 } = fakeGame();
+      hold(createPickups(g4), sighted(at(P4_ROAM, { phase: 'active' }, { car: car(-70, 0), decoys: [] })), 0, 1);
+      for (const n of ['gate-real', 'gate-mimic', 'gate-rewrite', 'stamp-lotus', 'stamp-ring']) expect(drawn(g4.root, n), n).toBeGreaterThan(0);
+      expect(calls(named(g4.root, 'pickups'))).toBe(7);
+      // The posts, the beam over P1, the tower's beam and circle.
+      const { game: g5 } = fakeGame();
+      hold(createPickups(g5), at(P5_ROAM, { phase: 'active' }, { decoys: [] }), 0, 1);
+      expect(calls(named(g5.root, 'pickups'))).toBe(4);
+      // The tower's beam and circle, and the letter on the chariot.
+      const { game: g2 } = fakeGame();
+      hold(createPickups(g2), at(P2_ROAM, { phase: 'active', step: 1, recorded: ['A'] }, { decoys: [] }), 0, 1);
+      expect(calls(named(g2.root, 'pickups'))).toBe(2);
+      expect(calls(g2.chariot.root)).toBe(1);
+    });
+
+    it('dispose takes the letter off the chariot and frees it, with everything under its group', () => {
+      const { game } = fakeGame();
+      const layer = createPickups(game);
+      hold(layer, at(P2_ROAM, { phase: 'active', step: 1, recorded: ['A'] }), 0, 1);
+      const letter = meshOf(game.chariot.root, 'letter');
+      const owned = new Set([...ownedBy(named(game.root, 'pickups'), game), ...ownedBy(letter, game)]);
+      expect(owned.has(letter)).toBe(true);
+      expectFreed(game, owned, () => layer.dispose());
+      expect(game.chariot.root.children).not.toContain(letter);
+    });
   });
 });
 
