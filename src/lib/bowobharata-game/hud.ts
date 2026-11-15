@@ -49,6 +49,8 @@ export interface HudSnapshot {
   radarM: number;
   /** The chariot's heading as a compass bearing in whole degrees: 0 north, 90 east, clockwise. */
   heading: number;
+  /** Whether a finished lakon's replay runs (Task 36), for score only: the HUD says so in place of a hint. */
+  replay: boolean;
 }
 
 /**
@@ -126,6 +128,7 @@ export function hudOf(s: GameState, w: World, prev?: HudSnapshot, dt = 0): HudSn
     radar: radarItems(s, w, RADAR_PX, radarM, prev?.radar),
     radarM,
     heading: bearingOf(car.yaw),
+    replay: s.roam !== null && s.roam.aside !== null,
   };
 }
 
@@ -154,6 +157,7 @@ export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
     a.staticFrac === b.staticFrac &&
     Math.round(a.radarM) === Math.round(b.radarM) &&
     a.heading === b.heading &&
+    a.replay === b.replay &&
     sameRadar(a.radar, b.radar)
   );
 }

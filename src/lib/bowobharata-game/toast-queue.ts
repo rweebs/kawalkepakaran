@@ -9,7 +9,7 @@ import type { GameEvent } from './mission-run';
 /** The least time between two pushes, in ms. */
 export const TOAST_GAP_MS = 1500;
 /** The waiting toasts the queue keeps before a wall or held toast gives way (a burst of five all wait their turn). The
- * lakon's own toasts never give way. */
+ * lakon's own toasts and roam's never give way. */
 export const TOAST_QUEUE_MAX = 5;
 
 export interface Toast { type: GameEvent['type']; text: string }
@@ -23,7 +23,8 @@ const DROPPABLE: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['w
 
 /**
  * A frame's toasts join the queue in order. Past TOAST_QUEUE_MAX the oldest waiting wall or held toast gives way, one at
- * a time, while there is one; a record, filed, rewrite, letter, gate, lap or checkpoint toast is never dropped.
+ * a time, while there is one; a record, filed, rewrite, letter, gate, lap or checkpoint toast is never dropped, nor a
+ * replay's end or a free lap (roam's, Task 36).
  */
 export function queueToasts(q: ToastQueue, toasts: readonly Toast[]): ToastQueue {
   const waiting = [...q.waiting, ...toasts];

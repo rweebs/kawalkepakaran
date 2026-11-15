@@ -310,6 +310,23 @@ describe('bowobharata-game copy', () => {
     expect(en.toasts.gate).toBe('That gate was a rewrite, and it went into the record.');
   });
 
+  it('roam: the replay line, and a replay\'s end and a free lap built from their numbers, in both locales (Task 36)', () => {
+    const { id, en } = GAME_COPY;
+    for (const c of [id, en]) {
+      expect(Object.keys(c.roam).sort()).toEqual(['freeLap', 'replay', 'replayDone']);
+      expect(c.roam.replay).not.toMatch(/\d/);
+      expect(c.roam.replayDone({ score: 340, best: 420 })).toMatch(/\b340\b[^\d]*\b420\b/);
+      expect(c.roam.freeLap({ seconds: 52.34, best: 50.06 })).not.toBe(c.roam.freeLap({ seconds: 52.34, best: 52.34 }));
+    }
+    expect(id.roam.replay).toBe('Main lagi · skor saja');
+    expect(en.roam.replay).toBe('Replay · score only');
+    expect(id.roam.replayDone({ score: 340, best: 420 })).toBe('Main lagi selesai · skor 340 · terbaik 420');
+    expect(en.roam.replayDone({ score: 340, best: 420 })).toBe('Replay over · score 340 · best 420');
+    // Seconds to one decimal, with the decimal comma in Indonesian, as the lap toasts have them.
+    expect(id.roam.freeLap({ seconds: 52.34, best: 50.06 })).toBe('Putaran bebas · 52,3 detik · terbaik 50,1 detik');
+    expect(en.roam.freeLap({ seconds: 52.34, best: 50.06 })).toBe('Free lap · 52.3 s · best 50.1 s');
+  });
+
   it('finaleTotals is built from the numbers, in both locales', () => {
     for (const l of LOCALES) {
       const text = GAME_COPY[l].finaleTotals(totals).join('\n');

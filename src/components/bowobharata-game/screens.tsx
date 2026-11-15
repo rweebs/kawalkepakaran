@@ -477,9 +477,11 @@ export function Ring({ kind, label, fill, lit }: { kind: 'surge' | 'sight'; labe
 /**
  * The driving HUD at the stage's corners, from one snapshot: counts, timers and speeds only, never a name, a title or a
  * date. Top left, the objective panel: pause and full screen first, then the objective, the muted hint line, the timer
- * and the frame line. Top right, the radar slot: the round radar with the clamour's arc on its rim, and on touch the
- * speed under it. Bottom right on a desk, the speed with the Laju and Mata rings (on touch the buttons carry the rings).
- * The toasts sit in a polite live region, bottom left (on touch, in the right column under the radar).
+ * and the frame line; during a replay (Task 36) the muted roam.replay line comes right after pause and full screen, and
+ * no hint shows, so the panel is no taller. Top right, the radar slot: the round radar with the clamour's arc on its
+ * rim, and on touch the speed under it. Bottom right on a desk, the speed with the Laju and Mata rings (on touch the
+ * buttons carry the rings). The toasts sit in a polite live region, bottom left (on touch, in the right column under the
+ * radar).
  */
 export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscreen, canFullscreen, fullscreen = false }: {
   locale: Locale; hud: HudSnapshot; touch: boolean; paused: boolean; toasts: readonly HudToast[];
@@ -497,8 +499,9 @@ export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscr
           <button type="button" className="btn" aria-pressed={paused} onClick={onPause}>{c.hud.pause}</button>
           {canFullscreen && <button type="button" className="btn" aria-pressed={fullscreen} onClick={onFullscreen}>{c.fullscreen}</button>}
         </div>
+        {hud.replay && <p className="bg-replay">{c.roam.replay}</p>}
         {line && <p className="bg-objective__line">{line}</p>}
-        {hud.hint && <p className="bg-hint">{c.hints[hud.hint][touch ? 'touch' : 'keys']}</p>}
+        {hud.hint && !hud.replay && <p className="bg-hint">{c.hints[hud.hint][touch ? 'touch' : 'keys']}</p>}
         {hud.timer !== null && <p className="bg-timer"><time dateTime={`PT${Math.max(0, Math.floor(hud.timer))}S`}>{clockOf(hud.timer)}</time></p>}
         <p className="bg-frame">{c.hudFrame}</p>
       </div>
@@ -817,6 +820,11 @@ export function toastText(
       return t.letter;
     case 'lap':
       return t.lap({ n: e.n, seconds: e.seconds, matched: e.matched });
+    // Roam's: a replay's end (score 0 when it failed) and a free lap, each with the session's best.
+    case 'replayDone':
+      return GAME_COPY[locale].roam.replayDone({ score: e.score, best: e.best });
+    case 'freeLap':
+      return GAME_COPY[locale].roam.freeLap({ seconds: e.seconds, best: e.best });
     default:
       return null;
   }

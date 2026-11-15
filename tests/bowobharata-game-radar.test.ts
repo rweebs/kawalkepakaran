@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
 import { clamp, forward, rightOf, segPointDist, type XZ } from '../src/lib/bowobharata-game/geom';
-import { advance, createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
+import { advance, createWorld, startChapter, type GameState, type RoamInput } from '../src/lib/bowobharata-game/engine';
 import { autopilot } from '../src/lib/bowobharata-game/autopilot';
 import { fieldEdge, hullClearance } from '../src/lib/bowobharata-game/collide';
 import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
@@ -334,6 +334,52 @@ describe('radarItems', () => {
     it('shows nothing of the course in roam, and no record items: its records are its gates', () => {
       expect(gates({ phase: 'roam' })).toEqual([]);
       expect(ofKind(items(stateAt(4, car, {}, { dayIndex: 0 })), 'record')).toEqual([]);
+    });
+  });
+
+  describe('roam (Task 36)', () => {
+    /** Chapter ch's roam with every chapter before it finished, the chariot at rest at `at`. */
+    const roamOf = (ch: number, at: Pose, o: Partial<RoamInput> = {}): GameState =>
+      startChapter(defOf(ch), at, 1, w, { finished: Array.from({ length: ch }, (_, k) => k), bests: [], bestLap: null, defOf, ...o });
+    const posts = (defOf(5).steps[0] as Extract<StepDef, { kind: 'laps' }>).posts.map((p) => p.at);
+    const car: Pose = { ...TOWER_EXIT };
+
+    it("a muted replay ring at each finished lakon's marker, then parva 5's next post and the one after, between the tower and the marker", () => {
+      const list = items(roamOf(3, car));
+      // The prologue has no marker; chapter 3's own is the marker the route leads to.
+      expectAt(ofKind(list, 'replay'), [defOf(1).marker!, defOf(2).marker!], car);
+      expectAt(ofKind(list, 'post'), [posts[0], posts[1]], car);
+      expectAt(ofKind(list, 'marker'), [defOf(3).marker!], car);
+      // In drawing order: the tower, the replays, the free laps' posts (the next one first), then the lakon's marker.
+      const order = list.filter((i) => ['tower', 'replay', 'post', 'marker'].includes(i.kind)).map((i) => i.kind);
+      expect(order).toEqual(['tower', 'replay', 'replay', 'post', 'post', 'marker']);
+      // Every item has a key of its own: a ring by its chapter, a post by its place in the free laps.
+      const keys = list.map((i) => i.key);
+      expect(new Set(keys).size).toBe(list.length);
+      expect(keys).toEqual(expect.arrayContaining(['replay:1', 'replay:2', 'post:free-P1', 'post:free-P2']));
+      // Bounded: one ring per finished lakon with a marker, at most; chapter 8's roam has seven, the prologue's none.
+      expect(ofKind(items(roamOf(8, car)), 'replay')).toHaveLength(7);
+    });
+
+    it('the posts follow the free lap: the next post first, then the one after it', () => {
+      const s = roamOf(3, car);
+      const at = (lapPost: number, lapStart: number | null) => ofKind(items({ ...s, roam: { ...s.roam!, lapPost, lapStart } }), 'post');
+      expectAt(at(0, null), [posts[0], posts[1]], car);
+      expectAt(at(2, 4), [posts[2], posts[3]], car);
+      expectAt(at(4, 4), [posts[4], posts[0]], car);
+    });
+
+    it('shows no replay ring and no free lap post outside roam: in a replay, or once the lakon starts', () => {
+      const s = roamOf(3, car);
+      for (const phase of ['intro', 'active', 'outro', 'failed', 'done'] as const) {
+        const list = items({ ...s, run: { ...s.run, phase } });
+        expect(ofKind(list, 'replay'), phase).toEqual([]);
+        expect(ofKind(list, 'post'), phase).toEqual([]);
+      }
+      // Without roam's data, roam shows its marker alone.
+      const bare = stateAt(3, car, {}, { phase: 'roam' });
+      expect(ofKind(items(bare), 'replay')).toEqual([]);
+      expect(ofKind(items(bare), 'post')).toEqual([]);
     });
   });
 
@@ -818,12 +864,15 @@ describe('radarItems', () => {
   it('every lakon ridden by the autopilot, two seeds each: bounded, within the radius shown, no flicker at levels 4 and 5', () => {
     let samples = 0;
     let withCopies = 0;
+    let withReplays = 0;
     let routes = 0;
     const faults: string[] = [];
     const flicker = [new Flicker('level 4'), new Flicker('level 5')];
     for (const ch of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
       for (const seed of [1, 2]) {
-        let s = startChapter(defOf(ch), defOf(ch).start, seed, w);
+        // Every chapter before it finished: its roam shows their replay rings and the free laps' posts (Task 36).
+        const roam: RoamInput = { finished: Array.from({ length: ch }, (_, k) => k), bests: [], bestLap: null, defOf };
+        let s = startChapter(defOf(ch), defOf(ch).start, seed, w, roam);
         // The HUD as the lakon has it, and as levels 4 and 5 with sight off would show it, each eased from its last.
         const views = [(x: GameState) => x, (x: GameState) => loud({ ...x, sight: { ...x.sight, on: false } }, 4.5), (x: GameState) => loud({ ...x, sight: { ...x.sight, on: false } }, 5)];
         const prev: (HudSnapshot | undefined)[] = views.map(() => undefined);
@@ -848,8 +897,12 @@ describe('radarItems', () => {
                 if (i.kind === 'route' && i.points!.length > ROUTE_POINTS) faults.push('route over 12 points');
                 if (i.kind === 'route' && !i.clamped) routes++;
               }
-              // Bounded by the data: the ranks, the shelters, the route, the tower, at most 9 targets, and the copies.
-              if (list.length > 2 + 3 + 1 + 1 + 9 + shownState.decoys.length) faults.push(`${list.length} items`);
+              // Bounded by the data: the ranks, the shelters, the route, the tower, at most 9 targets (in roam the marker and
+              // the free laps' two posts), the copies, and in roam a ring per finished lakon.
+              const replays = shownState.roam?.replays.length ?? 0;
+              if (list.length > 2 + 3 + 1 + 1 + 9 + shownState.decoys.length + replays) faults.push(`${list.length} items`);
+              if (ofKind(list, 'replay').length > replays) faults.push('a replay ring past the finished lakon');
+              if (j === 0 && ofKind(list, 'replay').length > 0) withReplays++;
               const copies = ofKind(list, 'decoy').length;
               if (!shownState.sight.on && copies > 0) faults.push('copies out of sight');
               if (j === 0 && copies > 0) withCopies++;
@@ -871,6 +924,9 @@ describe('radarItems', () => {
     expect(samples).toBeGreaterThan(5000);
     // The bot uses sight near the copies, so the radar shows some; and it rides routes that end on what they lead to.
     expect(withCopies).toBeGreaterThan(0);
+    // Each roam's first snapshot holds its replay rings, as the lakon has it (the loud views' static may hide far ones):
+    // chapters 2 to 8, two seeds each.
+    expect(withReplays).toBe(7 * 2);
     expect(routes).toBeGreaterThan(1000);
     for (const f of flicker) {
       expect(f.changes, f.examples.join('; ')).toBeGreaterThan(100);

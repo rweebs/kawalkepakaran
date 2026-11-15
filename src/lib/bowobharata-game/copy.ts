@@ -127,6 +127,16 @@ export interface GameCopy {
   };
   /** The muted hint line of the objective panel, once per hint, for the keyboard and for touch. */
   hints: Record<HintKey, { keys: string; touch: string }>;
+  /**
+   * Roam, between lakon: the line that opens the objective panel's text while a finished lakon is replayed, for score
+   * only (one line at the narrowest panel); and the toasts at a replay's end, its score (0 when it failed) and the
+   * chapter's best of the session, and at a free lap's, its seconds (one decimal) and the best lap.
+   */
+  roam: {
+    replay: string;
+    replayDone: (o: { score: number; best: number }) => string;
+    freeLap: (o: { seconds: number; best: number }) => string;
+  };
   /** The soft-fail card: its title, the reason (time, muddied), retry, the skip offered after two fails and its note,
    * and the line that points to steering assist. */
   fail: { title: string; time: string; muddied: string; retry: string; skip: string; skipNote: string; assist: string };
@@ -244,6 +254,11 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
         keys: 'Spasi menarik tali kekang: kereta menikung lebih tajam dan Laju terisi lebih cepat.',
         touch: 'Rem saat berbelok tajam menarik tali kekang: kereta menikung lebih tajam dan Laju terisi lebih cepat.',
       },
+    },
+    roam: {
+      replay: 'Main lagi · skor saja',
+      replayDone: ({ score, best }) => `Main lagi selesai · skor ${score} · terbaik ${best}`,
+      freeLap: ({ seconds, best }) => `Putaran bebas · ${tenths(seconds, ',')} detik · terbaik ${tenths(best, ',')} detik`,
     },
     fail: {
       title: 'Catatan belum utuh',
@@ -446,6 +461,11 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
         keys: 'Space pulls the reins: the chariot slides through the turn and the Surge refills sooner.',
         touch: 'Brake in a sharp turn to pull the reins: the chariot slides through and the Surge refills sooner.',
       },
+    },
+    roam: {
+      replay: 'Replay · score only',
+      replayDone: ({ score, best }) => `Replay over · score ${score} · best ${best}`,
+      freeLap: ({ seconds, best }) => `Free lap · ${tenths(seconds, '.')} s · best ${tenths(best, '.')} s`,
     },
     fail: {
       title: 'The record is not whole yet',

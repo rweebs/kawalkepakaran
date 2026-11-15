@@ -219,6 +219,8 @@ const TOAST_TEXTS = LANGS.flatMap((l) => {
     ...GAME.events.flatMap((cards) => cards.map((c) => t.recorded({ n: cards.length, total: cards.length, date: c.dateLabel[l], channel: c.channel[l] }))),
     t.recordedPrologue({ n: 8, total: 8 }), t.filed, t.rewrite, t.ranks, t.checkpoint, t.wall, t.gate, t.letter,
     t.lap({ n: 5, seconds: 188.8, matched: false }), t.lap({ n: 5, seconds: 188.8, matched: true }),
+    // Roam's (Task 36): a replay's end at its largest scores, and a free lap at its longest seconds.
+    GAME_COPY[l].roam.replayDone({ score: 1888, best: 1888 }), GAME_COPY[l].roam.freeLap({ seconds: 188.8, best: 188.8 }),
   ];
 });
 /** The height (px) of the tallest real toast in a column `width` px wide, with the stage's toast type. */
@@ -248,14 +250,16 @@ function actionsRow(width: number, s: Stage, l: (typeof LANGS)[number]): { w: nu
 /**
  * The objective panel's height (px) in its worst case at `width` px wide (the panel takes its max-width once its lines are
  * long): the Pause and Full screen row first, with its margin under it, then any objective with its largest counts, any
- * touch hint or none, a timer and the frame line, in either language. Lines at 1.65.
+ * touch hint or none, a timer and the frame line, in either language. During a replay (Task 36) the roam.replay line comes
+ * right after the row and no hint shows: the row, the replay line, each objective, a timer and the frame line. Lines at 1.65.
  */
 function panelHeight(width: number, s: Stage): number {
   const [padY, padX] = valueOf(panelSels(), 'padding', s).split(' ').map((p) => px(p, 0));
   const gap = px(valueOf(panelSels(), 'gap', s), 0);
   const hintSize = px(valueOf(['.bg-hint'], 'font-size', s), 16);
   const frameSize = px(valueOf(['.bg-frame'], 'font-size', s), 16);
-  expect([hintSize, frameSize], 'the model is measured for a 0.8rem hint and a 0.75rem frame line').toEqual([12.8, 12]);
+  const replaySize = px(valueOf(['.bg-replay'], 'font-size', s), 16);
+  expect([hintSize, frameSize, replaySize], 'the model is measured for a 0.8rem hint and replay line and a 0.75rem frame line').toEqual([12.8, 12, 12.8]);
   const under = px(valueOf(panelSels('.bg-actions'), 'margin-top', s), 0) + px(valueOf(panelSels('.bg-actions'), 'margin-bottom', s), 0);
   const text = width - 2 * padX;
   return Math.max(...LANGS.map((l) => {
@@ -265,11 +269,13 @@ function panelHeight(width: number, s: Stage): number {
     const hints = [...Object.values(c.hints).map((h) => h.touch), null];
     let worst = 0;
     for (const objective of objectives) {
-      for (const hint of hints) {
+      // Each touch hint (or none) under the objective; or the replay line over it in the hint's place. The two are the same
+      // type, so the order of the rows leaves the height as it is.
+      for (const small of [...hints, c.roam.replay]) {
         const rows = [
           actionsRow(width, s, l).h + under,
           objective === null ? null : linesOf(objective, text, 16) * 16 * 1.65,
-          hint === null ? null : linesOf(hint, text, 12.8) * 12.8 * 1.65,
+          small === null ? null : linesOf(small, text, 12.8) * 12.8 * 1.65,
           16 * 1.65,
           linesOf(c.hudFrame, text, 12) * 12 * 1.65,
         ].filter((x): x is number => x !== null);
@@ -367,6 +373,12 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(declared('.bg-hint', 'background').filter((v) => v !== 'none' && v !== 'transparent')).toEqual([]);
     expect(declared('.bg-hint', 'border')).toEqual([]);
     expect(css).not.toMatch(/kbd/);
+  });
+
+  it('styles the replay line as the hint line: 0.8rem and muted, with no box of its own (Task 36)', () => {
+    // Optional content is muted in this game, as the grey replay rings are.
+    for (const d of ['margin: 0', 'color: var(--text-secondary)', 'font-size: 0.8rem']) expect(has('.bg-replay', d), d).toBe(true);
+    for (const p of ['background', 'border', 'padding', 'line-height']) expect(declared('.bg-replay', p), p).toEqual([]);
   });
 
   it('makes the play surface touch-safe', () => {
@@ -618,6 +630,22 @@ describe('bowobharata-game.css stage and HUD', () => {
     }
     // Upright, the radar keeps the top right corner.
     for (const s of STAGES.filter((x) => x.vh > x.vw)) expect.soft(lay(s).slot.right, s.name).toBeGreaterThanOrEqual(s.w - 12);
+  });
+
+  it('a replay\'s roam.replay line takes one line at every listed stage in both languages, so a replay panel is never taller than the same objective with a one-line hint (Task 36)', () => {
+    for (const s of STAGES) {
+      const L = lay(s);
+      const [, padX] = valueOf(panelSels(), 'padding', s).split(' ').map((p) => px(p, 0));
+      for (const l of LANGS) {
+        const line = GAME_COPY[l].roam.replay;
+        const lines = linesOf(line, L.panelW - 2 * padX, 12.8);
+        expect.soft(lines, `${s.name}, ${l}: "${line}" in ${(L.panelW - 2 * padX).toFixed(1)} px`).toBe(1);
+      }
+    }
+    // The narrowest panel listed: the in-page 360-wide stages, 328 px wide, capped at 144 px on touch (120 px of text).
+    const narrow = Math.min(...STAGES.map((s) => lay(s).panelW));
+    expect(narrow).toBe(144);
+    for (const l of LANGS) expect(widthOf(GAME_COPY[l].roam.replay, 12.8), l).toBeLessThanOrEqual(narrow - 24);
   });
 
   it('hides the older toast exactly where two do not fit, on both sides of every threshold, between the listed phones too', () => {

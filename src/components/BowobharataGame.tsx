@@ -6,7 +6,9 @@
 // toasts carry counts, dates, channels and timers. The flow is a pure reducer (lib/bowobharata-game/flow.ts) and the
 // screens are presentational (bowobharata-game/screens.tsx). This file loads the scene with the runtime that drives it
 // (lib/bowobharata-game/world/runtime.ts), reads the keyboard, the touch controls and a gamepad, and turns the runtime's HUD snapshots and events into the
-// HUD, the toasts, the lakon card with its letterbox, and the end of each play.
+// HUD, the toasts, the lakon card with its letterbox, and the end of each play. In roam a finished lakon can be replayed
+// for its score, and parva 5's posts ridden as free laps: a replay ends back in roam with a toast, never on a new screen,
+// and the session's bests and best lap stay here, never in storage.
 import { useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Locale } from '../i18n';
 import { PARVAS } from '../lib/bowobharata';
@@ -20,7 +22,7 @@ import { gamepadInput, keyAction, keyboardInput, mergeInputs, NO_TOUCH, type Inp
 import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
 import { toastPump, type Toast } from '../lib/bowobharata-game/toast-queue';
 import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
-import type { Runtime } from '../lib/bowobharata-game/world/runtime';
+import type { RoamOpts, Runtime } from '../lib/bowobharata-game/world/runtime';
 import {
   DataError, FailCard, FallbackPlay, Finale, GameHud, Gate, type GatePosters, type HudToast, Intro, MissionCard, Paused, Recorded,
   SanjayaReport, SlowPrompt, toastText, TouchControls,
@@ -32,8 +34,8 @@ interface Props { locale: Locale; forceFallback?: boolean; data?: GameData; post
 const COUNT = PARVAS.length + 2;
 /** The screens on which the scene stands still; it also stands still while the game is paused. */
 const STILL_SCREENS: readonly Screen[] = ['recorded', 'sanjaya', 'lost'];
-/** The lakon events that show a toast; toastText gives each its line. */
-const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap']);
+/** The lakon and roam events that show a toast; toastText gives each its line. */
+const TOASTED: ReadonlySet<GameEvent['type']> = new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap', 'replayDone', 'freeLap']);
 /** Toasts on screen at once, and how long each stays from its own push (ms). Pushes are TOAST_GAP_MS apart (toast-queue.ts). */
 const TOAST_MAX = 2;
 const TOAST_MS = 4000;
@@ -120,6 +122,10 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   // The last screen each runtime was given its command for (see the command effect), and the plays started so far.
   const issued = useRef<{ rt: Runtime | null; screen: Screen | null; chapter: number }>({ rt: null, screen: null, chapter: -1 });
   const plays = useRef(0);
+  // The session's best score of each chapter, from its play and its replays, and its best free lap: roam's data at each
+  // chapter's start. Never written to storage (Saved stays { best, chapter }).
+  const bests = useRef<number[]>([]);
+  const bestLap = useRef<number | null>(null);
 
   const playing3d = flow.screen === 'play' && flow.mode === '3d';
 
@@ -181,10 +187,18 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     return missionUp.current && run?.phase === 'intro' && run.phaseT >= MISSION_TIMING.introSkipAfter;
   };
 
-  /** A record's date and channel for its toast, from the chapter's event cards. */
+  /** The chapter whose lakon runs: the play's own, or the finished one a replay brought back. */
+  const lakonChapter = () => runtimeRef.current?.state()?.run.def.chapter ?? flowRef.current.chapter;
+
+  /** A record's date and channel for its toast, from the event cards of the lakon's chapter. */
   const cardOf = (card: number) => {
-    const e = dataRef.current?.events[flowRef.current.chapter]?.[card];
+    const e = dataRef.current?.events[lakonChapter()]?.[card];
     return e ? { date: e.dateLabel[locale], channel: e.channel[locale] } : null;
+  };
+
+  /** Keeps a chapter's best score of the session, from its play or a replay. */
+  const keepBest = (chapter: number, score: number) => {
+    bests.current[chapter] = Math.max(bests.current[chapter] ?? 0, score);
   };
 
   const onHud = (h: HudSnapshot) => {
@@ -220,6 +234,16 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           break;
         case 'done':
           dispatch({ type: 'playResult', result: 'won', score: e.score });
+          keepBest(flowRef.current.chapter, e.score);
+          break;
+        case 'replayDone':
+          // A replay ends back in roam, with no new screen and nothing stored: its best stays for the session, and the
+          // letterbox of its outro goes. A replay that failed ends here too, at score 0; its failed never reaches the island.
+          keepBest(e.chapter, e.best);
+          setCine(false);
+          break;
+        case 'freeLap':
+          bestLap.current = e.best;
           break;
         case 'failed':
           // The fail shot plays first; the soft-fail card follows it.
@@ -227,10 +251,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           failClock.current = runtimeRef.current?.state()?.clock ?? null;
           break;
         default:
-          if (TOASTED.has(e.type)) {
-            const text = toastText(e, locale, flowRef.current.chapter, cardOf, events);
-            if (text) toasts.push({ type: e.type, text });
-          }
+          break;
+      }
+      if (TOASTED.has(e.type)) {
+        const text = toastText(e, locale, lakonChapter(), cardOf, events);
+        if (text) toasts.push({ type: e.type, text });
       }
     }
     // The frame's toasts wait their turn in order, so each is the newest for TOAST_GAP_MS at least.
@@ -473,8 +498,16 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
         padHeld.current.skip = false;
         const seed = 1009 * (flow.chapter + 1) + plays.current++;
         const fromLost = last.rt === rt && last.screen === 'lost';
+        // Every chapter before this one is finished: its roam replays them, and parva 5's posts give free laps.
+        const slugsOf = (c: number) => (data.events[c] ?? []).map((e) => e.slug);
+        const roam: RoamOpts = {
+          finished: Array.from({ length: flow.chapter }, (_, k) => k),
+          bests: bests.current,
+          bestLap: bestLap.current,
+          slugsOf,
+        };
         if (fromLost) rt.retry();
-        else rt.start(flow.chapter, (data.events[flow.chapter] ?? []).map((e) => e.slug), seed);
+        else rt.start(flow.chapter, slugsOf(flow.chapter), seed, roam);
       }
     } catch (err) {
       // The data and the lakon table disagree (a chapter's slugs): the version without animation still tells it.
@@ -596,7 +629,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               sight={hud.sight}
             />
           )}
-          {playing3d && mission && hud && <MissionCard locale={locale} chapterIndex={flow.chapter} type={hud.type} />}
+          {playing3d && mission && hud && <MissionCard locale={locale} chapterIndex={hud.chapter} type={hud.type} />}
           {playing3d && flow.paused && (
             <Paused
               locale={locale}

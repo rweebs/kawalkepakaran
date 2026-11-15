@@ -402,6 +402,20 @@ describe('toastText', () => {
     expect(GAME_COPY.en.toasts.gate).toMatch(/rewrite[\s\S]*into the record/);
   });
 
+  it("a replay's end and a free lap give the roam lines, with their score and best, or their seconds and best, in both locales", () => {
+    for (const l of LOCALES) {
+      const r = GAME_COPY[l].roam;
+      expect(toastText({ type: 'replayDone', chapter: 1, score: 340, best: 420 }, l, 3, () => null)).toBe(r.replayDone({ score: 340, best: 420 }));
+      expect(toastText({ type: 'freeLap', seconds: 52.34, best: 50.06 }, l, 3, () => null)).toBe(r.freeLap({ seconds: 52.34, best: 50.06 }));
+    }
+    expect(toastText({ type: 'replayDone', chapter: 1, score: 340, best: 420 }, 'id', 3, () => null)).toBe('Main lagi selesai · skor 340 · terbaik 420');
+    expect(toastText({ type: 'replayDone', chapter: 1, score: 340, best: 420 }, 'en', 3, () => null)).toBe('Replay over · score 340 · best 420');
+    // A replay that failed scores 0 and keeps its best (ruling 10).
+    expect(toastText({ type: 'replayDone', chapter: 1, score: 0, best: 420 }, 'en', 3, () => null)).toBe('Replay over · score 0 · best 420');
+    expect(toastText({ type: 'freeLap', seconds: 52.34, best: 50.06 }, 'id', 3, () => null)).toBe('Putaran bebas · 52,3 detik · terbaik 50,1 detik');
+    expect(toastText({ type: 'freeLap', seconds: 52.34, best: 50.06 }, 'en', 3, () => null)).toBe('Free lap · 52.3 s · best 50.1 s');
+  });
+
   it('the events that are not toasts give null', () => {
     const quiet: GameEvent[] = [
       { type: 'introStart' }, { type: 'introEnd' }, { type: 'bump', speed: 4 }, { type: 'absorbed' }, { type: 'stepDone', step: 0 },
@@ -496,7 +510,7 @@ describe('GameHud', () => {
   const snap = (o: Partial<HudSnapshot> = {}): HudSnapshot => ({
     phase: 'active', chapter: 0, type: 'himpun', objective: 'prologue', done: 2, total: 8, lap: null, timer: null, speedKmh: 31,
     surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.5 }, hint: null,
-    riuh: 0, level: 0, staticFrac: 0, radar: [], radarM: 70, heading: 0, ...o,
+    riuh: 0, level: 0, staticFrac: 0, radar: [], radarM: 70, heading: 0, replay: false, ...o,
   });
   interface Opts {
     locale?: Locale; hud?: Partial<HudSnapshot>; touch?: boolean; paused?: boolean; toasts?: HudToast[]; canFullscreen?: boolean; fullscreen?: boolean;
@@ -557,6 +571,32 @@ describe('GameHud', () => {
       }
     }
     expect(variants).toBe(2 * 9 * 9 * 2);
+  });
+
+  it('during a replay the roam.replay line opens the panel\'s text, right after the Pause and Full screen row, and takes the hint line\'s place', () => {
+    for (const locale of LOCALES) {
+      const c = GAME_COPY[locale];
+      for (const touch of [false, true]) {
+        for (const canFullscreen of [false, true]) {
+          const where = `${locale}, touch ${touch}, full screen ${canFullscreen}`;
+          const html = gameHud({ locale, touch, canFullscreen, hud: { replay: true, hint: 'surge', timer: 75, objective: 'collect' } });
+          const panel = element(html, 'class="bg-objective"');
+          // The row, then the replay line straight after it, then the objective, the timer and the frame line.
+          expect(panel, where).toMatch(/^<div class="bg-objective"><div class="bg-actions">[\s\S]*?<\/div><p class="bg-replay">/);
+          const line = element(panel, 'class="bg-replay"');
+          expect(line, where).toBe(`<p class="bg-replay">${esc(c.roam.replay)}</p>`);
+          expectOrder(panel, ['class="bg-actions"', 'class="bg-replay"', 'class="bg-objective__line"', 'class="bg-timer"', 'class="bg-frame"']);
+          // No hint line beside it, though the snapshot has one.
+          expect(html, where).not.toContain('bg-hint');
+          expect(count(html, 'class="bg-replay"')).toBe(1);
+        }
+      }
+      // Not a replay: no replay line, and the hint is back.
+      const plain = gameHud({ locale, hud: { replay: false, hint: 'surge' } });
+      expect(plain).not.toContain('bg-replay');
+      expect(plain).not.toContain(esc(c.roam.replay));
+      expect(plain).toContain('class="bg-hint"');
+    }
   });
 
   it('the hint line is a .bg-hint inside .bg-objective, worded for the keys or for touch, and absent without a hint', () => {

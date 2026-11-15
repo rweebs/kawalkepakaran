@@ -62,6 +62,8 @@
 .bg-hud button { pointer-events: auto; }
 .bg-objective { position: absolute; top: 0.75rem; left: 0.75rem; max-width: min(22rem, 46%); display: grid; gap: 0.25rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-hint { margin: 0; color: var(--text-secondary); font-size: 0.8rem; background: none; }
+/* A replay's line (Task 36), in the hint's place and type: muted, as roam's other optional things are. */
+.bg-replay { margin: 0; color: var(--text-secondary); font-size: 0.8rem; }
 /* The radar slot, top right: the radar, and on touch the speed in a pill under it. */
 .bg-radar-slot { position: absolute; top: 0.75rem; right: 0.75rem; display: grid; justify-items: center; gap: 0.35rem; }
 .bg-radar-slot .bg-speed { margin: 0; padding: 0.15rem 0.65rem; border-radius: var(--radius-full); background: rgba(11, 16, 32, 0.72); line-height: 1.4; }

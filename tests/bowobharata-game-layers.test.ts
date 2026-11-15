@@ -10,8 +10,8 @@ import { PAVILION, groundHeight } from '../src/lib/bowobharata/stage-math';
 import type { ChariotMotion, ChariotRig } from '../src/lib/bowobharata/scene/chariot';
 import { angleDiff, forward, rightOf, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
-import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
-import { DEFAULT_ASPECT, advance, createWorld, startChapter, timeScaleOf, viewOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_EXIT, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
+import { DEFAULT_ASPECT, advance, createWorld, skipToRecord, startChapter, timeScaleOf, viewOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import { createBot } from '../src/lib/bowobharata-game/autopilot';
 import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
@@ -1641,7 +1641,7 @@ describe('pickups', () => {
     for (const fn of declared(src.slice(0, start))) {
       expect(['shimmerAt', 'pickupsOf', 'markerGeo', 'painted', 'gateGeo', 'lapPostGeo', 'letterGeo'], fn).toContain(fn);
     }
-    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['slotOf', 'gateSlot', 'postSlot', 'layOut', 'retarget'], fn).toContain(fn);
+    for (const fn of declared(src.slice(start, from)).slice(1)) expect(['slotOf', 'gateSlot', 'postSlot', 'layOut', 'layReplays', 'retarget'], fn).toContain(fn);
     expect(declared(src.slice(to))).toEqual(['dispose']);
     // shimmerAt, the one module-level function a frame runs, is plain arithmetic.
     const shimmer = src.slice(src.indexOf('export function shimmerAt('));
@@ -2608,6 +2608,204 @@ describe('pickups', () => {
       expect(owned.has(letter)).toBe(true);
       expectFreed(game, owned, () => layer.dispose());
       expect(game.chariot.root.children).not.toContain(letter);
+    });
+
+    describe('roam: replay rings and free laps (Task 36)', () => {
+      const RECORDS = [0, 2, 2, 4, 9, 1, 2, 2, 2];
+      const lakonOf = (ch: number) => missionFor(ch, slugs(RECORDS[ch]));
+      /** Chapter ch's roam with every chapter before it finished, the chariot at `from` (TOWER_EXIT by default). */
+      const roamIn = (ch: number, from: { x: number; z: number; yaw: number } = TOWER_EXIT): GameState =>
+        startChapter(lakonOf(ch), from, 1, WORLD, { finished: Array.from({ length: ch }, (_, k) => k), bests: [], bestLap: null, defOf: lakonOf });
+      const R3 = roamIn(3);
+      const IDLE: FrameInput = { drive: NO_INPUT, sight: false, skip: false, assist: false, aspect: DEFAULT_ASPECT };
+      const rings = (root: THREE.Object3D) => allNamed(root, 'replay-ring') as THREE.Mesh[];
+      const ringsShown = (root: THREE.Object3D) => rings(root).filter(shown);
+      /** Each post's light, P1 to P5: its beam's colour over the full amber, 0 with no beam over it. */
+      function postLight(root: THREE.Object3D): number[] {
+        const beams = meshOf(root, 'lap-beams');
+        const full = new THREE.Color('#ffb84a').r;
+        return POSTS.map((p) => {
+          const b = shown(beams) ? instancesAt(beams, p.at)[0] : undefined;
+          if (b === undefined) return 0;
+          const c = new THREE.Color();
+          beams.getColorAt(b, c);
+          return c.r / full;
+        });
+      }
+      const calls = (root: THREE.Object3D) => {
+        let n = 0;
+        root.traverse((o) => {
+          const inst = o as THREE.InstancedMesh;
+          if (((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite) && shown(o) && (!inst.isInstancedMesh || inst.count > 0)) n++;
+        });
+        return n;
+      };
+
+      it("replay markers use the muted ring material: a replay-ring at each finished lakon's marker, draped over the ground, all of one additive grey material on FX_LAYER", () => {
+        const { game } = fakeGame();
+        createPickups(game).sync(R3, 0);
+        const list = rings(game.root);
+        // Parva 1's and 2's: the prologue has no marker.
+        expect(list).toHaveLength(2);
+        for (const m of [lakonOf(1).marker!, lakonOf(2).marker!]) {
+          const ring = list.find((r) => flatDist(placeOf(r), m) <= 1e-9);
+          expect(ring, `${m.x}, ${m.z}`).toBeDefined();
+          expect(shown(ring!)).toBe(true);
+          // The marker's flattened torus of r 5 with its petals, each vertex over the ground under it.
+          const vs = vertices(ring!);
+          for (const v of vs) {
+            expect(height(v)).toBeGreaterThan(0.03);
+            expect(height(v)).toBeLessThan(0.35);
+          }
+          const r = vs.map((v) => flatDist(v, m));
+          expect(Math.min(...r)).toBeGreaterThan(4.7);
+          expect(Math.max(...r)).toBeLessThan(6.6);
+        }
+        // Each its own draped copy of the shape, all of one material.
+        expect(list[0].geometry).not.toBe(list[1].geometry);
+        const mat = list[0].material as THREE.MeshBasicMaterial;
+        for (const ring of list) {
+          expect(ring.material).toBe(mat);
+          expect(ring.layers.mask).toBe(1 << FX_LAYER);
+        }
+        expect(mat.isMeshBasicMaterial).toBe(true);
+        expect(mat.blending).toBe(THREE.AdditiveBlending);
+        expect([mat.transparent, mat.depthWrite, mat.fog]).toEqual([true, false, false]);
+        // Muted: grey, and fainter than the lakon's own amber marker ring, which stands at chapter 3's marker.
+        const marker = named<THREE.Mesh>(game.root, 'marker-ring').material as THREE.MeshBasicMaterial;
+        expect(mat).not.toBe(marker);
+        expect(mat.color.getHSL({ h: 0, s: 0, l: 0 }).s).toBeLessThan(0.1);
+        expect(mat.opacity).toBeGreaterThan(0);
+        expect(mat.opacity).toBeLessThan(marker.opacity);
+        // Chapter 3's roam draws the marker ring and beam, the two rings, the free laps' posts, and the tower's beam and circle.
+        expect(calls(named(game.root, 'pickups'))).toBe(7);
+      });
+
+      it('the replay rings show in roam only, easing out and in over 0.4 s, never faster than 2 Hz allows', () => {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        layer.sync(R3, 0);
+        const mat = rings(game.root)[0].material as THREE.MeshBasicMaterial;
+        const full = mat.opacity;
+        const dt = 1 / 64;
+        let t = 0;
+        const run = (s: GameState, frames: number) => {
+          const levels: number[] = [];
+          for (let k = 0; k < frames; k++) {
+            t += dt;
+            layer.sync(s, t);
+            levels.push(ringsShown(game.root).length > 0 ? mat.opacity : 0);
+          }
+          return levels;
+        };
+        // The lakon's own intro begins: out over 0.4 s, then hidden.
+        const out = run(at(R3, { phase: 'intro' }), 40);
+        [full, ...out].forEach((v, k, all) => k > 0 && expect(all[k - 1] - v, `out ${k}`).toBeLessThanOrEqual((full * dt) / 0.25 + 1e-9));
+        expect(out.findIndex((v) => v === 0) * dt).toBeGreaterThanOrEqual(0.4 - dt - 1e-9);
+        expect(out.at(-1)).toBe(0);
+        // In roam again: in over 0.4 s, whole.
+        const back = run(R3, 40);
+        [0, ...back].forEach((v, k, all) => k > 0 && expect(v - all[k - 1], `in ${k}`).toBeLessThanOrEqual((full * dt) / 0.25 + 1e-9));
+        expect(back.at(-1)).toBe(full);
+      });
+
+      it("parva 5's posts stand in every roam, none lit before a free lap; once P1 is crossed the next post lights, eased over 0.4 s (ruling 11)", () => {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        const posts = meshOf(game.root, 'lap-posts');
+        let t = hold(layer, R3, 0, 1);
+        expect(drawn(game.root, 'lap-posts')).toBe(5);
+        for (const p of POSTS) expect(fadeAt(posts, instancesAt(posts, p.at)[0])).toBe(1);
+        // No amber over them: in roam the one amber beam is the next lakon's marker.
+        expect(postLight(game.root)).toEqual([0, 0, 0, 0, 0]);
+        expect(drawn(game.root, 'lap-beams')).toBe(0);
+        expect(shown(named(game.root, 'marker-beam'))).toBe(true);
+        // P1 crossed: a lap is under way, and P2 is next.
+        const under: GameState = { ...R3, roam: { ...R3.roam!, lapPost: 1, lapStart: 3 } };
+        const dt = 1 / 64;
+        let last = postLight(game.root);
+        let whole = NaN;
+        for (let k = 1; k <= 64; k++) {
+          t += dt;
+          layer.sync(under, t);
+          const now = postLight(game.root);
+          now.forEach((v, i) => expect(Math.abs(v - last[i]), `P${i + 1}, frame ${k}`).toBeLessThanOrEqual(dt / 0.4 + 1e-6));
+          if (now[1] === 1 && Number.isNaN(whole)) whole = k * dt;
+          last = now;
+        }
+        expect(last).toEqual([0, 1, 0, 0, 0]);
+        expect(whole).toBeGreaterThanOrEqual(0.4 - 1e-9);
+        // The lakon starts: chapter 3 has no laps, so the posts and their beam go, eased.
+        hold(layer, at(under, { phase: 'intro' }), t, 1);
+        expect(drawn(game.root, 'lap-posts')).toBe(0);
+        expect(drawn(game.root, 'lap-beams')).toBe(0);
+      });
+
+      it("chapter 5's own posts are the free laps': one set of five pairs, standing whole as its lakon starts", () => {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        const R5 = roamIn(5);
+        const posts = meshOf(game.root, 'lap-posts');
+        let t = hold(layer, R5, 0, 1);
+        expect(drawn(game.root, 'lap-posts')).toBe(5);
+        for (const s of [at(R5, { phase: 'intro' }), at(R5, { phase: 'active' })]) {
+          for (let k = 0; k < 64; k++) {
+            t += 1 / 64;
+            layer.sync(s, t);
+            expect(drawn(game.root, 'lap-posts')).toBe(5);
+            for (const p of POSTS) expect(fadeAt(posts, instancesAt(posts, p.at)[0])).toBe(1);
+          }
+        }
+      });
+
+      it("a replay changes the lakon at the cut, both ways: its first frame lays parva 1 out at once, and its return lays chapter 3's roam out at once (ruling 5)", () => {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        // Chapter 3's roam with the chariot at rest on parva 1's marker: its next frame starts the replay.
+        const onM1 = roamIn(3, { ...lakonOf(1).marker!, yaw: 0 });
+        let t = hold(layer, onM1, 0, 1);
+        expect(ringsShown(game.root)).toHaveLength(2);
+        const replay = advance(onM1, IDLE, 1 / 64, WORLD).state;
+        expect(replay.run.def.chapter).toBe(1);
+        expect(replay.shot?.kind).toBe('intro');
+        t += 1 / 64;
+        layer.sync(replay, t);
+        // Under the cut into its intro: no ring and no free post; its two records out whole, and its marker ring.
+        expect(ringsShown(game.root)).toEqual([]);
+        expect(drawn(game.root, 'lap-posts')).toBe(0);
+        const leaves = meshOf(game.root, 'lontar');
+        expect(drawn(game.root, 'lontar')).toBe(2);
+        for (const k of [0, 1]) expect(fadeAt(leaves, k)).toBe(1);
+        expect(flatDist(placeOf(named(game.root, 'marker-ring')), lakonOf(1).marker!)).toBeLessThanOrEqual(1e-9);
+        // Its end: back in chapter 3's roam at TOWER_EXIT, under the cut to the chase view.
+        let s = skipToRecord(replay).state;
+        for (let k = 0; k < 4 * 64 && s.run.def.chapter === 1; k++) s = advance(s, IDLE, 1 / 64, WORLD).state;
+        expect(s.run.def.chapter).toBe(3);
+        expect(s.shot).toBeNull();
+        layer.sync(s, t + 4);
+        expect(ringsShown(game.root)).toHaveLength(2);
+        expect((rings(game.root)[0].material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
+        expect(drawn(game.root, 'lap-posts')).toBe(5);
+        expect(drawn(game.root, 'lontar')).toBe(0);
+      });
+
+      it('lays the rings out once a roam, never per frame, and frees them: a new roam replaces the old rings, and dispose frees the rest', () => {
+        const { game } = fakeGame();
+        const layer = createPickups(game);
+        layer.sync(R3, 0);
+        const first = rings(game.root);
+        layer.sync({ ...R3, car: car(-30, 50) }, 0.1);
+        expect(rings(game.root)).toEqual(first);
+        expect(rings(game.root).every((r, k) => r === first[k])).toBe(true);
+        // Chapter 8's roam: seven rings, and the two old ones' geometries freed with them.
+        const freed = new Set<unknown>();
+        for (const r of first) r.geometry.addEventListener('dispose', () => freed.add(r.geometry));
+        layer.sync(roamIn(8), 0.2);
+        expect(rings(game.root)).toHaveLength(7);
+        expect(rings(game.root).some((r) => first.includes(r))).toBe(false);
+        expect(freed.size).toBe(2);
+        expectFreed(game, ownedBy(named(game.root, 'pickups'), game), () => layer.dispose());
+      });
     });
   });
 });

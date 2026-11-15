@@ -1,8 +1,8 @@
 // One frame of the game as plain data. advance() runs Krishna's sight on real time, scales the world's dt, blends the
 // steering assist, drives the chariot (the guard keeps it off the ranks; the field's edge brakes it to rest at 160 m,
 // as the guard does; haze slows it), applies the soft wall, resolves contacts, reports the guard holding the chariot,
-// steps the lakon rules, then the clamour and the volleys (copies stay off the route), moves the camera and gives the
-// hints, in that order.
+// steps the lakon rules, then the clamour and the volleys (copies stay off the route), then roam's replays and free laps,
+// moves the camera and gives the hints, in that order.
 // Pure: no three.js, no DOM, no clock; GameState holds no closures. The volleys' only randomness is the stored rng
 // state, stepped with nextRand from the chapter's seed. `clock` counts real seconds, each frame capped at DRIVE.maxDt
 // as the drive is; the world runs at half speed while sight is on. The clamour, the volleys, the copies and the haze
@@ -20,7 +20,7 @@ import {
   type ChariotState,
   type Guard,
 } from './drive';
-import { GAME_WARRIORS, PLAY, ZONES, softWallAccel, staticColliders, zonesAt, type Collider, type Zone } from './world';
+import { GAME_WARRIORS, PLAY, TOWER_EXIT, ZONES, softWallAccel, staticColliders, zonesAt, type Collider, type Zone } from './world';
 import { HULL, fieldEdge, figureGuard, hullMid, resolveContacts } from './collide';
 import {
   bump,
@@ -39,17 +39,21 @@ import { buildNav, projectOnPath, pursuit, routeTo, turnsAhead, type NavGrid } f
 import { objectivePoints, reachCircles, type MissionDef } from './missions';
 import { initSight, stepSight, worldScale, type Sight } from './sight';
 import {
+  atMarker,
   autoRecord,
   drivable,
   openTargets,
   restore,
+  rideLaps,
   startRun,
   stepRun,
   totalReal,
   type Decoy,
   type GameEvent,
   type HintKey,
+  type Laps,
   type Phase,
+  type RunFrame,
   type RunState,
 } from './mission-run';
 import { initRiuh, kickRiuh, levelEffects, riuhLevel, stepRiuh, type Riuh, type RiuhKick } from './riuh';
@@ -121,7 +125,49 @@ export interface GameState {
   level: number;
   /** Whether the lakon's scripted volley (scripted.volleyLine) has been planned: it comes once. */
   scriptedPlanned: boolean;
+  /** Between lakon: the finished lakon's replays, the free laps, and the chapter's own lakon while a replay runs. */
+  roam: Roam | null;
 }
+
+/** What a lakon brings into the state: its run, its copies and haze, its clamour and its volleys. */
+type Lakon = Pick<
+  GameState,
+  'run' | 'decoys' | 'clouds' | 'riuh' | 'level' | 'volleys' | 'nextVolley' | 'rng' | 'nextId' | 'scriptedPlanned'
+>;
+
+/**
+ * Roam, between lakon (Task 36): the markers of the finished lakon start their replays, for score only, and parva 5's
+ * posts give free timed laps. No pressure runs in it: the clamour, the volleys and the copies are the lakon's. Plain data,
+ * laid out as the chapter starts.
+ */
+export interface Roam {
+  /** The finished lakon that have a marker, by chapter, once each: driving into a marker replays its lakon. */
+  replays: readonly MissionDef[];
+  /** The session's best score of each chapter, by chapter, as the island keeps them; a replay's end raises its own. */
+  bests: readonly number[];
+  /** The session's best free lap (s); null before the first. */
+  bestLap: number | null;
+  /** Parva 5's lap course, whose posts the free laps ride; null if its lakon had none. */
+  laps: Laps | null;
+  /** World seconds ridden in roam: the free laps' clock, as run.t is the lakon's laps'. */
+  t: number;
+  /** The free laps' next post (0 is P1), and the roam second at which the lap under way began at P1 (null while none is). */
+  lapPost: number;
+  lapStart: number | null;
+  /** The chapter's own lakon, kept aside as it was while a replay runs; null while none does. */
+  aside: Lakon | null;
+}
+
+/** Roam's data as a chapter starts: the chapters finished, the session's bests and best lap, and each chapter's lakon. */
+export interface RoamInput {
+  finished: readonly number[];
+  bests: readonly number[];
+  bestLap: number | null;
+  defOf: (chapter: number) => MissionDef;
+}
+
+/** The lakon whose posts the free laps ride: parva 5's, round the Pandawa camp. */
+const FREE_LAPS = 5;
 
 /** A held event needs the guard to change the velocity by more than this (m/s) in one call: braking, not grazing. */
 export const HELD_MIN = 0.05;
@@ -212,32 +258,78 @@ function capCopies(decoys: readonly Decoy[], cap: number): readonly Decoy[] {
 }
 
 /**
- * A chapter's lakon from `from`: in roam when it has a marker, else straight into its intro. The scripted copies and
- * haze are laid out, and the clamour starts at the lakon's start value. `seed` starts the volleys' rng.
+ * A lakon laid out from `def`: its run (in roam when it has a marker, else in its intro), its scripted copies and haze,
+ * the clamour at its start value and no volley yet, their rng at `rng`.
  */
-export function startChapter(
-  def: MissionDef,
-  from: { x: number; z: number; yaw: number },
-  seed: number,
-  w: World,
-): GameState {
-  const car = initChariot(from.x, from.z, from.yaw);
-  const run = startRun(def);
+function lakonOf(def: MissionDef, rng: number): Lakon {
   const decoys = def.scripted.decoys.map(
     (at, k): Decoy => ({ id: k + 1, at: { x: at.x, z: at.z }, born: 0, life: null, state: 'open', mimic: false }),
   );
   const clouds = def.scripted.clouds.map(
     (at, k): Cloud => ({ id: decoys.length + k + 1, at: { x: at.x, z: at.z }, r: VOLLEY.cloudR, born: 0, life: null }),
   );
-  const route = routeFor(run, car, null, w);
   const riuh = initRiuh({ start: def.riuh.start, frozen: def.riuh.frozen, t: 0 });
   return {
+    run: startRun(def),
+    decoys,
+    clouds,
+    riuh,
+    level: riuhLevel(riuh.value),
+    volleys: [],
+    nextVolley: null,
+    rng,
+    nextId: decoys.length + clouds.length + 1,
+    scriptedPlanned: false,
+  };
+}
+
+/**
+ * Roam as a chapter starts: the finished lakon that have a marker, once each and never the chapter's own, and parva 5's
+ * lap course. Each lakon is laid out once, the chapter's own as it is, so parva 5's posts are one course whoever rides
+ * them: its own lakon's in chapter 5, its replay's after it.
+ */
+function roamOf(def: MissionDef, o: RoamInput): Roam {
+  const defs = new Map<number, MissionDef>([[def.chapter, def]]);
+  const lakon = (chapter: number): MissionDef => {
+    let d = defs.get(chapter);
+    if (!d) defs.set(chapter, (d = o.defOf(chapter)));
+    return d;
+  };
+  const finished = [...new Set(o.finished)].filter((c) => c !== def.chapter).sort((a, b) => a - b);
+  return {
+    replays: finished.map(lakon).filter((d) => d.marker !== null),
+    bests: o.bests.slice(),
+    bestLap: o.bestLap,
+    laps: lakon(FREE_LAPS).steps.find((s): s is Laps => s.kind === 'laps') ?? null,
+    t: 0,
+    lapPost: 0,
+    lapStart: null,
+    aside: null,
+  };
+}
+
+/**
+ * A chapter's lakon from `from`: in roam when it has a marker, else straight into its intro. The scripted copies and
+ * haze are laid out, and the clamour starts at the lakon's start value. `seed` starts the volleys' rng. Given `roam`'s
+ * data, the chapter's roam holds the finished lakon's replays and the free laps (roamOf).
+ */
+export function startChapter(
+  def: MissionDef,
+  from: { x: number; z: number; yaw: number },
+  seed: number,
+  w: World,
+  roam?: RoamInput,
+): GameState {
+  const car = initChariot(from.x, from.z, from.yaw);
+  const lakon = lakonOf(def, seed >>> 0);
+  const route = routeFor(lakon.run, car, null, w);
+  return {
+    ...lakon,
     clock: 0,
     car,
     cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)),
-    run,
     sight: initSight(),
-    decoys: offRoute(decoys, run, route),
+    decoys: offRoute(lakon.decoys, lakon.run, route),
     shot: null,
     route,
     hintsShown: [],
@@ -246,14 +338,7 @@ export function startChapter(
     hintCopy: null,
     heldAt: -Infinity,
     wallAt: -Infinity,
-    nextId: decoys.length + clouds.length + 1,
-    riuh,
-    volleys: [],
-    clouds,
-    nextVolley: null,
-    rng: seed >>> 0,
-    level: riuhLevel(riuh.value),
-    scriptedPlanned: false,
+    roam: roam ? roamOf(def, roam) : null,
   };
 }
 
@@ -456,7 +541,7 @@ function stepPressure(
 }
 
 /**
- * Step 10. The chase camera always follows; a phase with a shot plays it. A new outro or fail shot starts from the
+ * Step 11. The chase camera always follows; a phase with a shot plays it. A new outro or fail shot starts from the
  * live view (what this frame shows without it), so its first frame does not jump; the intro cuts in.
  */
 function stepCamera(s: GameState, before: GameState['shot'], dt: number, aspect: number, w: World): GameState {
@@ -636,7 +721,7 @@ const HINT_RULES: Readonly<Record<HintKey, (s: GameState) => boolean>> = {
 const HINT_ORDER: readonly HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 'slow', 'stop', 'surge', 'drift'];
 
 /**
- * Step 11. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
+ * Step 12. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
  * first hint fires once the hint on the HUD has stayed HINT_MIN, even if its own moment has passed (each is a lesson).
  * At most one fires per frame. A sight lesson that fires follows its copy (hintCopy); any other hint lets it go. The
  * queue is dropped when the lakon ends.
@@ -654,6 +739,113 @@ function stepHints(s: GameState): { state: GameState; event: GameEvent | null } 
     state: { ...s, hintsShown: [...s.hintsShown, key], hintQueue: rest, hintAt: s.clock, hintCopy },
     event: { type: 'hint', key },
   };
+}
+
+/** The lakon's own part of the state, as a replay sets it aside. */
+const lakonPart = (s: GameState): Lakon => ({
+  run: s.run,
+  decoys: s.decoys,
+  clouds: s.clouds,
+  riuh: s.riuh,
+  level: s.level,
+  volleys: s.volleys,
+  nextVolley: s.nextVolley,
+  rng: s.rng,
+  nextId: s.nextId,
+  scriptedPlanned: s.scriptedPlanned,
+});
+
+/**
+ * A finished lakon's replay, from its marker where the chariot stands (it is not moved): its lakon laid out afresh, its
+ * volleys' rng from the state's, and its run stepped once by the lakon's own rule into its intro (introStart), so the
+ * camera cuts to the intro's first shot in this frame. The chapter's own lakon waits aside as it is; a free lap under way
+ * is dropped.
+ */
+function startReplay(s: GameState, def: MissionDef, f: RunFrame, w: World, events: GameEvent[]): GameState {
+  const lakon = lakonOf(def, s.rng);
+  const ran = stepRun(lakon.run, f);
+  events.push(...ran.events);
+  const route = routeFor(ran.run, s.car, null, w);
+  return {
+    ...s,
+    ...lakon,
+    run: ran.run,
+    decoys: offRoute(lakon.decoys, ran.run, route),
+    route,
+    roam: { ...s.roam!, lapPost: 0, lapStart: null, aside: lakonPart(s) },
+  };
+}
+
+/**
+ * A replay's end, with its score (0 for one that failed): replayDone, with the chapter's best of the session as it now
+ * stands; the chapter's own lakon back as it was set aside, its hints' queue dropped as at a lakon's end; and the chariot
+ * at rest at TOWER_EXIT, where the camera cuts to the chase view behind it in this frame.
+ */
+function endReplay(s: GameState, aside: Lakon, score: number, w: World, events: GameEvent[]): GameState {
+  const roam = s.roam!;
+  const { chapter } = s.run.def;
+  const best = Math.max(roam.bests[chapter] ?? 0, score);
+  const bests = roam.bests.slice();
+  bests[chapter] = best;
+  events.push({ type: 'replayDone', chapter, score, best });
+  const car = initChariot(TOWER_EXIT.x, TOWER_EXIT.z, TOWER_EXIT.yaw);
+  return {
+    ...s,
+    ...aside,
+    car,
+    cam: initChase(car, chaseOpts(w, DEFAULT_ASPECT, car)),
+    shot: null,
+    route: routeFor(aside.run, car, null, w),
+    hintQueue: [],
+    hintCopy: null,
+    roam: { ...roam, bests, aside: null },
+  };
+}
+
+/**
+ * The free laps on parva 5's posts, timed on roam's own world seconds: the posts are crossed in order by the lakon's own
+ * rule (rideLaps), and crossing P1 starts a lap and closes each one, each lap closed a freeLap with the session's best.
+ */
+function rideFree(s: GameState, roam: Roam, f: RunFrame, events: GameEvent[]): GameState {
+  if (!roam.laps) return s;
+  const t = roam.t + f.dt;
+  const lap = rideLaps(roam.laps, roam.lapPost, roam.lapStart, t, f);
+  if (!lap) return { ...s, roam: { ...roam, t } };
+  let { bestLap } = roam;
+  if (lap.seconds !== null) {
+    bestLap = bestLap === null ? lap.seconds : Math.min(bestLap, lap.seconds);
+    events.push({ type: 'freeLap', seconds: lap.seconds, best: bestLap });
+  }
+  return { ...s, roam: { ...roam, t, lapPost: lap.post, lapStart: lap.start, bestLap } };
+}
+
+/**
+ * Step 10, roam's (Task 36), on the frame's new state `next` (not yet handed out), before the camera, so a change of
+ * lakon falls on a cut. A replay ends back in the chapter's roam at its own end, with its score, or once its fail shot
+ * has run MISSION_TIMING.failSeconds on its own clock, with 0; neither its done nor its failed is passed on (advance).
+ * In roam a finished lakon's marker starts its replay, by the lakon's own rule, and otherwise the free laps run. The
+ * chapter's own lakon starting drops a free lap under way. `ran` holds this frame's lakon events as stepRun gave them.
+ */
+function stepRoam(
+  next: GameState,
+  prev: GameState,
+  f: RunFrame,
+  ran: readonly GameEvent[],
+  w: World,
+  events: GameEvent[],
+): GameState {
+  const roam = next.roam!;
+  if (roam.aside) {
+    for (const e of ran) if (e.type === 'done') return endReplay(next, roam.aside, e.score, w, events);
+    const shot = prev.shot;
+    const failedOut = prev.run.phase === 'failed' && shot?.kind === 'fail' && shot.t >= MISSION_TIMING.failSeconds;
+    return failedOut ? endReplay(next, roam.aside, 0, w, events) : next;
+  }
+  if (next.run.phase !== 'roam') {
+    return roam.lapPost === 0 && roam.lapStart === null ? next : { ...next, roam: { ...roam, lapPost: 0, lapStart: null } };
+  }
+  for (const def of roam.replays) if (def.marker && atMarker(def.marker, f)) return startReplay(next, def, f, w, events);
+  return rideFree(next, roam, f, events);
 }
 
 /**
@@ -699,7 +891,8 @@ export function advance(
     heldAt = clock;
   }
   // 8. The lakon's rules (checkpoints and the calm bonus see the live clamour), then the route to whatever is open now.
-  const ran = stepRun(s.run, {
+  // A replay's done and failed stay here: its end is roam's to tell (step 10), and a replay opens no screen.
+  const frame: RunFrame = {
     car,
     mid: hullMid(car),
     midPrev: hullMid(s.car),
@@ -708,8 +901,10 @@ export function advance(
     skip: input.skip,
     riuh: s.riuh.value,
     decoys: s.decoys,
-  });
-  events.push(...ran.events);
+  };
+  const ran = stepRun(s.run, frame);
+  const replaying = s.roam !== null && s.roam.aside !== null;
+  for (const e of ran.events) if (!replaying || (e.type !== 'done' && e.type !== 'failed')) events.push(e);
   // The frame's new state; step 9 fills in its clamour and volleys before it is handed on to the camera and hints. The
   // sight lesson lets its copy go once the frame before met it, or its time is up.
   const moved: GameState = {
@@ -728,8 +923,10 @@ export function advance(
   // 9. The clamour and the volleys, in a frame that began in the active lakon; then no lure is left on the route.
   if (s.run.phase === 'active') stepPressure(moved, s, ran.events, dt, w, events);
   moved.decoys = offRoute(moved.decoys, moved.run, moved.route);
-  // 10–11. The camera, then the hints.
-  const hinted = stepHints(stepCamera(moved, s.shot, dt, input.aspect, w));
+  // 10. Roam: a replay's end or start, the free laps.
+  const roamed = moved.roam ? stepRoam(moved, s, frame, ran.events, w, events) : moved;
+  // 11–12. The camera, then the hints.
+  const hinted = stepHints(stepCamera(roamed, s.shot, dt, input.aspect, w));
   if (hinted.event) events.push(hinted.event);
   return { state: hinted.state, events };
 }

@@ -10,7 +10,7 @@ import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
 import { NO_INPUT, speedOf } from '../src/lib/bowobharata-game/drive';
 import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
 import { worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
-import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
+import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { radarRange } from '../src/lib/bowobharata-game/radar';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
 import { scriptedVolley } from '../src/lib/bowobharata-game/volley';
@@ -26,7 +26,13 @@ import {
   shouldOfferStill,
   watchFrames,
 } from '../src/lib/bowobharata-game/world/perf';
-import { createRuntime } from '../src/lib/bowobharata-game/world/runtime';
+import { createRuntime, type RoamOpts } from '../src/lib/bowobharata-game/world/runtime';
+
+// The HUD snapshot as the runtime takes it, watched: each call's `prev` shows what the runtime carried from the last one.
+vi.mock('../src/lib/bowobharata-game/hud', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/lib/bowobharata-game/hud')>();
+  return { ...real, hudOf: vi.fn(real.hudOf) };
+});
 
 // No DOM under vitest: a canvas whose 2D context swallows every call, so the texture painters run without drawing.
 function stubCanvas() {
@@ -514,15 +520,87 @@ describe('runtime', () => {
     expect(step()!.radarM).toBe(target());
   });
 
-  it('clears the last HUD snapshot at a start and a retry, so the hold at the radar\'s edge starts afresh there too', () => {
-    // The range starts afresh either way (sinceHud is Infinity then). The hold reads the last snapshot's items, which
-    // belong to the place before the jump; it needs a clamour of level 4, out of this harness's reach, so this reads the
-    // code.
-    const src = readFileSync(new URL('../src/lib/bowobharata-game/world/runtime.ts', import.meta.url), 'utf8');
-    for (const head of ['start(chapter, slugs, seed) {', 'retry() {']) {
-      const body = src.slice(src.indexOf(head));
-      expect(body.slice(0, body.indexOf('\n    },')), head).toContain('lastHud = null;');
+  describe('every jump starts the HUD afresh (Task 36, ruling 3)', () => {
+    const SLUGS = (c: number) => ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].slice(0, [0, 2, 2, 4, 9, 1, 2, 2, 2][c]);
+    /** Chapter 3 with the prologue, parva 1 and parva 2 finished. */
+    const ROAM3: RoamOpts = { finished: [0, 1, 2], bests: [], bestLap: null, slugsOf: SLUGS };
+    /** The `prev` of each hudOf call since `from`: the snapshot the runtime carried into it. */
+    const prevsFrom = (from: number) => vi.mocked(hudOf).mock.calls.slice(from).map((c) => c[2]);
+    /** Toward the east at up to 6 m/s, the intro skipped: from TOWER_EXIT, into parva 1's marker. */
+    function eastward(h: ReturnType<typeof harness>): Input {
+      const car = h.rt.state()?.car;
+      return { drive: { ...NO_INPUT, throttle: car && speedOf(car) < 6 ? 1 : 0 }, sight: false, skip: true, assist: false };
     }
+
+    it('the first snapshot after a start, a retry and toMarker() carries nothing from the last; those between carry it', () => {
+      const h = harness();
+      vi.mocked(hudOf).mockClear();
+      h.rt.start(0, [], 1);
+      h.frames(120);
+      expect(h.rt.state()!.run.checkpoint).not.toBeNull();
+      const started = prevsFrom(0);
+      expect(started[0]).toBeUndefined();
+      expect(started.slice(1).every((p) => p !== undefined)).toBe(true);
+      for (const jump of [() => h.rt.retry(), () => h.rt.start(1, SLUGS(1), 1), () => h.rt.toMarker()]) {
+        h.frames(30);
+        const from = vi.mocked(hudOf).mock.calls.length;
+        jump();
+        h.frames(30);
+        const after = prevsFrom(from);
+        expect(after[0], String(jump)).toBeUndefined();
+        expect(after.slice(1).every((p) => p !== undefined), String(jump)).toBe(true);
+      }
+    });
+
+    it('so does the snapshot of the frame a replay starts in and of the frame it returns to roam in, each of that frame\'s lakon', () => {
+      let h: ReturnType<typeof harness> | null = null;
+      h = harness({ input: () => eastward(h!) });
+      h.rt.start(3, SLUGS(3), 1, ROAM3);
+      expect(h.rt.state()!.roam!.replays.map((d) => d.chapter)).toEqual([1, 2]);
+      // Roam, until the chariot rolls into parva 1's marker: one frame's snapshots at a time.
+      const frameHuds = () => {
+        const from = vi.mocked(hudOf).mock.calls.length;
+        const before = h!.rt.state()!.run.def;
+        h!.frame();
+        return { jumped: h!.rt.state()!.run.def !== before, prevs: prevsFrom(from), snaps: vi.mocked(hudOf).mock.results.slice(from) };
+      };
+      let f = frameHuds();
+      for (let k = 0; k < 20 * 60 && !f.jumped; k++) f = frameHuds();
+      expect(h.rt.state()!.run.def.chapter).toBe(1);
+      // The replay's first frame sends its snapshot at once, from no last one, of parva 1's lakon.
+      expect(f.prevs).toEqual([undefined]);
+      expect((f.snaps[0].value as HudSnapshot)).toMatchObject({ chapter: 1, phase: 'intro', replay: true });
+      // ...before its introStart, so the island's card names parva 1.
+      const hudAt = h.onHud.mock.invocationCallOrder.at(-1)!;
+      const introAt = h.onEvents.mock.invocationCallOrder.at(-1)!;
+      expect(h.onHud.mock.calls.at(-1)![0].chapter).toBe(1);
+      expect(types(h.onEvents.mock.calls.at(-1)![0])).toContain('introStart');
+      expect(hudAt).toBeLessThan(introAt);
+      // Its record taken at once (the fail card's skip, which the runtime offers in any lakon), its outro runs, and
+      // chapter 3's roam resumes at TOWER_EXIT: that frame's snapshot carries nothing either.
+      h.rt.skip();
+      f = frameHuds();
+      for (let k = 0; k < 4 * 60 && !f.jumped; k++) f = frameHuds();
+      expect(h.rt.state()!.run.def.chapter).toBe(3);
+      expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(TOWER_EXIT));
+      expect(f.prevs).toEqual([undefined]);
+      expect((f.snaps[0].value as HudSnapshot)).toMatchObject({ chapter: 3, phase: 'roam', replay: false });
+      expect(types(h.events)).toContain('replayDone');
+      expect(types(h.events)).not.toContain('done');
+    });
+
+    it('start() lays roam out from its data, the finished lakon from their slugs; without it there is no roam', () => {
+      const h = harness();
+      const slugsOf = vi.fn(SLUGS);
+      h.rt.start(3, SLUGS(3), 1, { finished: [0, 1, 2], bests: [0, 50], bestLap: 30, slugsOf });
+      const roam = h.rt.state()!.roam!;
+      expect(roam.replays).toEqual([missionFor(1, SLUGS(1)), missionFor(2, SLUGS(2))]);
+      expect(roam.laps).toEqual(missionFor(5, SLUGS(5)).steps[0]);
+      expect([roam.bests, roam.bestLap]).toEqual([[0, 50], 30]);
+      expect(slugsOf.mock.calls.map((c) => c[0]).sort()).toEqual([0, 1, 2, 5]);
+      h.rt.start(3, SLUGS(3), 1);
+      expect(h.rt.state()!.roam).toBeNull();
+    });
   });
 
   it('sets the time scale, the dawn and the camera from the state each frame', () => {

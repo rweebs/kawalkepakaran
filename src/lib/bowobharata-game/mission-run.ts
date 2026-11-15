@@ -115,7 +115,8 @@ type Out = { run: RunState; events: GameEvent[] };
 type Step = { run: RunState; events: GameEvent[]; decoys: readonly Decoy[] };
 type Target = { kind: 'pickup' | 'gate' | 'reach' | 'post' | 'marker'; id: string; at: XZ; real: boolean; heading?: number; width?: number };
 type Course = Extract<StepDef, { kind: 'course' }>;
-type Laps = Extract<StepDef, { kind: 'laps' }>;
+/** A lap course: parva 5's posts, and the record after its laps. */
+export type Laps = Extract<StepDef, { kind: 'laps' }>;
 
 export function startRun(def: MissionDef): RunState {
   return {
@@ -128,6 +129,14 @@ export function startRun(def: MissionDef): RunState {
 /** Whether the chariot is the player's to drive: roaming, or in the active part of a lakon. */
 export function drivable(run: RunState): boolean {
   return run.phase === 'roam' || run.phase === 'active';
+}
+
+/**
+ * Whether a lakon starts at the marker `m` this frame: the hull's middle within markerR of it, the chariot below
+ * markerSpeed. The lakon's own marker starts its intro; in roam a finished lakon's marker starts its replay.
+ */
+export function atMarker(m: XZ, f: Pick<RunFrame, 'mid' | 'car'>): boolean {
+  return dist(f.mid, m) <= MISSION_TIMING.markerR && pace(f.car) < MISSION_TIMING.markerSpeed;
 }
 
 export function totalReal(def: MissionDef): number {
@@ -317,7 +326,7 @@ const cross = (o: XZ, a: XZ, b: XZ) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) *
  * Whether the hull's middle crosses the span this frame: from strictly one side of its line to the other side or onto
  * it (so a frame that ends on the line counts once, and the next, starting on it, does not), between its ends.
  */
-function crossed(f: RunFrame, s: Span): boolean {
+function crossed(f: Pick<RunFrame, 'mid' | 'midPrev'>, s: Span): boolean {
   const from = cross(s.a, s.b, f.midPrev);
   const to = cross(s.a, s.b, f.mid);
   if (from === 0 || (from > 0 ? to > 0 : to < 0)) return false;
@@ -383,24 +392,42 @@ function lapsGeom(s: Laps): { spans: Span[]; then: readonly PickupDef[] } {
 }
 
 /**
- * Laps. The posts are crossed in order; P1 starts the first lap and closes each one, timed on run.t. A lap matches the
- * one before it when they differ by lapMatch of the one before at most; after maxLaps laps they match whatever the
- * times. Once they match, the record after them is open, and recording it closes the step.
+ * One frame round a lap course at time `now`: the posts are crossed in order, each by the crossing rule over its span;
+ * P1 starts the first lap and closes each one. `post` is the post to cross next (0 is P1) and `start` the time the lap
+ * under way began at P1 (null before P1 is first crossed). Null when this frame crosses no post in order; else the post
+ * to cross next, the lap's start, and the seconds of the lap this frame closed (null when it closed none). The lakon's
+ * laps ride it on run.t, and roam's free laps on parva 5's posts on their own clock.
+ */
+export function rideLaps(
+  s: Laps,
+  post: number,
+  start: number | null,
+  now: number,
+  f: Pick<RunFrame, 'mid' | 'midPrev'>,
+): { post: number; start: number | null; seconds: number | null } | null {
+  if (!crossed(f, lapsGeom(s).spans[post])) return null;
+  const next = (post + 1) % s.posts.length;
+  if (post !== 0) return { post: next, start, seconds: null };
+  return { post: next, start: now, seconds: start === null ? null : now - start };
+}
+
+/**
+ * Laps, ridden on run.t (rideLaps). A lap matches the one before it when they differ by lapMatch of the one before at
+ * most; after maxLaps laps they match whatever the times. Once they match, the record after them is open, and recording
+ * it closes the step.
  */
 function stepLaps(run: RunState, f: RunFrame, s: Laps): Out {
-  const geom = lapsGeom(s);
-  if (run.matched) return stepCollect(run, f, geom.then);
-  const k = run.lapPost;
-  if (!crossed(f, geom.spans[k])) return { run, events: [] };
-  const lapPost = (k + 1) % s.posts.length;
-  if (k !== 0) return { run: { ...run, lapPost }, events: [] };
-  if (run.lapStart === null) return { run: { ...run, lapStart: run.t, lapPost }, events: [] };
-  const seconds = run.t - run.lapStart;
+  if (run.matched) return stepCollect(run, f, lapsGeom(s).then);
+  const lap = rideLaps(s, run.lapPost, run.lapStart, run.t, f);
+  if (!lap) return { run, events: [] };
+  const rode: RunState = { ...run, lapPost: lap.post, lapStart: lap.start };
+  if (lap.seconds === null) return { run: rode, events: [] };
+  const { seconds } = lap;
   const before = run.laps.at(-1);
   const laps = [...run.laps, seconds];
   const matched =
     (before !== undefined && Math.abs(seconds - before) <= MISSION_TIMING.lapMatch * before) || laps.length >= MISSION_TIMING.maxLaps;
-  return { run: { ...run, laps, lapStart: run.t, lapPost, matched }, events: [{ type: 'lap', n: laps.length, seconds, matched }] };
+  return { run: { ...rode, laps, matched }, events: [{ type: 'lap', n: laps.length, seconds, matched }] };
 }
 
 /** Whether the hull's middle passes within decoyR of this open copy this frame. */
@@ -484,9 +511,7 @@ export function stepRun(run: RunState, frame: RunFrame): Step {
   switch (run.phase) {
     case 'roam': {
       const m = run.def.marker;
-      if (m && dist(f.mid, m) <= MISSION_TIMING.markerR && pace(f.car) < MISSION_TIMING.markerSpeed) {
-        return plain({ run: { ...run, phase: 'intro', phaseT: 0 }, events: [{ type: 'introStart' }] });
-      }
+      if (m && atMarker(m, f)) return plain({ run: { ...run, phase: 'intro', phaseT: 0 }, events: [{ type: 'introStart' }] });
       return plain({ run, events: [] });
     }
     case 'intro':

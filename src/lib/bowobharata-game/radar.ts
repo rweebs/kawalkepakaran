@@ -2,15 +2,15 @@
 // radar's SVG viewBox): the chariot at its centre, the way it faces up, its right to the right, and radarRange(v) m out
 // at the inner radius px/2 − RIM. A place farther out is clamped to that radius, along its bearing.
 // It shows the ranks and the shelters, the route ahead, the copies (only in Krishna's sight, and never in roam), the
-// tower, and what the lakon leads to: the marker in roam, the open records, the real gates of the next GATE_DAYS days
-// of a course (and any ridden past and still open), the next two lap posts, and the Hastinapura gate while the letter
-// is carried. At a Riuh level with radar static, nothing shows beyond (1 − static) of the inner radius unless sight is
-// on: what lies there is left out, and the route and the ranks' outlines are cut there. The range follows the speed
-// through a 1 s lag (easeRange, carried from one HUD snapshot to the next), so the edge moves smoothly: a place at it
-// crosses it once as the speed ramps, and a wobbling speed barely moves it. Given the last snapshot's items, a place
-// that was not shown appears only HOLD m within the edge, while one that was shown stays up to it: what grazes the edge
-// does not flicker, and nothing ever shows past it. Positions, kinds and metres only: no text. Pure: no clock, no
-// randomness.
+// tower, in roam the finished lakon's replay rings and the free laps' posts, and what the lakon leads to: the marker in
+// roam, the open records, the real gates of the next GATE_DAYS days of a course (and any ridden past and still open),
+// the next two lap posts, and the Hastinapura gate while the letter is carried. At a Riuh level with radar static,
+// nothing shows beyond (1 − static) of the inner radius unless sight is on: what lies there is left out, and the route
+// and the ranks' outlines are cut there. The range follows the speed through a 1 s lag (easeRange, carried from one HUD
+// snapshot to the next), so the edge moves smoothly: a place at it crosses it once as the speed ramps, and a wobbling
+// speed barely moves it. Given the last snapshot's items, a place that was not shown appears only HOLD m within the
+// edge, while one that was shown stays up to it: what grazes the edge does not flicker, and nothing ever shows past it.
+// Positions, kinds and metres only: no text. Pure: no clock, no randomness.
 import { clamp, dist, forward, rightOf, type XZ } from './geom';
 import { speedOf } from './drive';
 import { openTargets, type RunState } from './mission-run';
@@ -18,7 +18,7 @@ import { across } from './missions';
 import { levelEffects, riuhLevel } from './riuh';
 import { pointAt, projectOnPath } from './route';
 import { ANCHORS, distToCollider, type Area, type Collider } from './world';
-import type { GameState, World } from './engine';
+import type { GameState, Roam, World } from './engine';
 
 export type RadarKind = 'marker' | 'replay' | 'record' | 'gate' | 'tower' | 'shelter' | 'ranks' | 'route' | 'decoy' | 'post';
 
@@ -45,7 +45,8 @@ export interface RadarItem {
   points?: { x: number; y: number }[];
   /**
    * What it is, the same from one snapshot to the next: its kind and the lakon's id for it (`record:A`, `gate:D3L`,
-   * `post:P2-1`, `decoy:7`, `shelter:camp`, `ranks:army-dharma`), or just `tower`, `marker` or `route`.
+   * `post:P2-1`, `decoy:7`, `shelter:camp`, `ranks:army-dharma`), roam's (`replay:1` by chapter, `post:free-P2`), or just
+   * `tower`, `marker` or `route`.
    */
   key?: string;
 }
@@ -359,10 +360,27 @@ function lakonItems(s: GameState, show: Show): { key: string; at: XZ } | null {
 }
 
 /**
+ * Roam's own (Task 36): a muted ring at each finished lakon's marker, which starts its replay; then parva 5's posts for
+ * the free laps, the next one first and the one after it, as the lakon's laps show theirs. Places from the state, at
+ * most one ring per finished lakon.
+ */
+function roamItems(roam: Roam, show: Show): void {
+  for (const def of roam.replays) if (def.marker) show('replay', `replay:${def.chapter}`, def.marker);
+  const laps = roam.laps;
+  if (!laps) return;
+  const n = laps.posts.length;
+  for (let k = 0; k < Math.min(2, n); k++) {
+    const i = (roam.lapPost + k) % n;
+    show('post', `post:free-P${i + 1}`, laps.posts[i].at);
+  }
+}
+
+/**
  * What the radar shows, on a square `px` wide out to `range` m (the range shown: by default the speed's, radarRange;
  * the HUD passes its eased one), in drawing order: the ranks (each army whose block reaches within the radius shown),
- * the shelters, the route ahead, the copies (in sight, outside roam, open and within the radius shown), the tower, then
- * what the lakon leads to. The ranks and copies show only within the radius shown; everything else stays at the inner
+ * the shelters, the route ahead, the copies (in sight, outside roam, open and within the radius shown), the tower, in
+ * roam the finished lakon's replay rings and the free laps' posts, then what the lakon leads to. The ranks and copies show
+ * only within the radius shown; everything else stays at the inner
  * radius when beyond the range. With static (riuhLevel's radarStatic) and sight off, the radius shown is (1 − static)
  * of the range: nothing beyond it shows. One edge for everything: what shows, the route's cut and the ranks' outlines.
  * Given `prev`, the last snapshot's items, a place within the edge that `prev` did not show appears only from HOLD m
@@ -394,6 +412,7 @@ export function radarItems(
     shown.add(key);
   };
   show('tower', 'tower', ANCHORS.tower);
+  if (s.run.phase === 'roam' && s.roam) roamItems(s.roam, show);
   const leads = lakonItems(s, show);
 
   const out: RadarItem[] = [];

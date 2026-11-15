@@ -6,8 +6,10 @@ import { FRAMING_EN } from '../src/lib/bowobharata-en';
 import { kategoriKey, type Perkara } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
-import type { HudSnapshot } from '../src/lib/bowobharata-game/hud';
-import { initChariot } from '../src/lib/bowobharata-game/drive';
+import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
+import { NO_INPUT, initChariot, speedOf } from '../src/lib/bowobharata-game/drive';
+import { DEFAULT_ASPECT, advance, createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
+import { createBot } from '../src/lib/bowobharata-game/autopilot';
 import { realTargets, CHAPTER_TYPES, missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
 import { startRun, stepRun, type GameEvent, type RunFrame, type RunState } from '../src/lib/bowobharata-game/mission-run';
 import { RADAR_PX, type RadarItem } from '../src/lib/bowobharata-game/radar';
@@ -16,7 +18,7 @@ import {
 } from '../src/lib/bowobharata-game/toast-queue';
 import {
   Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, TouchControls, cardView,
-  GameHud, Radar, toastText, type HudToast,
+  GameHud, Radar, chapterInfo, toastText, type HudToast,
 } from '../src/components/bowobharata-game/screens';
 import BowobharataGame from '../src/components/BowobharataGame';
 
@@ -85,13 +87,13 @@ const RADAR: RadarItem[] = [
 ];
 /**
  * The HUD in play, three snapshots: the prologue on a desk; parva 4's course under static on touch, with the toasts of its
- * first two records (their real dates and channels); and Antar's gate at the top of the clamour, in Mata's sight.
+ * first two records (their real dates and channels); and a replay of Antar's gate at the top of the clamour, in Mata's sight.
  */
 function inPlay(locale: 'id' | 'en'): string[] {
   const prologue: HudSnapshot = {
     phase: 'active', chapter: 0, type: CHAPTER_TYPES[0], objective: 'prologue', done: 3, total: game.prologue.length, lap: null, timer: 95,
     speedKmh: 31, surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.6 }, hint: 'sight', riuh: 1.2, level: 1, staticFrac: 0,
-    radar: RADAR, radarM: 84.3, heading: 20,
+    radar: RADAR, radarM: 84.3, heading: 20, replay: false,
   };
   const cards = game.events[4];
   const cardOf = (k: number) => (cards[k] ? { date: cards[k].dateLabel[locale], channel: cards[k].channel[locale] } : null);
@@ -101,9 +103,10 @@ function inPlay(locale: 'id' | 'en'): string[] {
   });
   expect(toasts).toHaveLength(2);
   const course = { ...prologue, chapter: 4, type: CHAPTER_TYPES[4], objective: 'course' as const, done: 2, total: cards.length, riuh: 4.6, level: 4, staticFrac: 0.3, heading: 200 };
+  // A replay of Antar from a later chapter's roam (Task 36): its roam.replay line in the panel, where the hint was.
   const gate = {
     ...prologue, chapter: 2, type: CHAPTER_TYPES[2], objective: 'gate' as const, done: 1, total: 2, riuh: 5, level: 5, staticFrac: 0.45,
-    sight: { on: true, charge: 0.4 }, heading: 300,
+    sight: { on: true, charge: 0.4 }, heading: 300, replay: true,
   };
   const hud = (snap: HudSnapshot, touch: boolean, list: HudToast[]) =>
     renderToString(<GameHud locale={locale} hud={snap} touch={touch} paused={false} toasts={list} onPause={noop} onFullscreen={noop} canFullscreen />);
@@ -202,7 +205,9 @@ describe("Sanjaya's report", () => {
       }
       checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />));
       checked.push(renderToString(<TouchControls locale={locale} manual onChange={noop} surge={{ ready: true, frac: 1 }} sight={{ on: false, charge: 0 }} />));
-      checked.push(...inPlay(locale));
+      const play = inPlay(locale);
+      expect(play[2], 'the replay snapshot').toContain(esc(GAME_COPY[locale].roam.replay));
+      checked.push(...play);
       screens.push(paused(locale));
     }
     // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, Recorded (prologue), FailCard ×2, the finale, TouchControls, GameHud
@@ -485,8 +490,8 @@ describe('toast pacing: the island\'s own pump, every toast the newest for 1.5 s
     expect(pushes.map((p) => [p.at, p.text])).toEqual([[0, toasts[0].text], [1000, 'F']]);
   });
 
-  it('the queue is bounded by wall and held toasts giving way, oldest first; a record, filed, letter, gate, lap or checkpoint toast is never dropped', () => {
-    const keep: Toast['type'][] = ['recorded', 'filed', 'letter', 'gate', 'lap', 'checkpoint'];
+  it('the queue is bounded by wall and held toasts giving way, oldest first; a record, filed, letter, gate, lap, checkpoint, replay\'s end or free lap toast is never dropped', () => {
+    const keep: Toast['type'][] = ['recorded', 'filed', 'letter', 'gate', 'lap', 'checkpoint', 'replayDone', 'freeLap'];
     // The chariot leans on the edge and the ranks every frame for 3 s while the lakon's own toasts come.
     const { pump, pushes, at } = island();
     const sent: string[] = [];
@@ -502,9 +507,11 @@ describe('toast pacing: the island\'s own pump, every toast the newest for 1.5 s
     expect(pushes.filter((p) => p.text.startsWith('K')).map((p) => p.text)).toEqual(sent);
     expect(pushes.filter((p) => !p.text.startsWith('K')).length).toBeLessThan(10);
     for (let i = 1; i < pushes.length; i++) expect(pushes[i].at - pushes[i - 1].at).toBeGreaterThanOrEqual(TOAST_GAP_MS);
-    // When only lakon toasts wait, none is dropped even past the bound.
+    // When only lakon toasts wait, none is dropped even past the bound; nor roam's.
     const many = Array.from({ length: TOAST_QUEUE_MAX + 3 }, (_, k): Toast => ({ type: 'recorded', text: `R${k}` }));
     expect(queueToasts(EMPTY_TOASTS, many).waiting).toHaveLength(TOAST_QUEUE_MAX + 3);
+    const roam = Array.from({ length: TOAST_QUEUE_MAX + 3 }, (_, k): Toast => ({ type: k % 2 === 0 ? 'freeLap' : 'replayDone', text: `F${k}` }));
+    expect(queueToasts(EMPTY_TOASTS, roam).waiting).toHaveLength(TOAST_QUEUE_MAX + 3);
     // One over the bound: the oldest droppable one gives way, the newer stays.
     const mixed: Toast[] = [{ type: 'wall', text: 'old' }, ...many.slice(0, TOAST_QUEUE_MAX - 1), { type: 'held', text: 'new' }];
     expect(queueToasts(EMPTY_TOASTS, mixed).waiting.map((t) => t.text)).toEqual([...many.slice(0, TOAST_QUEUE_MAX - 1).map((t) => t.text), 'new']);
@@ -568,10 +575,15 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/onError: \(\) => dispatch\(\{ type: 'contextLost' \}\)/);
   });
 
-  it('never stores the settings: no writeSaved( call passes them', () => {
+  it('never stores the settings, the bests or the best lap: no writeSaved( call passes them', () => {
     const calls = callArgs('writeSaved');
     expect(calls).toHaveLength(2);
-    for (const args of calls) expect(args).not.toMatch(/settings/i);
+    for (const args of calls) {
+      expect(args).not.toMatch(/settings/i);
+      expect(args).not.toMatch(/bests|bestLap/);
+    }
+    // What it does store is Saved's two fields.
+    expect(calls).toEqual(['storage(), { best: flow.best, chapter: flow.chapter }', 'storage(), { best: flow.best, chapter: 0 }']);
   });
 
   it('the tap game is gone: no pick, wave, catch, pose or linimasa import', () => {
@@ -585,7 +597,13 @@ describe('island wiring (source)', () => {
     expect(src).toContain("else if (flow.screen === 'finale') rt.finale();");
     // A retry only on the runtime that failed: a new one has no checkpoint, so it starts the chapter afresh.
     expect(src).toContain("const fromLost = last.rt === rt && last.screen === 'lost';");
-    expect(src).toMatch(/if \(fromLost\) rt\.retry\(\);\s*else rt\.start\(flow\.chapter, \(data\.events\[flow\.chapter\] \?\? \[\]\)\.map\(\(e\) => e\.slug\), seed\);/);
+    // Each chapter with roam's data (Task 36): every chapter before it finished, the session's bests and best lap, and any
+    // chapter's slugs, for its replay and for parva 5's posts.
+    expect(src).toContain('const slugsOf = (c: number) => (data.events[c] ?? []).map((e) => e.slug);');
+    expect(src).toMatch(
+      /const roam: RoamOpts = \{\s*finished: Array\.from\(\{ length: flow\.chapter \}, \(_, k\) => k\),\s*bests: bests\.current,\s*bestLap: bestLap\.current,\s*slugsOf,\s*\};/,
+    );
+    expect(src).toMatch(/if \(fromLost\) rt\.retry\(\);\s*else rt\.start\(flow\.chapter, slugsOf\(flow\.chapter\), seed, roam\);/);
     // Each command once per screen and runtime: a new runtime (ready) or the data arriving does not start a chapter twice.
     expect(src).toMatch(/\}, \[flow\.screen, flow\.chapter, flow\.mode, ready, data\]\);/);
     expect(src).toContain('last.rt === rt && last.screen === flow.screen && last.chapter === flow.chapter');
@@ -607,13 +625,35 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/onSkip=\{\(\) => \{ failClock\.current = null;/);
   });
 
+  it('a replay ends back in roam with no new screen: replayDone keeps its best for the session and puts the letterbox away, never with playResult or skip; a free lap keeps the best lap (Task 36, rulings 7 and 10)', () => {
+    /** A case's body in onEvents, up to its break. */
+    const caseOf = (type: string) => src.match(new RegExp(`case '${type}':([\\s\\S]*?)break;`))?.[1] ?? '';
+    const replay = caseOf('replayDone');
+    expect(replay).toContain('keepBest(e.chapter, e.best);');
+    expect(replay).toContain('setCine(false);');
+    for (const x of ['playResult', "type: 'skip'", 'failClock', 'writeSaved', 'dispatch(']) expect(replay, x).not.toContain(x);
+    expect(caseOf('freeLap')).toContain('bestLap.current = e.best;');
+    expect(caseOf('freeLap')).not.toContain('dispatch(');
+    // A play's own end keeps its score as the chapter's best too, so a replay's best is measured against it.
+    expect(caseOf('done')).toMatch(/dispatch\(\{ type: 'playResult', result: 'won', score: e\.score \}\);\s*keepBest\(flowRef\.current\.chapter, e\.score\);/);
+    // playResult comes only from a lakon's own end, its fail shot and the version without animation; skip only from the
+    // fail card. The engine passes a replay's failed on to no one (ruling 10), so no fail clock starts for it.
+    expect(src.match(/type: 'playResult'/g)).toHaveLength(3);
+    expect(src.match(/dispatch\(\{ type: 'skip' \}\)/g)).toHaveLength(1);
+    // The session's bests: each chapter's, and the best lap; never written to storage.
+    expect(src).toContain('const bests = useRef<number[]>([]);');
+    expect(src).toContain('const bestLap = useRef<number | null>(null);');
+    expect(src).toMatch(/const keepBest = \(chapter: number, score: number\) => \{\s*bests\.current\[chapter\] = Math\.max\(bests\.current\[chapter\] \?\? 0, score\);\s*\};/);
+  });
+
   it('shows the lakon card and the cinema on introStart and on a chapter that starts in its intro; introEnd hides both; outroStart brings the bars back', () => {
     expect(src).toMatch(/case 'introStart':\s*showMission\(\);/);
     expect(src).toMatch(/case 'introEnd':\s*hideMission\(\);/);
     expect(src).toMatch(/case 'outroStart':\s*setCine\(true\);/);
     // The prologue begins in its intro, so no introStart comes for it: its first HUD snapshot opens the card instead.
     expect(src).toMatch(/if \(first\.current\) \{\s*first\.current = false;\s*if \(h\.phase === 'intro'\) showMission\(\);/);
-    expect(src).toMatch(/<MissionCard locale=\{locale\} chapterIndex=\{flow\.chapter\} type=\{hud\.type\} \/>/);
+    // The lakon running names the card: a replay's own chapter, not the play's (Task 36).
+    expect(src).toMatch(/<MissionCard locale=\{locale\} chapterIndex=\{hud\.chapter\} type=\{hud\.type\} \/>/);
     // The gunungan wipe: in at the intro's start, out shortly after.
     expect(src).toContain('<div className="bg-wipe" aria-hidden="true" />');
     // One attribute change per transition ('a' and 'b' alternate so the CSS animation restarts): no second flip.
@@ -624,14 +664,19 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/data-play=\{playing3d \? 'on' : undefined\}/);
   });
 
-  it('turns the nine toast events into at most two toasts of 4 s each, through toastText', () => {
+  it('turns the eleven toast events into at most two toasts of 4 s each, through toastText', () => {
     expect(src).toContain(
-      "new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap'])",
+      "new Set<GameEvent['type']>(['recorded', 'filed', 'rewriteTaken', 'held', 'checkpoint', 'wall', 'gate', 'letter', 'lap', 'replayDone', 'freeLap'])",
     );
     expect(src).toContain('const TOAST_MAX = 2;');
     expect(src).toContain('const TOAST_MS = 4000;');
-    // The frame's events go along, so a rewrite gate's toast covers its rewriteTaken.
-    expect(src).toMatch(/toastText\(e, locale, flowRef\.current\.chapter, cardOf, events\)/);
+    // The frame's events go along, so a rewrite gate's toast covers its rewriteTaken; the chapter is the lakon's, and so are
+    // the cards a record's date and channel come from (a replay's own, Task 36).
+    expect(src).toMatch(/toastText\(e, locale, lakonChapter\(\), cardOf, events\)/);
+    expect(src).toMatch(/const lakonChapter = \(\) => runtimeRef\.current\?\.state\(\)\?\.run\.def\.chapter \?\? flowRef\.current\.chapter;/);
+    expect(src).toMatch(/const cardOf = \(card: number\) => \{\s*const e = dataRef\.current\?\.events\[lakonChapter\(\)\]\?\.\[card\];/);
+    // Every toast event gets its line, whatever else its case does.
+    expect(src).toMatch(/\n {6}if \(TOASTED\.has\(e\.type\)\) \{\s*const text = toastText\(/);
     expect(src).toContain('.slice(-TOAST_MAX)');
     // The newest toast is always the region's last child, which the short-stage CSS never hides (Task 34): it is added
     // whole, so the polite live region speaks it; an older one is hidden only after it has been read.
@@ -806,6 +851,65 @@ describe('island wiring (source)', () => {
     expect(failShotDone(Number.NaN, 10, 1.2)).toBe(false);
     expect(failShotDone(9, 10, 1.2)).toBe(false);
   });
+});
+
+describe('a replay in play (Task 36, ruling 11, decisions 1 and 2)', () => {
+  // The island renders <MissionCard chapterIndex={hud.chapter} .../> and makes each toast with lakonChapter(), the chapter
+  // of the runtime's state, whose event cards cardOf reads (the source pins above). Here the engine plays a replay of parva
+  // 1 from chapter 3's roam, and the card and the toasts are made from its snapshots and states as the island makes them.
+  const w = createWorld({ mobile: false });
+  const slugsOf = (c: number) => game.events[c].map((e) => e.slug);
+  const defOf = (c: number) => missionFor(c, slugsOf(c));
+  /** Chapter 3's roam, 14 m west of parva 1's marker, driven east at up to 6 m/s until the replay starts. */
+  function replayOf1(): GameState {
+    const m1 = defOf(1).marker!;
+    let s = startChapter(defOf(3), { x: m1.x - 14, z: m1.z, yaw: 0 }, 1, w, { finished: [0, 1, 2], bests: [], bestLap: null, defOf });
+    for (let k = 0; k < 300 && s.run.def.chapter === 3; k++) {
+      const drive = { ...NO_INPUT, throttle: speedOf(s.car) < 6 ? 1 : 0 };
+      s = advance(s, { drive, sight: false, skip: false, assist: false, aspect: DEFAULT_ASPECT }, 1 / 30, w).state;
+    }
+    expect(s.run.def.chapter).toBe(1);
+    return s;
+  }
+  /** As the island's cardOf: a record's date and channel from the event cards of the lakon's chapter. */
+  const cardOfLakon = (s: GameState, locale: 'id' | 'en') => (card: number) => {
+    const e = game.events[s.run.def.chapter]?.[card];
+    return e ? { date: e.dateLabel[locale], channel: e.channel[locale] } : null;
+  };
+
+  it("a replay of parva 1 from chapter 3's roam shows parva 1's lakon card", () => {
+    const hud = hudOf(replayOf1(), w);
+    expect([hud.chapter, hud.phase, hud.replay]).toEqual([1, 'intro', true]);
+    for (const locale of ['id', 'en'] as const) {
+      const card = renderToString(<MissionCard locale={locale} chapterIndex={hud.chapter} type={hud.type} />);
+      expect(card).toContain(esc(chapterInfo(1, locale).title));
+      expect(card).not.toContain(esc(chapterInfo(3, locale).title));
+    }
+  });
+
+  it("its record toasts read parva 1's event cards: each record's own date and channel", () => {
+    let s = replayOf1();
+    const bot = createBot();
+    const toasts: { card: number; id: string; en: string }[] = [];
+    for (let k = 0; k < 150 * 30 && s.run.def.chapter === 1; k++) {
+      const r = advance(s, bot(s, w), 1 / 30, w);
+      s = r.state;
+      for (const e of r.events) {
+        if (e.type !== 'recorded') continue;
+        const [id, en] = (['id', 'en'] as const).map((l) => toastText(e, l, s.run.def.chapter, cardOfLakon(s, l), r.events));
+        toasts.push({ card: e.card, id: id!, en: en! });
+      }
+    }
+    expect(s.run.def.chapter).toBe(3);
+    expect(toasts.map((t) => t.card)).toEqual([0, 1]);
+    // Chapter 3's own cards say otherwise: a toast made from the play's chapter would show their dates.
+    for (const k of [0, 1]) expect(game.events[3][k].dateLabel.en).not.toBe(game.events[1][k].dateLabel.en);
+    for (const t of toasts) {
+      const card = game.events[1][t.card];
+      expect(t.id).toBe(GAME_COPY.id.toasts.recorded({ n: t.card + 1, total: 2, date: card.dateLabel.id, channel: card.channel.id }));
+      expect(t.en).toBe(GAME_COPY.en.toasts.recorded({ n: t.card + 1, total: 2, date: card.dateLabel.en, channel: card.channel.en }));
+    }
+  }, 30_000);
 });
 
 describe('data error screen', () => {

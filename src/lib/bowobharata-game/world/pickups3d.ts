@@ -9,6 +9,8 @@
 // - Mata shows a lotus over each record and real gate and a broken ring over each copy and rewrite gate, all shapes.
 // - A lotus ring under an amber beam marks where a lakon starts; a blue-white beam and the record circle mark Sanjaya's
 //   tower, the hub; the finale lights 24 lamps round it.
+// - In roam a muted grey ring, with no beam, lies at each finished lakon's marker, which replays it; parva 5's lap posts
+//   stand for the free laps, the next post under its amber beam only while a free lap is under way.
 // Nothing is drawn hitting anyone: a recorded arrow fades where it stands, and only the player's own record, a lontar,
 // lifts and flies to the prabha.
 import * as THREE from 'three';
@@ -17,7 +19,7 @@ import { fxLayer, glowSprite } from '../../bowobharata/scene/effects';
 import { angleDiff, clamp, smoothstep, type XZ } from '../geom';
 import type { ChariotState } from '../drive';
 import type { GameState } from '../engine';
-import { openTargets, type Decoy, type Phase, type RunState } from '../mission-run';
+import { openTargets, type Decoy, type Laps, type Phase, type RunState } from '../mission-run';
 import { across, type DayDef, type GateDef, type MissionDef, type PickupDef } from '../missions';
 import { CHASE, MISSION_TIMING } from '../tuning';
 import { ANCHORS, RECORD_CIRCLE } from '../world';
@@ -73,6 +75,8 @@ const FLIGHT = { rise: 0.35, arc: 1, end: 0.3, reach: 12 } as const;
  */
 const BEAM = { w: 1.4, h: 30, sunk: 10, tower: { w: 2, h: 36 } } as const;
 const MARKER = { r: 5, petals: 8, opacity: 0.85 } as const;
+/** A finished lakon's replay ring in roam: the marker's shape in muted grey, fainter than a lakon's own amber ring. */
+const REPLAY = { opacity: 0.4 } as const;
 const LAMPS = { count: 24, r: 6 } as const;
 /**
  * Halos are additive glow sprites, so phones without bloom still read them: size (m), opacity, and height over a record
@@ -193,12 +197,20 @@ interface GateSlot {
 
 /** One pair of lap posts, laid out when the lakon starts. */
 interface PostSlot {
-  /** The lap course's step, and the post's place in its order (0 is P1, as run.lapPost counts). */
+  /**
+   * The lap course's step (-1 for roam's free laps alone), and the post's place in its order (0 is P1, as run.lapPost
+   * counts).
+   */
   step: number;
   index: number;
+  /** One of the posts roam's free laps ride (parva 5's): it stands in roam too. */
+  free: boolean;
   pose: THREE.Matrix4;
   beam: THREE.Vector3;
-  /** How far out the pair is, and how lit its amber beam (while it is the next post to cross), each 0 to 1. */
+  /**
+   * How far out the pair is, and how lit its amber beam, each 0 to 1: lit while it is the next post to cross, in roam only
+   * while a free lap is under way.
+   */
   shown: number;
   lit: number;
 }
@@ -303,7 +315,8 @@ function letterGeo(): THREE.BufferGeometry {
  * - `record-arrows` with `record-arrow-tips`, `lontar` with `lontar-posts`, and a `record-halo` sprite on each record;
  * - `record-beams` over them; `decoys`; `stamp-lotus` and `stamp-ring` while sight is on;
  * - a course's `gate-real`, `gate-mimic` and `gate-rewrite`; a lap course's `lap-posts` and the next post's `lap-beams`;
- * - `marker-ring` and `marker-beam`; and, always, `tower-beam` and `record-circle`.
+ * - `marker-ring` and `marker-beam`; in roam a `replay-ring` at each finished lakon's marker, and the free laps' posts in
+ *   `lap-posts` and `lap-beams`; and, always, `tower-beam` and `record-circle`.
  * Antar's `letter` hangs on the chariot's own root, so it rides with it. `setFinale(true)` shows the finale's `lamps`,
  * `lamp-flames` and `lamp-halo`s and hides the lakon's targets.
  */
@@ -437,6 +450,9 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
   markerBeam.renderOrder = 1;
   play.add(markerRing, markerBeam);
 
+  // The replay rings (Task 36): the marker's shape, each its own draped copy, all of one muted additive grey; no beam.
+  const replayMat = glowMat(COLOR.ring, REPLAY.opacity);
+
   // Sanjaya's tower: its blue-white beam, and the record circle where a lakon's records are delivered.
   const tower = ANCHORS.tower;
   const towerGround = groundHeight(tower.x, tower.z);
@@ -476,12 +492,17 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     m.visible = true;
   }
 
-  // The lakon drawn: its records, gates and lap posts, and when each copy came out and went (scene time; −Infinity: out
-  // with the lakon).
+  // The lakon drawn: its records, gates and lap posts (and roam's free laps' posts), and when each copy came out and went
+  // (scene time; −Infinity: out with the lakon).
   let lakon: MissionDef | null = null;
+  let freeLaps: Laps | null = null;
   let records: RecordSlot[] = [];
   let gates: GateSlot[] = [];
   let laps: PostSlot[] = [];
+  /** Roam's replay rings, laid out for the finished lakon `replaysFor`, and how far out they are, 0 to 1. */
+  let replayRings: THREE.Mesh[] = [];
+  let replaysFor: readonly MissionDef[] | null = null;
+  let replayK = 0;
   /** The lakon's first sync: what is out then shows at once, under the cut into its intro. */
   let fresh = true;
   const copyIn = new Map<number, number>();
@@ -556,13 +577,17 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     return { id: g.id, step, day, real: g.real, mimic: g.mimic, at: c, pose, stamp, shown: 0, clear: 1 };
   }
 
-  /** Lap post `index` of the lap course at step `step`: the pair standing on the ground across its heading, its beam over it. */
-  function postSlot(step: number, index: number, p: { at: XZ; heading: number }): PostSlot {
+  /**
+   * Lap post `index` of the lap course at step `step` (-1 for roam's free laps alone): the pair standing on the ground
+   * across its heading, its beam over it.
+   */
+  function postSlot(step: number, index: number, p: { at: XZ; heading: number }, free: boolean): PostSlot {
     const ground = groundHeight(p.at.x, p.at.z);
     turn.setFromAxisAngle(UP, p.heading);
     return {
       step,
       index,
+      free,
       pose: new THREE.Matrix4().compose(spot.set(p.at.x, ground, p.at.z), turn, ONE),
       beam: new THREE.Vector3(p.at.x, ground - BEAM.sunk + BEAM.h / 2, p.at.z),
       shown: 0,
@@ -570,9 +595,15 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     };
   }
 
-  /** A new lakon: its records, gates and lap posts laid out where they stand, the last one's fades and marker forgotten. */
-  function layOut(def: MissionDef): void {
+  /**
+   * A new lakon, or new free laps: its records, gates and lap posts laid out where they stand, with roam's free laps'
+   * posts; the last one's fades and marker forgotten. Parva 5's posts are one course whoever rides them (the engine lays
+   * them out once a chapter), so when its lakon is the one drawn its posts are the free laps' too: one set, never two
+   * cross-fading where they stand.
+   */
+  function layOut(def: MissionDef, free: Laps | null): void {
     lakon = def;
+    freeLaps = free;
     fresh = true;
     copyIn.clear();
     copyOut.clear();
@@ -583,10 +614,38 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     laps = [];
     def.steps.forEach((s, i) => {
       if (s.kind === 'course') s.days.forEach((d, k) => d.gates.forEach((g) => gates.push(gateSlot(i, k, d, g))));
-      if (s.kind === 'laps') s.posts.forEach((p, k) => laps.push(postSlot(i, k, p)));
+      if (s.kind === 'laps') s.posts.forEach((p, k) => laps.push(postSlot(i, k, p, s === free)));
     });
+    if (free && !def.steps.includes(free)) free.posts.forEach((p, k) => laps.push(postSlot(-1, k, p, true)));
     gates = gates.slice(0, CAP.gates);
     laps = laps.slice(0, CAP.posts);
+  }
+
+  /**
+   * Roam's replay rings for the finished lakon `list`: one at each marker, laid over the ground there in its own copy of
+   * the marker's shape, all of one muted material; the last list's rings freed. Once a roam, never per frame.
+   */
+  function layReplays(list: readonly MissionDef[] | null): void {
+    replaysFor = list;
+    for (const ring of replayRings) {
+      play.remove(ring);
+      ring.geometry.dispose();
+    }
+    replayRings = (list ?? []).flatMap((def) => {
+      const m = def.marker;
+      if (!m) return [];
+      const geo = markerGeo();
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      drape(pos, Float32Array.from(pos.array as ArrayLike<number>), m.x, m.z);
+      const ring = fxLayer(new THREE.Mesh(geo, replayMat));
+      ring.name = 'replay-ring';
+      ring.position.set(m.x, groundHeight(m.x, m.z), m.z);
+      ring.visible = false;
+      ring.frustumCulled = false;
+      ring.renderOrder = 1;
+      play.add(ring);
+      return [ring];
+    });
   }
 
   /** The open targets afresh, for openNow when they can change (a few times a lakon): a failed run's as an active one's. */
@@ -602,7 +661,9 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     const dt = synced ? clamp(t - clock, 0, MAX_STEP) : 0;
     clock = t;
     synced = true;
-    if (s.run.def !== lakon) layOut(s.run.def);
+    const roam = s.roam;
+    if (s.run.def !== lakon || (roam ? roam.laps : null) !== freeLaps) layOut(s.run.def, roam ? roam.laps : null);
+    if ((roam ? roam.replays : null) !== replaysFor) layReplays(roam ? roam.replays : null);
     const run = s.run;
     const phase = run.phase;
     const open = openNow(run);
@@ -732,13 +793,18 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     }
 
     // A lap course's posts stand while its step is open; the next post to cross is under the amber beam until the laps match.
+    // In roam the free laps' posts stand too, unlit until a free lap is under way: then its next post's beam comes on.
+    const roaming = phase === 'roam';
+    const freeLap = roaming && roam !== null && roam.lapStart !== null;
     let nLap = 0;
     let nLapBeam = 0;
     for (let i = 0; i < laps.length; i++) {
       const p = laps[i];
-      const live = playing && p.step === run.step;
-      p.shown = ease(p.shown, live, dt, GATE.fade);
-      p.lit = ease(p.lit, live && !run.matched && run.lapPost === p.index, dt, FADE);
+      const own = playing && p.step === run.step;
+      const free = roaming && p.free;
+      p.shown = ease(p.shown, own || free, dt, GATE.fade);
+      const lit = own ? !run.matched && run.lapPost === p.index : free && freeLap && roam.lapPost === p.index;
+      p.lit = ease(p.lit, lit, dt, FADE);
       if (p.shown > 0) {
         lapPosts.setMatrixAt(nLap, p.pose);
         lapFade.setX(nLap++, p.shown);
@@ -767,6 +833,11 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     markerBeam.visible = mark !== null && phase === 'roam';
     if (mark) showMark(mark);
     else fadeMark(t);
+
+    // The finished lakon's replay rings, in roam only, coming and going together over FADE.
+    replayK = ease(replayK, roaming && replayRings.length > 0, dt, FADE);
+    replayMat.opacity = REPLAY.opacity * replayK;
+    for (let i = 0; i < replayRings.length; i++) replayRings[i].visible = replayK > 0;
 
     show(arrows, nArrow, arrowFade);
     show(tips, nArrow);
@@ -1034,6 +1105,8 @@ export function createPickups(game: SceneGame): Layer & { setFinale(on: boolean)
     stopFrames();
     game.root.remove(group);
     disposeGroup(group);
+    // The replay rings' material: the group holds it only while a roam has rings.
+    replayMat.dispose();
     game.chariot.root.remove(letter);
     disposeGroup(letter);
   }

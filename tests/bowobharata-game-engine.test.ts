@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { NO_INPUT, REST_SPEED, initChariot, speedOf, type ChariotInput, type Guard } from '../src/lib/bowobharata-game/drive';
 import { HULL, hullCircles, hullClearance, hullMid } from '../src/lib/bowobharata-game/collide';
-import { chaseView, projectNdc } from '../src/lib/bowobharata-game/chase';
+import { chaseView, initChase, projectNdc, stepChase } from '../src/lib/bowobharata-game/chase';
 import { clamp, dist, forward, polylineDist, rightOf, yawOf, angleDiff } from '../src/lib/bowobharata-game/geom';
-import { missionFor, realTargets, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
-import { timeLeft, totalReal, type Decoy, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
+import { across, missionFor, realTargets, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
+import { startRun, timeLeft, totalReal, type Decoy, type GameEvent, type HintKey } from '../src/lib/bowobharata-game/mission-run';
 import { ANCHORS, PLAY, RECORD_CIRCLE, TOWER_EXIT, zonesAt } from '../src/lib/bowobharata-game/world';
-import { GUARD, MISSION_TIMING, VOLLEY } from '../src/lib/bowobharata-game/tuning';
+import { GUARD, MISSION_TIMING, SIGHT, VOLLEY } from '../src/lib/bowobharata-game/tuning';
 import { kickRiuh, riuhLevel, stepRiuh } from '../src/lib/bowobharata-game/riuh';
 import { planVolley, scriptedVolley, type Cloud, type Volley } from '../src/lib/bowobharata-game/volley';
 import {
@@ -24,6 +24,7 @@ import {
   viewOf,
   type FrameInput,
   type GameState,
+  type RoamInput,
   type World,
 } from '../src/lib/bowobharata-game/engine';
 import { assistSteer, autopilot, createBot, type AutoOpts } from '../src/lib/bowobharata-game/autopilot';
@@ -2569,6 +2570,247 @@ describe('roam, the marker and the assist', () => {
     }
     expect(plain.car.yaw).toBe(Math.PI / 2);
     expect(off(helped)).toBeLessThan(start - 0.5);
+  });
+});
+
+describe('roam: replays and free laps (Task 36)', () => {
+  /** Chapter 3's roam, with the prologue, parva 1 and parva 2 finished, the chariot at `at`. */
+  const roam3 = (at: { x: number; z: number; yaw: number }, o: Partial<RoamInput> = {}): GameState =>
+    startChapter(defOf(3), at, 1, desktop, { finished: [0, 1, 2], bests: [], bestLap: null, defOf, ...o });
+  const M1 = defOf(1).marker!;
+  /** 14 m west of parva 1's marker, facing it. */
+  const WEST_OF_M1 = { x: M1.x - 14, z: M1.z, yaw: 0 };
+  const poseOf = (c: { x: number; z: number; yaw: number }) => ({ x: c.x, z: c.z, yaw: c.yaw });
+  /** Drives east at up to 6 m/s, at most `seconds`, until the lakon changes. */
+  function driveIn(s: GameState, log: GameEvent[], seconds = 10): GameState {
+    const def = s.run.def;
+    for (let k = 0; k < seconds / DT && s.run.def === def; k++) s = step(s, input({ throttle: speedOf(s.car) < 6 ? 1 : 0 }), desktop, log);
+    return s;
+  }
+  const LAPS = defOf(5).steps[0] as Extract<StepDef, { kind: 'laps' }>;
+  const POSTS = LAPS.posts;
+  type ReplayDone = Extract<GameEvent, { type: 'replayDone' }>;
+  type FreeLap = Extract<GameEvent, { type: 'freeLap' }>;
+
+  it("lays out the finished lakon that have a marker, each once and never the chapter's own, and parva 5's posts, as plain data", () => {
+    const given: RoamInput = { finished: [2, 0, 1, 1, 3], bests: [0, 250], bestLap: 41.5, defOf };
+    const s = startChapter(defOf(3), TOWER_EXIT, 1, desktop, given);
+    const roam = s.roam!;
+    // The prologue has no marker, and chapter 3 is the one being played.
+    expect(roam.replays.map((d) => d.chapter)).toEqual([1, 2]);
+    expect(roam.replays.map((d) => d.marker)).toEqual([defOf(1).marker, defOf(2).marker]);
+    expect(roam.laps).toEqual(LAPS);
+    expect(roam.bests).toEqual([0, 250]);
+    expect(roam.bests).not.toBe(given.bests);
+    expect(roam.bestLap).toBe(41.5);
+    expect(roam).toMatchObject({ aside: null, lapPost: 0, lapStart: null, t: 0 });
+    // The lakon are laid out at the start, as data: GameState keeps no function, and clones whole.
+    expect(hasFunction(s)).toBe(false);
+    expect(structuredClone(s)).toEqual(s);
+    // Without roam's data there is no roam.
+    expect(startChapter(defOf(3), TOWER_EXIT, 1, desktop).roam).toBeNull();
+    // Parva 5's posts are one course whoever lays them out: its own lakon's in chapter 5, its replay's after it.
+    const five = startChapter(defOf(5), TOWER_EXIT, 1, desktop, { finished: [0, 1, 2, 3, 4], bests: [], bestLap: null, defOf });
+    expect(five.roam!.laps).toBe(five.run.def.steps[0]);
+    const six = startChapter(defOf(6), TOWER_EXIT, 1, desktop, { finished: [0, 1, 2, 3, 4, 5], bests: [], bestLap: null, defOf });
+    expect(six.roam!.laps).toBe(six.roam!.replays.find((d) => d.chapter === 5)!.steps[0]);
+  });
+
+  it("in chapter 3's roam, driving into parva 1's marker starts its replay at the cut into its intro; the autopilot finishes it with replayDone for chapter 1, never done, and chapter 3's roam resumes at TOWER_EXIT", () => {
+    const log: GameEvent[] = [];
+    const roam = roam3(WEST_OF_M1, { bests: [0, 120] });
+    let s = driveIn(roam, log);
+    // Parva 1's lakon, by its own marker rule: in its intro, the camera cut to the intro's first shot.
+    expect(s.run.def.chapter).toBe(1);
+    expect(s.run.phase).toBe('intro');
+    expect(types(log)).toContain('introStart');
+    expect(s.shot).toMatchObject({ kind: 'intro', t: 0 });
+    // The chariot is not moved: it stands where it drove in, facing east, not on the lakon's start pose.
+    expect(dist(hullMid(s.car), M1)).toBeLessThanOrEqual(MISSION_TIMING.markerR);
+    expect(s.car.yaw).toBe(0);
+    expect(poseOf(s.car)).not.toEqual(defOf(1).start);
+    // Chapter 3's lakon waits aside as it was; the replay brings its own copies and haze, and its clamour from its start.
+    const aside = s.roam!.aside!;
+    for (const k of ['run', 'decoys', 'clouds', 'riuh', 'level', 'volleys', 'nextVolley', 'rng', 'nextId', 'scriptedPlanned'] as const) {
+      expect(aside[k], k).toEqual(roam[k]);
+    }
+    expect(aside.run).toBe(roam.run);
+    expect(s.decoys.map((d) => d.at)).toEqual(defOf(1).scripted.decoys);
+    expect(s.clouds.map((c) => c.at)).toEqual(defOf(1).scripted.clouds);
+    expect(s.riuh.value).toBe(defOf(1).riuh.start);
+    // The autopilot rides it to the end.
+    const bot = createBot();
+    for (let k = 0; k < 150 / DT && s.run.def.chapter === 1; k++) s = step(s, bot(s, desktop), desktop, log);
+    expect(types(log)).not.toContain('done');
+    expect(types(log)).not.toContain('failed');
+    const ends = log.filter((e): e is ReplayDone => e.type === 'replayDone');
+    expect(ends).toHaveLength(1);
+    expect(ends[0].chapter).toBe(1);
+    expect(ends[0].score).toBeGreaterThan(0);
+    expect(ends[0].best).toBe(Math.max(120, ends[0].score));
+    // Back in chapter 3's roam with its own lakon as it was set aside, the chariot at rest at TOWER_EXIT, the camera cut
+    // to a fresh chase view behind it.
+    expect(s.run).toBe(aside.run);
+    for (const k of ['decoys', 'clouds', 'riuh', 'volleys'] as const) expect(s[k], k).toBe(aside[k]);
+    expect(poseOf(s.car)).toEqual(TOWER_EXIT);
+    expect(speedOf(s.car)).toBe(0);
+    expect(s.shot).toBeNull();
+    const o = chaseOptsOf(s);
+    expect(s.cam).toEqual(stepChase(initChase(s.car, o), s.car, DT, o));
+    expect(s.route?.target).toBe('marker');
+    expect(s.hintQueue).toEqual([]);
+    expect(s.roam).toMatchObject({ aside: null, bests: [0, ends[0].best] });
+  }, BOT_TIMEOUT);
+
+  it("a replay that fails plays its fail shot for 1.2 s, then chapter 3's roam resumes at TOWER_EXIT with replayDone at score 0 and the best unchanged; its failed is never passed on (ruling 10)", () => {
+    for (const bests of [[0, 120], []]) {
+      const log: GameEvent[] = [];
+      const roam = roam3(WEST_OF_M1, { bests });
+      let s = driveIn(roam, log);
+      for (let k = 0; k < 300 && s.run.phase !== 'active'; k++) s = step(s, input({}, { skip: true }), desktop, log);
+      expect(s.run.def.chapter).toBe(1);
+      expect(s.run.phase).toBe('active');
+      // Parva 1's 120 s run out: its fail shot plays.
+      s = step({ ...s, run: { ...s.run, t: 121 } }, IDLE, desktop, log);
+      expect(s.run.phase).toBe('failed');
+      expect(s.shot?.kind).toBe('fail');
+      let frames = 0;
+      for (; frames < 5 / DT && s.run.def.chapter === 1; frames++) s = step(s, IDLE, desktop, log);
+      expect(types(log)).not.toContain('failed');
+      expect(types(log)).not.toContain('done');
+      expect(log.filter((e) => e.type === 'replayDone')).toEqual([{ type: 'replayDone', chapter: 1, score: 0, best: bests[1] ?? 0 }]);
+      // The shot ran its 1.2 s on its own clock, then the cut.
+      expect(frames * DT).toBeGreaterThanOrEqual(MISSION_TIMING.failSeconds);
+      expect(frames * DT).toBeLessThanOrEqual(MISSION_TIMING.failSeconds + 2 * DT);
+      expect(s.run).toBe(roam.run);
+      expect(poseOf(s.car)).toEqual(TOWER_EXIT);
+      expect(s.shot).toBeNull();
+      expect(s.roam!.aside).toBeNull();
+      expect(s.roam!.bests[1] ?? 0).toBe(bests[1] ?? 0);
+    }
+  });
+
+  it('free laps: a scripted ride through P1…P5 and back to P1 gives one freeLap with the seconds ridden; the clamour never rises and no volley comes', () => {
+    for (const bestLap of [null, 1]) {
+      // 15 m before P1 on its line, facing along it: the first post crossed is P1.
+      const f1 = forward(POSTS[0].heading);
+      let s = roam3({ x: POSTS[0].at.x - f1.x * 15, z: POSTS[0].at.z - f1.z * 15, yaw: POSTS[0].heading }, { bestLap });
+      const { decoys, clouds } = s;
+      // The ride is the autopilot's round parva 5's posts: it steers as that lakon would, at the free lap's next post.
+      const lakon5 = { ...startRun(defOf(5)), phase: 'active' as const };
+      const ride = (x: GameState) =>
+        autopilot({ ...x, route: null, run: { ...lakon5, lapPost: x.roam!.lapPost, lapStart: x.roam!.lapStart } }, desktop);
+      // The frames in which the hull's middle meets P1's 8 m, by the test's own geometry.
+      const span = [across(POSTS[0].at, POSTS[0].heading, -4), across(POSTS[0].at, POSTS[0].heading, 4)];
+      const p1: number[] = [];
+      const log: GameEvent[] = [];
+      // 25 s: the lap round the posts and on into the next, longer than a lakon's clamour waits to rise on its own (10 s)
+      // and its first volley (20 s).
+      for (let k = 0; k < 25 / DT; k++) {
+        const before = hullMid(s.car);
+        s = step(s, ride(s), desktop, log);
+        if (meets(before, hullMid(s.car), span[0], span[1])) p1.push(k);
+        // A lap is under way from P1 on, and only then.
+        expect(s.roam!.lapStart === null, `frame ${k}`).toBe(p1.length === 0);
+        // No pressure in roam: the clamour stays at 0, no volley is scheduled, no copy or haze comes.
+        expect(s.riuh.value, `frame ${k}`).toBe(0);
+        expect(s.volleys).toEqual([]);
+        expect(s.nextVolley).toBeNull();
+        expect(s.decoys).toBe(decoys);
+        expect(s.clouds).toBe(clouds);
+      }
+      const laps = log.filter((e): e is FreeLap => e.type === 'freeLap');
+      expect(laps).toHaveLength(1);
+      expect(p1).toHaveLength(2);
+      expect(Math.abs(laps[0].seconds - (p1[1] - p1[0]) * DT)).toBeLessThanOrEqual(DT);
+      expect(laps[0].best).toBe(bestLap === null ? laps[0].seconds : Math.min(bestLap, laps[0].seconds));
+      expect(s.roam!.bestLap).toBe(laps[0].best);
+      for (const t of ['volley', 'level', 'introStart', 'replayDone'] as const) expect(types(log), t).not.toContain(t);
+      expect(s.run.phase).toBe('roam');
+      // The next lap is under way, from the P1 that closed the first.
+      expect(s.roam!.lapStart).not.toBeNull();
+      expect(s.roam!.lapPost).not.toBe(0);
+    }
+  }, BOT_TIMEOUT);
+
+  it("a free lap crosses a post by the lakon's own rule: within its 8 m, never past its ends", () => {
+    const p = POSTS[0];
+    const f = forward(p.heading);
+    const r = rightOf(p.heading);
+    /** One frame at 10 m/s along P1's heading, the hull's middle 0.2 m short of its line and `side` m off its centre. */
+    const at = (s: GameState, side: number): GameState => {
+      const x = p.at.x + r.x * side - f.x * (0.2 + HULL.offsets[1]);
+      const z = p.at.z + r.z * side - f.z * (0.2 + HULL.offsets[1]);
+      return { ...s, car: { ...initChariot(x, z, p.heading), vx: f.x * 10, vz: f.z * 10 } };
+    };
+    const lakon = toActive(5);
+    const roam = roam3(TOWER_EXIT);
+    for (const [side, counts] of [[0, true], [3.9, true], [-3.9, true], [4.1, false], [-4.1, false]] as const) {
+      const ofLakon = step(at(lakon, side), IDLE).run.lapStart !== null;
+      const ofRoam = step(at(roam, side), IDLE).roam!.lapStart !== null;
+      expect([ofLakon, ofRoam], `${side} m off`).toEqual([counts, counts]);
+    }
+  });
+
+  it("a replay starts by a lakon's own marker rule: within 5 m of its marker below 8 m/s (ruling 11, decision 7)", () => {
+    /** The hull's middle `off` m west of parva 1's marker, driving east at `speed` m/s. */
+    const at = (s: GameState, off: number, speed: number): GameState => {
+      const x = M1.x - off - HULL.offsets[1];
+      return { ...s, car: { ...initChariot(x, M1.z, 0), vx: speed, vz: 0 } };
+    };
+    // The same marker as parva 1's own lakon's, in its own roam, and as a replay's, in chapter 3's.
+    const own = startChapter(defOf(1), TOWER_EXIT, 1, desktop);
+    const roam = roam3(TOWER_EXIT);
+    const cases = [[0, 0, true], [4.5, 2, true], [5.5, 2, false], [2, 7.5, true], [2, 8.5, false]] as const;
+    for (const [off, speed, starts] of cases) {
+      const lakon = step(at(own, off, speed), IDLE).run.phase === 'intro';
+      const replay = step(at(roam, off, speed), IDLE).run.def.chapter === 1;
+      expect([lakon, replay], `${off} m off at ${speed} m/s`).toEqual([starts, starts]);
+    }
+  });
+
+  it("the free laps are timed on roam's own world seconds: in Mata's sight that clock runs at the world's half speed, as a lakon's run.t does (ruling 11, decision 3)", () => {
+    let s = roam3(TOWER_EXIT);
+    for (let k = 0; k < 30; k++) s = step(s, input({}, { sight: true }));
+    expect(s.sight.on).toBe(true);
+    expect(s.roam!.t).toBeCloseTo(30 * DT * SIGHT.worldScale, 9);
+    expect(s.clock).toBeCloseTo(30 * DT, 9);
+    // The lakon's own run.t stands still in roam.
+    expect(s.run.t).toBe(0);
+  });
+
+  it("a free lap under way is dropped when a replay or the chapter's own lakon starts", () => {
+    const underWay = (s: GameState): GameState => ({ ...s, roam: { ...s.roam!, lapPost: 3, lapStart: 2.5 } });
+    const log: GameEvent[] = [];
+    const replay = driveIn(underWay(roam3(WEST_OF_M1)), log);
+    expect(replay.run.def.chapter).toBe(1);
+    expect(replay.roam).toMatchObject({ lapPost: 0, lapStart: null });
+    const own = step(teleportToMarker(underWay(roam3(TOWER_EXIT)), desktop), IDLE, desktop, log);
+    expect(own.run).toMatchObject({ phase: 'intro' });
+    expect(own.run.def.chapter).toBe(3);
+    expect(own.roam).toMatchObject({ lapPost: 0, lapStart: null });
+    expect(types(log)).not.toContain('freeLap');
+  });
+
+  it('no roam or replay meets the sight lesson, so ruling 8 does not apply (ruling 11, decision 9)', () => {
+    // Only the prologue teaches, and it has no marker: it is never replayed, and it never roams.
+    for (const ch of CHAPTERS) expect(defOf(ch).hints, `chapter ${ch}`).toBe(ch === 0);
+    expect(defOf(0).marker).toBeNull();
+    expect(startChapter(defOf(0), defOf(0).start, 1, desktop, { finished: [], bests: [], bestLap: null, defOf }).run.phase).toBe('intro');
+    const s = startChapter(defOf(8), TOWER_EXIT, 1, desktop, { finished: [0, 1, 2, 3, 4, 5, 6, 7], bests: [], bestLap: null, defOf });
+    expect(s.roam!.replays.map((d) => d.chapter)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(s.roam!.replays.some((d) => d.hints)).toBe(false);
+    expect(s.hintCopy).toBeNull();
+  });
+
+  it('the HUD flags a replay while it runs, and sameHud tells the two apart', () => {
+    const roam = roam3(WEST_OF_M1);
+    expect(hudOf(roam, desktop).replay).toBe(false);
+    const s = driveIn(roam, []);
+    const h = hudOf(s, desktop);
+    expect(h).toMatchObject({ replay: true, chapter: 1, phase: 'intro', type: 'himpun' });
+    expect(sameHud(h, { ...h, replay: false })).toBe(false);
+    expect(hudOf(toActive(1), desktop).replay).toBe(false);
   });
 });
 

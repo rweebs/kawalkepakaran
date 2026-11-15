@@ -52,16 +52,30 @@ export interface RuntimeOpts {
   now?(): number;
 }
 
+/**
+ * Roam's data for a chapter's start (Task 36): the chapters finished, the session's best score of each and best free
+ * lap, and any chapter's event slugs, from which the runtime lays out a finished lakon's replay and parva 5's posts.
+ */
+export interface RoamOpts {
+  finished: readonly number[];
+  bests: readonly number[];
+  bestLap: number | null;
+  slugsOf(chapter: number): readonly string[];
+}
+
 export interface Runtime {
-  /** A chapter's lakon: the prologue from SPAWN, any other from where the last left the car (TOWER_EXIT before any). */
-  start(chapter: number, slugs: readonly string[], seed: number): void;
+  /**
+   * A chapter's lakon: the prologue from SPAWN, any other from where the last left the car (TOWER_EXIT before any). With
+   * `roam`, its roam replays the finished lakon and gives free laps on parva 5's posts.
+   */
+  start(chapter: number, slugs: readonly string[], seed: number, roam?: RoamOpts): void;
   /** Holds the chapter and circles the chariot where it stands, until the next start or retry. */
   orbit(): void;
   /** Back to the lakon's last checkpoint, as a failed lakon is retried; nothing before the lakon has one. */
   retry(): void;
   /** Records the rest of the lakon and goes to its outro; its events are sent at once. */
   skip(): void;
-  /** In roam, the chariot to the lakon's marker. */
+  /** In roam, the chariot to the lakon's marker: a jump, so the next HUD snapshot starts afresh. */
   toMarker(): void;
   /** The finale, with or without a chapter played: the engine rests and the camera circles Sanjaya's tower at full dawn. */
   finale(): void;
@@ -129,6 +143,12 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     const out = advance(s, { ...input, aspect }, real, world);
     const next = out.state;
     current = next;
+    // A replay's start and its return to roam change the lakon at a cut: the HUD starts afresh there, as at a start, and
+    // sends its snapshot of the new lakon at once, before the frame's events.
+    if (next.run.def !== s.run.def) {
+      sinceHud = Infinity;
+      lastHud = null;
+    }
     // 3–4. The layers on the scene's clock; then the chariot, which the car moved on world time (slowed in Mata's sight),
     // and its prabha's pulse, once for each volley the light took this frame (a pulse during a fall waits for it).
     ground.sync(next, time);
@@ -201,11 +221,18 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
   }
 
   return {
-    start(chapter, slugs, seed) {
+    start(chapter, slugs, seed, roam) {
       if (disposed) return;
       const def = missionFor(chapter, slugs);
       const from = chapter === 0 ? SPAWN : (current?.car ?? TOWER_EXIT);
-      const fresh = startChapter(def, { x: from.x, z: from.z, yaw: from.yaw }, seed, world);
+      const roamData = roam && {
+        finished: roam.finished,
+        bests: roam.bests,
+        bestLap: roam.bestLap,
+        // Each finished lakon, and parva 5's, from its own slugs.
+        defOf: (c: number) => missionFor(c, roam.slugsOf(c)),
+      };
+      const fresh = startChapter(def, { x: from.x, z: from.z, yaw: from.yaw }, seed, world, roamData);
       // Each hint fires once a session: the ones shown so far go on into the new chapter.
       current = current ? { ...fresh, hintsShown: [...current.hintsShown] } : fresh;
       mode = 'play';
@@ -238,6 +265,8 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     toMarker() {
       if (disposed || !current) return;
       current = teleportToMarker(current, world);
+      sinceHud = Infinity;
+      lastHud = null;
     },
     finale() {
       if (disposed) return;
