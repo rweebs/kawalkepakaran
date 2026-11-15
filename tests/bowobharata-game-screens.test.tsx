@@ -533,6 +533,32 @@ describe('GameHud', () => {
     expect(count(html, '<button')).toBe(2);
   });
 
+  it('the panel opens with its Pause and Full screen row, so the row stays at the top whatever the lines under it (fix round 3)', () => {
+    // DOM order, visual order and focus order match: the row, then the objective, the hint line, the timer and the frame.
+    for (const touch of [false, true]) {
+      for (const canFullscreen of [false, true]) {
+        const panel = element(gameHud({ hud: { hint: 'sight', timer: 75 }, touch, canFullscreen }), 'class="bg-objective"');
+        expect(panel, `touch ${touch}`).toMatch(/^<div class="bg-objective"><div class="bg-actions"><button type="button" class="btn"/);
+        expectOrder(panel, ['class="bg-actions"', 'class="bg-objective__line"', 'class="bg-hint"', 'class="bg-timer"', 'class="bg-frame"']);
+      }
+    }
+    // Every panel the css test's model takes (each objective, each hint or none, with a timer or none, both languages)
+    // opens with the row, so the row's box is the same for all of them: the model places it at the panel's top.
+    let variants = 0;
+    for (const locale of LOCALES) {
+      for (const objective of OBJECTIVES) {
+        for (const hint of [...HINTS, null]) {
+          for (const timer of [188.8, null]) {
+            const panel = element(gameHud({ locale, touch: true, hud: { objective, hint, timer, lap: 5, done: 9, total: 9 } }), 'class="bg-objective"');
+            expect(panel, `${locale} ${objective} ${hint} ${timer}`).toMatch(/^<div class="bg-objective"><div class="bg-actions">/);
+            variants++;
+          }
+        }
+      }
+    }
+    expect(variants).toBe(2 * 9 * 9 * 2);
+  });
+
   it('the hint line is a .bg-hint inside .bg-objective, worded for the keys or for touch, and absent without a hint', () => {
     for (const l of LOCALES) {
       const c = GAME_COPY[l];
@@ -549,12 +575,15 @@ describe('GameHud', () => {
     expect(gameHud()).not.toContain('bg-hint');
   });
 
-  it('the toasts sit in a polite status region, in order', () => {
+  it('the toasts sit in a polite status region, in order, that reads each new toast alone (not atomic)', () => {
+    // role=status is atomic by default: each push would read the older toast again with the new one. With aria-atomic
+    // false (and aria-relevant at its default, additions and text) only the toast added is read, once.
     const empty = gameHud();
-    expect(empty).toContain('<div class="bg-toasts" role="status" aria-live="polite"></div>');
+    expect(empty).toContain('<div class="bg-toasts" role="status" aria-live="polite" aria-atomic="false"></div>');
     const toasts = [{ id: 7, text: GAME_COPY.id.toasts.checkpoint }, { id: 8, text: GAME_COPY.id.toasts.recordedPrologue({ n: 3, total: 8 }) }];
     const region = element(gameHud({ toasts }), 'class="bg-toasts"');
-    expect(region).toMatch(/^<div class="bg-toasts" role="status" aria-live="polite">/);
+    expect(region).toMatch(/^<div class="bg-toasts" role="status" aria-live="polite" aria-atomic="false">/);
+    expect(region).not.toContain('aria-relevant');
     expectOrder(region, toasts.map((t) => esc(t.text)));
   });
 
@@ -803,6 +832,30 @@ describe('Radar', () => {
     // The next lap post is the brighter one.
     const posts = [...radar().matchAll(/<g[^>]*data-kind="post"[^>]*>/g)].map((m) => m[0]);
     expect(posts.map((g) => g.includes('data-next'))).toEqual([true, false]);
+  });
+
+  it('only the ranks and the route are clipped: no other mark, the shelters among them, sits inside a clip-path', () => {
+    /** Each mark's kind, and whether it or a group around it carries a clip-path. */
+    const marks = (html: string) => {
+      const out: { kind: string; clipped: boolean }[] = [];
+      const open: boolean[] = [];
+      for (const [, close, attrs, self] of html.matchAll(/<(\/?)[a-zA-Z]+([^>]*?)(\/?)>/g)) {
+        if (close) {
+          open.pop();
+          continue;
+        }
+        const clips = attrs.includes('clip-path=');
+        const kind = /data-kind="(\w+)"/.exec(attrs)?.[1];
+        if (kind) out.push({ kind, clipped: clips || open.some(Boolean) });
+        if (!self) open.push(clips);
+      }
+      return out;
+    };
+    for (const o of [{}, { staticFrac: 0.3 }, { staticFrac: 0.45, sight: true }]) {
+      const drawn = marks(radar(o));
+      expect(drawn.map((d) => d.kind)).toEqual(['ranks', 'shelter', 'shelter', 'route', 'decoy', 'tower', 'replay', 'marker', 'record', 'record', 'gate', 'post', 'post']);
+      for (const d of drawn) expect(d.clipped, d.kind).toBe(d.kind === 'ranks' || d.kind === 'route');
+    }
   });
 
   it('the route is drawn in its own clip, ROUTE_OVERHANG past the ranks\' at the radius shown, never further', () => {
@@ -1263,6 +1316,52 @@ describe('Radar fades and eases (the model behind it)', () => {
           const strength = 1 - own.reduce((x, d) => x * (1 - d.opacity), 1);
           expect(strength, `frame ${k}: ${key}`).toBeGreaterThanOrEqual(0.75);
         }
+      }
+    });
+
+    it('K tapped while turning (30°/s, 90°/s) or driving (15 m/s), a snapshot every 100 ms: no route or ranks copy leaves at more than a frame\'s fade, each outline stays at 0.75 or more', () => {
+      const def = missionFor(1, ['a', 'b']);
+      const s0 = startChapter(def, def.start, 1, radarWorld);
+      const step = 16 / FADE_MS + 1e-9;
+      for (const [v, turn] of [[0, 30], [0, 90], [15, 0]] as const) {
+        const what = `${v} m/s, ${turn}°/s`;
+        // As the game sends them: a snapshot every 100 ms at riuh 4.2, Mata flipped every 125 ms and seen at the next one.
+        let x = BY_RANKS.x;
+        let z = BY_RANKS.z;
+        let yaw = 0;
+        const snaps: HudSnapshot[] = [];
+        for (let k = 0; k < 25; k++) {
+          const car = { ...initChariot(x, z, yaw), vx: v * Math.cos(yaw), vz: -v * Math.sin(yaw) };
+          const sight = { ...s0.sight, on: Math.floor((k * 100) / 125) % 2 === 1 };
+          snaps.push(hudOf({ ...s0, car, route: { target: 'test', points: NORTH_ROUTE }, run: { ...s0.run, phase: 'active' as const }, riuh: { ...s0.riuh, value: 4.2 }, sight }, radarWorld));
+          x += v * Math.cos(yaw) * 0.1;
+          z -= v * Math.sin(yaw) * 0.1;
+          yaw += ((turn * Math.PI) / 180) * 0.1;
+        }
+        // The blocks shown in every snapshot: their outlines' combined strength is followed.
+        const blocks = [...new Set(snaps[0].radar.filter((i) => i.kind === 'ranks').map((i) => i.key))].filter((key) => snaps.every((h) => h.radar.some((i) => i.key === key)));
+        expect(blocks.length, what).toBeGreaterThan(0);
+        expect(snaps.every((h) => h.radar.some((i) => i.kind === 'route')), what).toBe(true);
+        let m = radarModel(...inputs(snaps[0]), 0);
+        let prev = new Map(drawOrder(m).map((d) => [d.mark.key, d]));
+        let k = 1;
+        let weakest = 1;
+        for (let t = 16; t <= 2400 + FADE_MS; t += 16) {
+          while (k < snaps.length && k * 100 <= t) m = stepModel(m, ...inputs(snaps[k++]), t);
+          m = tickModel(m, t);
+          const now = new Map(drawOrder(m).map((d) => [d.mark.key, d]));
+          for (const [key, p] of prev) {
+            if (!now.has(key) && isEdge(p.mark.item)) expect.soft(p.opacity, `${what}, t ${t}: ${p.mark.item.kind} ${key} left`).toBeLessThanOrEqual(step);
+          }
+          if (t <= 2400) {
+            for (const key of blocks) {
+              const own = [...now.values()].filter((d) => d.mark.item.key === key);
+              weakest = Math.min(weakest, 1 - own.reduce((a, d) => a * (1 - d.opacity), 1));
+            }
+          }
+          prev = now;
+        }
+        expect.soft(weakest, what).toBeGreaterThanOrEqual(0.75);
       }
     });
 

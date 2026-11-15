@@ -231,39 +231,47 @@ function toastHeight(width: number, s: Stage): number {
   const lines = Math.max(...TOAST_TEXTS.map((t) => linesOf(t, width - 2 * padX, 12.8)));
   return lines * size * lineHeight + 2 * padY;
 }
+const panelSels = (x = '') => ['.bg-objective', '.bg-hud[data-touch] .bg-objective'].map((p) => (x ? `${p} ${x}` : p));
+/**
+ * The Pause and Full screen row, the panel's first child, in a panel `width` px wide, in language `l`: its width and
+ * height. The buttons are 16 px at 600 with 0.6rem and 1.25rem of padding; a label wider than the panel wraps, and the
+ * second button goes under the first when the two do not fit side by side.
+ */
+function actionsRow(width: number, s: Stage, l: (typeof LANGS)[number]): { w: number; h: number } {
+  const [, padX] = valueOf(panelSels(), 'padding', s).split(' ').map((p) => px(p, 0));
+  const gap = px(valueOf(panelSels('.bg-actions'), 'gap', s), 0);
+  const text = width - 2 * padX;
+  const button = (label: string) => ({ w: Math.min(text, widthOf(label, 16, 600) + 40), h: linesOf(label, text - 40, 16, 600) * 16 * 1.65 + 2 * 0.6 * 16 });
+  const [a, b] = [button(GAME_COPY[l].hud.pause), button(GAME_COPY[l].fullscreen)];
+  return a.w + gap + b.w <= text ? { w: a.w + gap + b.w, h: Math.max(a.h, b.h) } : { w: Math.max(a.w, b.w), h: a.h + gap + b.h };
+}
 /**
  * The objective panel's height (px) in its worst case at `width` px wide (the panel takes its max-width once its lines are
- * long): any objective with its largest counts, any touch hint or none, a timer, the frame line, and the Pause and Full
- * screen buttons, in either language. Lines at 1.65; the buttons at 16 px and 600 with 0.6rem and 1.25rem of padding, a
- * label wider than the panel wrapping, and the second button below the first when the two do not fit side by side.
+ * long): the Pause and Full screen row first, with its margin under it, then any objective with its largest counts, any
+ * touch hint or none, a timer and the frame line, in either language. Lines at 1.65.
  */
 function panelHeight(width: number, s: Stage): number {
-  const sel = (x: string) => ['.bg-objective', '.bg-hud[data-touch] .bg-objective'].map((p) => (x ? `${p} ${x}` : p));
-  const [padY, padX] = valueOf(sel(''), 'padding', s).split(' ').map((p) => px(p, 0));
-  const gap = px(valueOf(sel(''), 'gap', s), 0);
+  const [padY, padX] = valueOf(panelSels(), 'padding', s).split(' ').map((p) => px(p, 0));
+  const gap = px(valueOf(panelSels(), 'gap', s), 0);
   const hintSize = px(valueOf(['.bg-hint'], 'font-size', s), 16);
   const frameSize = px(valueOf(['.bg-frame'], 'font-size', s), 16);
   expect([hintSize, frameSize], 'the model is measured for a 0.8rem hint and a 0.75rem frame line').toEqual([12.8, 12]);
-  const actionsGap = px(valueOf(sel('.bg-actions'), 'gap', s), 0);
-  const actionsTop = px(valueOf(sel('.bg-actions'), 'margin-top', s), 0);
+  const under = px(valueOf(panelSels('.bg-actions'), 'margin-top', s), 0) + px(valueOf(panelSels('.bg-actions'), 'margin-bottom', s), 0);
   const text = width - 2 * padX;
   return Math.max(...LANGS.map((l) => {
     const c = GAME_COPY[l];
     const o = c.objectives;
     const objectives = [o.roam, o.prologue({ done: 8, total: 8 }), o.collect({ done: 9, total: 9 }), o.tower, o.gate, o.course({ done: 9, total: 9 }), o.laps({ n: 5 }), o.stop, null];
     const hints = [...Object.values(c.hints).map((h) => h.touch), null];
-    const button = (label: string) => ({ w: widthOf(label, 16, 600) + 40, h: linesOf(label, text - 40, 16, 600) * 16 * 1.65 + 2 * 0.6 * 16 });
-    const [a, b] = [button(c.hud.pause), button(c.fullscreen)];
-    const actions = Math.min(a.w, text) + actionsGap + Math.min(b.w, text) <= text ? Math.max(a.h, b.h) : a.h + actionsGap + b.h;
     let worst = 0;
     for (const objective of objectives) {
       for (const hint of hints) {
         const rows = [
+          actionsRow(width, s, l).h + under,
           objective === null ? null : linesOf(objective, text, 16) * 16 * 1.65,
           hint === null ? null : linesOf(hint, text, 12.8) * 12.8 * 1.65,
           16 * 1.65,
           linesOf(c.hudFrame, text, 12) * 12 * 1.65,
-          actionsTop + actions,
         ].filter((x): x is number => x !== null);
         worst = Math.max(worst, 2 * padY + rows.reduce((x, y) => x + y, 0) + gap * (rows.length - 1));
       }
@@ -279,6 +287,13 @@ function lay(s: Stage) {
   const panelTop = px(v(objSels, 'top'), s.h);
   const panelW = px(v(objSels, 'max-width'), s.w);
   const panel: Box = { left: panelLeft, top: panelTop, right: panelLeft + panelW, bottom: panelTop + panelHeight(panelW, s) };
+  // The Pause and Full screen row at the panel's top, inside its padding: the same for every objective, hint and timer,
+  // since it comes first, so only the panel's width and the language move it.
+  const [padY, padX] = v(panelSels(), 'padding').split(' ').map((p) => px(p, 0));
+  const rows = LANGS.map((l): Box => {
+    const r = actionsRow(panelW, s, l);
+    return { left: panelLeft + padX, top: panelTop + padY, right: panelLeft + padX + r.w, bottom: panelTop + padY + r.h };
+  });
   const radar = px(maybeValueOf(['.bg-radar__map', '.bg-hud[data-touch] .bg-radar__map'], 'width', s) ?? `${RADAR_PX}px`, s.w);
   const slotSels = ['.bg-radar-slot', '.bg-hud[data-touch] .bg-radar-slot'];
   const slotRight = s.w - px(v(slotSels, 'right'), s.w);
@@ -305,7 +320,7 @@ function lay(s: Stage) {
   // The room under the toasts' top: to the stage's bottom or the highest button under their column, less the margin.
   const below = Object.values(buttons).filter((b) => b.left < toasts.right && toasts.left < b.right).map((b) => b.top);
   const room = Math.min(s.h, ...below) - 8 - toastsTop;
-  return { panel, radar, slot, toasts, toastH, gap, room, newestOnly, buttons, steer };
+  return { panel, panelW, rows, radar, slot, toasts, toastH, gap, room, newestOnly, buttons, steer };
 }
 
 describe('bowobharata-game.css stage and HUD', () => {
@@ -479,16 +494,23 @@ describe('bowobharata-game.css stage and HUD', () => {
     }
   });
 
-  it('keeps the HUD above the touch layer, so where the objective panel runs into the steer zone its Pause and Full screen buttons still take their taps', () => {
+  it('keeps Task 35\'s stacking: the touch layer over the HUD, which takes no touch but on its own buttons', () => {
     const z = (sel: string) => {
       const v = declared(sel, 'z-index');
       expect(v, sel).toHaveLength(1);
       return Number(v[0]);
     };
-    expect(z('.bg-hud')).toBeGreaterThan(z('.bg-touch'));
-    // Elsewhere the HUD lets every touch through to the steer zone and the buttons.
+    // The same layer, and the touch controls come after the HUD on the stage, so they draw and take touches above it.
+    expect([z('.bg-hud'), z('.bg-touch')]).toEqual([1, 1]);
+    const island = readFileSync('src/components/BowobharataGame.tsx', 'utf8');
+    expect(island.indexOf('<GameHud')).toBeGreaterThan(0);
+    expect(island.indexOf('<TouchControls')).toBeGreaterThan(island.indexOf('<GameHud'));
+    // The HUD lets every touch through but on its buttons. So the panel's text lines may lie over the steer zone (a thumb
+    // there steers), and its Pause and Full screen row is kept at the panel's top, clear of the zone (the stage test).
     expect(has('.bg-hud', 'pointer-events: none')).toBe(true);
     expect(rules.filter((r) => r.selector.includes('.bg-hud') && /pointer-events:\s*auto/.test(r.body)).map((r) => r.selector)).toEqual(['.bg-hud button']);
+    // The row opens the panel, its margin under it and none above (the page's .bg-actions has 0.25rem above).
+    expect([within(base, '.bg-objective .bg-actions', 'margin-top'), within(base, '.bg-objective .bg-actions', 'margin-bottom')]).toEqual(['0', '0.15rem']);
   });
 
   it('on touch: the radar at top right with the speed under it, then the toasts below them in the right column (Task 34)', () => {
@@ -507,8 +529,11 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(within(base, t, 'max-width')).toBe('min(22rem, calc(54% - 2rem))');
     const toast = '.bg-hud[data-touch] .bg-toast';
     expect([within(base, toast, 'font-size'), within(base, toast, 'line-height'), within(base, toast, 'padding')]).toEqual(['0.8rem', '1.45', '0.3rem 0.55rem']);
-    // On touch the objective panel also stops 8 px short of Laju's column (168 px in from the right, past an inset).
-    expect(within(base, '.bg-hud[data-touch] .bg-objective', 'max-width')).toBe('min(22rem, 46%, calc(100% - 184px))');
+    // On touch the objective panel also stops 8 px short of Laju's column (168 px in from the right, past an inset), but
+    // only where 46% would not: from 321 px up to 340 px wide (the cap binds below 184 / 0.54 = 340.7 px). Below that,
+    // on 320-wide stages, the panel keeps round 1's 46%.
+    expect(within(base, '.bg-hud[data-touch] .bg-objective', 'max-width')).toBeUndefined();
+    expect(within(container('(width > 320px) and (width < 341px)'), '.bg-hud[data-touch] .bg-objective', 'max-width')).toBe('min(22rem, 46%, calc(100% - 184px))');
     const narrow = container('(width <= 480px)');
     expect(within(narrow, t, 'top')).toBe(`calc(0.5rem + ${RADAR_PX}px + 2.5rem)`);
     expect(within(narrow, t, 'right')).toBe('0.5rem');
@@ -545,6 +570,14 @@ describe('bowobharata-game.css stage and HUD', () => {
       inside(L.slot, 'the radar and its speed');
       inside(L.toasts, 'the toasts');
       for (const [name, b] of Object.entries(L.buttons)) inside(b, name);
+      // The Pause and Full screen row, at the panel's top in either language, keeps 8 px clear of the steer zone and of
+      // every touch button: a thumb that lands to steer never pauses the game. Only the panel's text lines may lie over the
+      // steer zone, and the HUD takes no touch there (the stacking test).
+      for (const [k, row] of L.rows.entries()) {
+        inside(row, `the ${LANGS[k]} Pause row`);
+        expect.soft(apart(row, L.steer, 8), `${where}: the ${LANGS[k]} Pause row and the steer zone (${(L.steer.top - row.bottom).toFixed(1)} px)`).toBe(true);
+        for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the ${LANGS[k]} Pause row and ${name}`).toBe(true);
+      }
       // Every two parts keep 8 px apart, but the toasts, which hang under the speed pill in one column (4 px at least).
       const parts: [string, Box][] = [['the objective panel', L.panel], ['the radar', L.slot], ['the toasts', L.toasts], ...Object.entries(L.buttons)];
       for (const [i, [a, x]] of parts.entries()) {
@@ -583,6 +616,30 @@ describe('bowobharata-game.css stage and HUD', () => {
       const two = 2 * L.toastH + L.gap;
       expect.soft(L.newestOnly, `${w}×${h}: two toasts need ${two.toFixed(1)} of ${L.room.toFixed(1)} px`).toBe(two > L.room);
     }
+  });
+
+  it('320-wide upright stages keep round 1\'s panel, and its Pause row stays at the top, clear of the steer zone and every button', () => {
+    // 320×568 (the first iPhone SE, Display Zoom on the SE 2 and 3 and the minis): the header is 79 px with touch, so the
+    // stage is 288×489 in the page and 320×568 in full screen. The rest of the layout does not fit there (Task 38).
+    for (const s of [{ name: '320×568 in the page', vw: 320, vh: 568, w: 288, h: 489 }, { name: '320×568 in full screen', vw: 320, vh: 568, w: 320, h: 568 }]) {
+      const L = lay(s);
+      // No 184 px cap: the panel is 46% wide as in round 1, so it is no taller than it was. Laju may lie partly under its
+      // background: the touch layer is above the HUD, so Laju keeps its taps.
+      expect(L.panelW, s.name).toBeCloseTo(0.46 * s.w, 6);
+      for (const [k, row] of L.rows.entries()) {
+        const where = `${s.name}, ${LANGS[k]}`;
+        expect(row.top, where).toBeGreaterThanOrEqual(8);
+        expect(row.right, where).toBeLessThanOrEqual(s.w - 8);
+        expect(apart(row, L.steer, 8), `${where}: the Pause row and the steer zone`).toBe(true);
+        for (const [name, b] of Object.entries(L.buttons)) expect(apart(row, b, 8), `${where}: the Pause row and ${name}`).toBe(true);
+      }
+    }
+    // The cap binds only from 321 to 340 px wide: at 341 px and up 46% already stops 8 px short of Laju's column.
+    const width = (w: number) => lay({ name: `${w}`, vw: w, vh: 700, w, h: 700 }).panelW;
+    expect([width(288), width(320)]).toEqual([0.46 * 288, 0.46 * 320]);
+    expect([width(321), width(328), width(340)]).toEqual([321 - 184, 328 - 184, 340 - 184]);
+    expect([width(341), width(343)].map((x) => +x.toFixed(4))).toEqual([+(0.46 * 341).toFixed(4), +(0.46 * 343).toFixed(4)]);
+    expect(0.46 * 341).toBeLessThanOrEqual(341 - 184);
   });
 
   it('never hides the newest toast: only older ones are hidden, whole, and only by the stage\'s own height', () => {

@@ -36,8 +36,14 @@ const RIUH_MAX = 5;
 const ARC = { from: 210, span: 300 } as const;
 /** How far (px) an item may move between two snapshots and keep its mark. The route is one line, so it always keeps it. */
 const MATCH_PX = 16;
-/** How near (px) a copy on its way out must lie to an item to come back for it: the item's own place. */
+/**
+ * How near (px) a point's copy on its way out must lie to come back for it: the point's own place. The cut shapes move
+ * with the chariot and have no neighbour of their look to take from: the route's copy comes back at any distance, and a
+ * ranks block's own copy (by its key) within MATCH_PX.
+ */
 const REVIVE_PX = 2;
+/** How far (px²) a copy of `kind` may lie from its item and still come back for it. */
+const reviveD2 = (kind: RadarKind) => (kind === 'route' ? Infinity : kind === 'ranks' ? MATCH_PX * MATCH_PX : REVIVE_PX * REVIVE_PX);
 /**
  * How far (px) past the radius shown the route's clip reaches: the route's end chevron reaches 3 px from its end, and
  * its stroke 1 px more, so at rest the chevron and the line's round end are whole. The ranks get no such margin: their
@@ -149,8 +155,9 @@ function sameShape(a: readonly Px[] | undefined, b: readonly Px[] | undefined): 
 
 /**
  * At most two copies of the route on their way out (Mata tapped fast): the faintest go first. The route is one item, so
- * this is its own cap. The ranks have none: a block's copy of a cut it comes back to comes back (trackMarks), so a block
- * at rest keeps a mark per cut at most, and every copy leaves only at 0.
+ * this is its own cap; its copy of the cut it comes back to comes back at any distance, so the cap meets only copies the
+ * route has left behind. The ranks have none: a block's own copy of a cut it comes back to comes back (trackMarks), so a
+ * block at rest keeps a mark per cut at most, and every copy leaves only at 0.
  */
 function capRoute(marks: RadarMark[], now: number): RadarMark[] {
   const going = marks.filter((m) => m.item.kind === 'route' && m.to === 0);
@@ -166,8 +173,10 @@ function capRoute(marks: RadarMark[], now: number): RadarMark[] {
  * - Its look is its clamp and, for a lap post, whether it is the next one; for a cut shape also its cut, though a shape
  *   the new cut left as it was keeps its look. If its own mark has that look, it moves on with the item.
  * - If not, that mark fades out where it is, in its old look, and the item gets a mark of the new look: a copy of that
- *   look on its way out within REVIVE_PX (its own place) comes back from where it is, or a new key fades in from 0. An
- *   item with no mark of its own comes in the same way.
+ *   look on its way out comes back from where it is, or a new key fades in from 0. A point's copy comes back only at its
+ *   own place (REVIVE_PX), a ranks block's own copy within MATCH_PX, the route's at any distance (reviveD2): the cut
+ *   shapes move with the chariot, and Mata tapped while it turns or drives must not leave their outlines faint. An item
+ *   with no mark of its own comes in the same way.
  * - The tower's halo turns to the aim and fades on its own, so aiming never re-keys the tower.
  * - A mark left over fades out from where it is, at its last place and in its last shape, and stays until it reaches 0.
  * - Items keep their order; the marks on their way out follow them.
@@ -213,7 +222,7 @@ export function trackMarks(
     }
     if (mine) leaving.add(mine);
     let back: RadarMark | null = null;
-    let backD = REVIVE_PX * REVIVE_PX;
+    let backD = reviveD2(item.kind);
     for (const m of pool) {
       if (m.to !== 0 || taken.has(m) || !kin(m, item) || !looks(m)) continue;
       const d = apart(m, item);

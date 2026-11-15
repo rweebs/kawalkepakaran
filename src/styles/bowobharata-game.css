@@ -67,8 +67,7 @@
 .bg-radar-slot .bg-speed { margin: 0; padding: 0.15rem 0.65rem; border-radius: var(--radius-full); background: rgba(11, 16, 32, 0.72); line-height: 1.4; }
 .bg-gauges { position: absolute; bottom: 0.75rem; right: 0.75rem; display: grid; gap: 0.35rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); background: rgba(11, 16, 32, 0.72); }
 .bg-toasts { position: absolute; bottom: 0.75rem; left: 0.75rem; display: grid; gap: 0.35rem; max-width: min(22rem, 60%); }
-/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule, in a smaller type so the longest fits a phone's column in four lines. The buttons carry the rings, so there is no gauges panel. The objective panel also stops 8 px short of Laju's column (168 px in, past the inset). */
-.bg-hud[data-touch] .bg-objective { max-width: min(22rem, 46%, calc(100% - 184px)); }
+/* On touch the toasts take the right column under the radar's square and the speed pill (148 px is RADAR_PX), past the objective panel's 46% and its inset, and above the buttons, the steer zone and the capsule, in a smaller type so the longest fits a phone's column in four lines. The buttons carry the rings, so there is no gauges panel. */
 .bg-hud[data-touch] .bg-toasts { top: calc(0.75rem + 148px + 2.5rem); bottom: auto; left: auto; right: 0.75rem; max-width: min(22rem, calc(54% - 2rem)); }
 .bg-hud[data-touch] .bg-toast { font-size: 0.8rem; line-height: 1.45; padding: 0.3rem 0.55rem; }
 .bg-hud dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; }
@@ -79,7 +78,8 @@
 .bg-hud__pause { margin-left: auto; }
 /* GameHud's parts: the objective panel's lines, the speed with the Laju and Mata rings, and the toasts, each on its own panel. */
 .bg-objective p, .bg-gauges p { margin: 0; }
-.bg-objective .bg-actions { margin-top: 0.15rem; gap: 0.5rem; }
+/* Pause and Full screen open the panel, with a little room under them. */
+.bg-objective .bg-actions { margin-top: 0; margin-bottom: 0.15rem; gap: 0.5rem; }
 .bg-timer, .bg-speed { font-variant-numeric: tabular-nums; font-weight: 600; }
 .bg-frame { color: var(--text-secondary); font-size: 0.75rem; }
 .bg-rings { display: flex; gap: 0.75rem; }
@@ -123,10 +123,11 @@
 /* Above the letterbox bars (2), the lakon card and the wipe (3): a pause during a lakon intro shows the whole panel. */
 .bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 4; }
 
-/* Touch controls: the steer zone (left 46% x bottom 55%) and the buttons, anchored to the stage's bottom corners. Under the
-   HUD, which lets every touch through but its own buttons: where the objective panel runs into the steer zone, Pause and
-   Full screen still take their taps. A size container like the HUD. */
-.bg-touch { position: absolute; inset: 0; pointer-events: none; z-index: 0; container: bg-touch / size; }
+/* Touch controls: the steer zone (left 46% x bottom 55%) and the buttons, anchored to the stage's bottom corners. On the
+   HUD's layer and after it on the stage, so they draw and take touches above it (Task 35). The HUD takes no touch but on
+   its own buttons, and its Pause and Full screen row sits at the panel's top, clear of the steer zone, so a thumb on the
+   panel's lines steers. A size container like the HUD. */
+.bg-touch { position: absolute; inset: 0; pointer-events: none; z-index: 1; container: bg-touch / size; }
 .bg-touch__steer { position: absolute; left: 0; bottom: 0; width: 46%; height: 55%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
 .bg-touch__capsule { position: absolute; width: 140px; height: 56px; transform: translate(-50%, -50%); border-radius: 28px; border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(11, 16, 32, 0.45); pointer-events: none; }
 .bg-touch__knob { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
@@ -162,6 +163,8 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
   .bg-posters { grid-template-columns: minmax(0, 1fr); }
   .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
 }
+/* Container queries need Safari 16, Chrome 105 or Firefox 110: an older browser gets neither the short-stage layout nor
+   the newest-only rule (the game already needs a modern WebGL2 browser). */
 /* A narrow stage: the HUD's corners come in to 0.5rem. */
 @container bg-hud (width <= 480px) {
   .bg-objective { top: 0.5rem; left: 0.5rem; }
@@ -169,6 +172,12 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
   .bg-gauges { bottom: 0.5rem; right: 0.5rem; }
   .bg-toasts { left: 0.5rem; }
   .bg-hud[data-touch] .bg-toasts { top: calc(0.5rem + 148px + 2.5rem); right: 0.5rem; max-width: min(22rem, calc(54% - 1.5rem)); }
+}
+/* On touch the objective panel stops 8 px short of Laju's column (168 px in, past the inset) where 46% would not: below
+   184 / 0.54 = 340.7 px. On 320-wide stages the cap would make it narrower and so taller still, so it keeps 46% there:
+   Laju may lie partly under its background and keeps its taps, the touch layer being above the HUD. */
+@container bg-hud (width > 320px) and (width < 341px) {
+  .bg-hud[data-touch] .bg-objective { max-width: min(22rem, 46%, calc(100% - 184px)); }
 }
 /* A short stage (a phone on its side, or under a tall header): the buttons' column runs nearly the stage's height, 168 px
    in from the right (Laju's left edge). On touch the radar shrinks to 112 px, and it and the toasts under it sit just left
@@ -186,7 +195,8 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
    column's width and their gap, from the toasts' top down to 8 px above the stage's bottom or the highest button under
    them. The column's width sets the lines, so each threshold holds for a range of widths. The numbers come from the
    css test's model of the toasts (tests/bowobharata-game-css.test.ts), which checks them on both sides. An older toast
-   is hidden whole, and the live region has read it: the island spaces toasts at least 1.5 s apart. */
+   is hidden whole once read: the island spaces toasts at least 1.5 s apart, and the live region (not atomic) reads each
+   toast once, as it is added, never again with the next. */
 @container bg-hud (width < 342px) and (height < 642px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
 @container bg-hud (width <= 480px) and (height < 605px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }
 @container bg-hud (width > 480px) and (width < 504px) and (height > 520px) and (height < 609px) { .bg-hud[data-touch] .bg-toast:not(:last-child) { display: none; } }

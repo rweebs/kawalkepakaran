@@ -18,7 +18,7 @@ import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } f
 import { failShotDone, sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
 import { gamepadInput, keyAction, keyboardInput, mergeInputs, NO_TOUCH, type InputPart, touchInput, type TouchState } from '../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
-import { EMPTY_TOASTS, queueToasts, takeToast, type Toast, type ToastQueue } from '../lib/bowobharata-game/toast-queue';
+import { toastPump, type Toast } from '../lib/bowobharata-game/toast-queue';
 import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
 import type { Runtime } from '../lib/bowobharata-game/world/runtime';
 import {
@@ -108,12 +108,10 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const touch = useRef<TouchState>({ ...NO_TOUCH });
   const touchDevice = useRef(false);
   const padHeld = useRef({ skip: false, pause: false });
-  // The play view's clockwork: its pending timers (toasts and their pump), the toast ids, the toasts waiting their turn and
-  // whether the pump's timer runs, whether the lakon card is up, and whether the next HUD snapshot is the chapter's first.
+  // The play view's clockwork: its pending timers (toasts and their pump), the toast ids, whether the lakon card is up,
+  // and whether the next HUD snapshot is the chapter's first.
   const timers = useRef(new Set<number>());
   const toastId = useRef(0);
-  const toastQueue = useRef<ToastQueue>(EMPTY_TOASTS);
-  const pumping = useRef(false);
   const missionUp = useRef(false);
   const first = useRef(false);
   // The game clock at the failed event, until the fail shot has run; and the chapter the stage was last scrolled for.
@@ -140,17 +138,9 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     later(() => setToasts((list) => list.filter((t) => t.id !== id)), TOAST_MS);
   };
 
-  /** Pushes the next waiting toast once TOAST_GAP_MS has run since the last push, then waits for the one after it. */
-  const pumpToasts = () => {
-    pumping.current = false;
-    const { toast, queue, wait } = takeToast(toastQueue.current, performance.now());
-    toastQueue.current = queue;
-    if (toast) pushToast(toast.text);
-    if (wait !== null) {
-      pumping.current = true;
-      later(pumpToasts, wait);
-    }
-  };
+  // The toasts wait their turn here: each is pushed TOAST_GAP_MS after the one before, on the play view's own timers, and
+  // none while the game is paused. `later` and `pushToast` hold only refs and setters, so the first render's do.
+  const [pump] = useState(() => toastPump({ now: () => performance.now(), schedule: later, push: (t) => pushToast(t.text) }));
 
   /** The lakon card and the letterbox, opened by the gunungan: one CSS animation covers the stage, then opens it. */
   const showMission = () => {
@@ -172,8 +162,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const resetPlay = () => {
     for (const t of timers.current) window.clearTimeout(t);
     timers.current.clear();
-    toastQueue.current = EMPTY_TOASTS;
-    pumping.current = false;
+    pump.clear();
     missionUp.current = false;
     first.current = false;
     failClock.current = null;
@@ -245,10 +234,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
       }
     }
     // The frame's toasts wait their turn in order, so each is the newest for TOAST_GAP_MS at least.
-    if (toasts.length > 0) {
-      toastQueue.current = queueToasts(toastQueue.current, toasts);
-      if (!pumping.current) pumpToasts();
-    }
+    pump.add(toasts);
   };
 
   /** The frame's input: the held keys (the steer ramped on real time), a skip once, and the session's settings. */
@@ -502,6 +488,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   useEffect(() => {
     if (!playing3d) resetPlay();
   }, [playing3d]);
+  // While the game is paused no waiting toast is pushed; on the resume the next goes once its gap has run. A toast already
+  // shown keeps its own TOAST_MS.
+  useEffect(() => {
+    pump.hold(flow.paused);
+  }, [flow.paused, pump]);
   useEffect(() => () => {
     for (const t of timers.current) window.clearTimeout(t);
   }, []);

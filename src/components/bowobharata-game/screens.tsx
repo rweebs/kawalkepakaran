@@ -490,15 +490,17 @@ export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscr
   const speed = <p className="bg-speed" data-gauge="speed"><b>{hud.speedKmh}</b> {c.ride.speedUnit}</p>;
   return (
     <div className="bg-hud" data-touch={touch ? '' : undefined}>
+      {/* Pause and Full screen open the panel: a taller panel pushes only its lines down, so on touch the row stays at the
+          stage's top left, clear of the steer zone (the left 46% of the bottom 55%). */}
       <div className="bg-objective">
-        {line && <p className="bg-objective__line">{line}</p>}
-        {hud.hint && <p className="bg-hint">{c.hints[hud.hint][touch ? 'touch' : 'keys']}</p>}
-        {hud.timer !== null && <p className="bg-timer"><time dateTime={`PT${Math.max(0, Math.floor(hud.timer))}S`}>{clockOf(hud.timer)}</time></p>}
-        <p className="bg-frame">{c.hudFrame}</p>
         <div className="bg-actions">
           <button type="button" className="btn" aria-pressed={paused} onClick={onPause}>{c.hud.pause}</button>
           {canFullscreen && <button type="button" className="btn" aria-pressed={fullscreen} onClick={onFullscreen}>{c.fullscreen}</button>}
         </div>
+        {line && <p className="bg-objective__line">{line}</p>}
+        {hud.hint && <p className="bg-hint">{c.hints[hud.hint][touch ? 'touch' : 'keys']}</p>}
+        {hud.timer !== null && <p className="bg-timer"><time dateTime={`PT${Math.max(0, Math.floor(hud.timer))}S`}>{clockOf(hud.timer)}</time></p>}
+        <p className="bg-frame">{c.hudFrame}</p>
       </div>
       <div className="bg-radar-slot">
         <Radar
@@ -516,7 +518,8 @@ export function GameHud({ locale, hud, touch, paused, toasts, onPause, onFullscr
           </div>
         </div>
       )}
-      <div className="bg-toasts" role="status" aria-live="polite">
+      {/* Not atomic: each push reads only the toast added, once (role=status is atomic by default). */}
+      <div className="bg-toasts" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => <p key={t.id} className="bg-toast">{t.text}</p>)}
       </div>
     </div>
