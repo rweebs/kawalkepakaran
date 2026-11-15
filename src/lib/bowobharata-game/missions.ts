@@ -104,17 +104,17 @@ const BASE: Omit<Lakon, 'marker' | 'records' | 'softTime' | 'decoyLimit'> = {
 const LAKON: Lakon[] = [
   // The prologue: eight arrows from the spawn round to the tower. The copy on the L7→L8 line is the Mata lesson.
   // The teaching volley is planned as the chariot sets off. Its line spans the corridor between the ranks, 0.4 m ahead
-  // of the hull's middle at rest on the spawn, with its ends inside both army zones. A chariot that sets off forward
-  // from the spawn meets it within its first metre, at 2.3–3.6 m/s. The volley lands 2.6 s later at (−11, 58), 5–8 m
-  // beside the route just past L2, on the outside of the gentle right-hand curve from the spawn to L3, ahead of the
-  // chariot.
+  // of the hull's middle at rest on the spawn, with its ends inside both army zones. The volley lands 2.6 s after the
+  // line is met, at (−11, 58), 5–8 m beside the route just past L2, on the outside of the gentle right-hand curve from
+  // the spawn to L3, ahead of the chariot.
   // The corridor is open at its north mouth, so a chariot that first reverses up it can go round the line (no teaching
   // volley), or come back and cross it fast enough for the volley to be absorbed.
   // Over the tests' 216 bot runs (speedCap 0.2–1, a reaction of 0–1 s, careless and careful, Laju never, always or on
-  // straights), every chariot meets the line once, with L1 open. Without Laju the volley always lands, 21.1 m or more
-  // from every hull circle's centre. On a 16:9 screen it lands within 0.9 of the half-width from the middle; on an
-  // upright phone (speedCap 0.3–0.8 at a 0.4 s reaction, and the autopilot) within the half-width, shown for at least
-  // half of its telegraph.
+  // straights), every chariot meets the line once, with L1 open. These are full-throttle starts: they meet it at
+  // 2.3–3.6 m/s, and a gentler start meets it slower. Without Laju the volley always lands, 21.1 m or more from every
+  // hull circle's centre. On a 16:9 screen it lands within 0.9 of the half-width from the middle; on an upright phone
+  // (speedCap 0.3–0.8 at a 0.4 s reaction, and the autopilot) within the half-width, shown for at least half of its
+  // telegraph.
   {
     ...BASE,
     marker: null,
