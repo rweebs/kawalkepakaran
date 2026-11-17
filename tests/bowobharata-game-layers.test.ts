@@ -11,7 +11,7 @@ import type { ChariotMotion, ChariotRig } from '../src/lib/bowobharata/scene/cha
 import { angleDiff, forward, rightOf, yawOf, type XZ } from '../src/lib/bowobharata-game/geom';
 import { NO_INPUT, initChariot, speedOf, stepChariot, type ChariotInput, type ChariotState } from '../src/lib/bowobharata-game/drive';
 import { ANCHORS, POSTS, ROCKS, SPAWN, TENTS, TOWER_EXIT, TOWER_R, TREES, clearance, staticColliders, type Collider } from '../src/lib/bowobharata-game/world';
-import { DEFAULT_ASPECT, advance, createWorld, skipToRecord, startChapter, timeScaleOf, viewOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { DEFAULT_ASPECT, advance, createWorld, startChapter, timeScaleOf, viewOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import { createBot } from '../src/lib/bowobharata-game/autopilot';
 import { across, missionFor, type MissionDef, type StepDef } from '../src/lib/bowobharata-game/missions';
 import type { Decoy, Phase } from '../src/lib/bowobharata-game/mission-run';
@@ -2777,8 +2777,8 @@ describe('pickups', () => {
         expect(drawn(game.root, 'lontar')).toBe(2);
         for (const k of [0, 1]) expect(fadeAt(leaves, k)).toBe(1);
         expect(flatDist(placeOf(named(game.root, 'marker-ring')), lakonOf(1).marker!)).toBeLessThanOrEqual(1e-9);
-        // Its end: back in chapter 3's roam at TOWER_EXIT, under the cut to the chase view.
-        let s = skipToRecord(replay).state;
+        // Its end, after its outro: back in chapter 3's roam at TOWER_EXIT, under the cut to the chase view.
+        let s: GameState = { ...replay, run: { ...replay.run, phase: 'outro', phaseT: 0 } };
         for (let k = 0; k < 4 * 64 && s.run.def.chapter === 1; k++) s = advance(s, IDLE, 1 / 64, WORLD).state;
         expect(s.run.def.chapter).toBe(3);
         expect(s.shot).toBeNull();

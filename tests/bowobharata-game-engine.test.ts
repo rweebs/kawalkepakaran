@@ -2591,6 +2591,8 @@ describe('roam: replays and free laps (Task 36)', () => {
   const POSTS = LAPS.posts;
   type ReplayDone = Extract<GameEvent, { type: 'replayDone' }>;
   type FreeLap = Extract<GameEvent, { type: 'freeLap' }>;
+  /** A lakon's own part of the state: what a replay sets aside and its return brings back. */
+  const LAKON_KEYS = ['run', 'decoys', 'clouds', 'riuh', 'level', 'volleys', 'nextVolley', 'rng', 'nextId', 'scriptedPlanned'] as const;
 
   it("lays out the finished lakon that have a marker, each once and never the chapter's own, and parva 5's posts, as plain data", () => {
     const given: RoamInput = { finished: [2, 0, 1, 1, 3], bests: [0, 250], bestLap: 41.5, defOf };
@@ -2631,16 +2633,22 @@ describe('roam: replays and free laps (Task 36)', () => {
     expect(poseOf(s.car)).not.toEqual(defOf(1).start);
     // Chapter 3's lakon waits aside as it was; the replay brings its own copies and haze, and its clamour from its start.
     const aside = s.roam!.aside!;
-    for (const k of ['run', 'decoys', 'clouds', 'riuh', 'level', 'volleys', 'nextVolley', 'rng', 'nextId', 'scriptedPlanned'] as const) {
-      expect(aside[k], k).toEqual(roam[k]);
-    }
+    for (const k of LAKON_KEYS) expect(aside[k], k).toEqual(roam[k]);
     expect(aside.run).toBe(roam.run);
     expect(s.decoys.map((d) => d.at)).toEqual(defOf(1).scripted.decoys);
     expect(s.clouds.map((c) => c.at)).toEqual(defOf(1).scripted.clouds);
     expect(s.riuh.value).toBe(defOf(1).riuh.start);
-    // The autopilot rides it to the end.
+    // The autopilot rides it to the end, under the lakon's own pressure: its clamour moves, its levels and volleys come.
     const bot = createBot();
-    for (let k = 0; k < 150 / DT && s.run.def.chapter === 1; k++) s = step(s, bot(s, desktop), desktop, log);
+    const from = log.length;
+    let moved = false;
+    for (let k = 0; k < 150 / DT && s.run.def.chapter === 1; k++) {
+      s = step(s, bot(s, desktop), desktop, log);
+      if (s.roam!.aside && s.riuh.value !== defOf(1).riuh.start) moved = true;
+    }
+    expect(moved).toBe(true);
+    expect(types(log.slice(from))).toContain('level');
+    expect(types(log.slice(from))).toContain('volley');
     expect(types(log)).not.toContain('done');
     expect(types(log)).not.toContain('failed');
     const ends = log.filter((e): e is ReplayDone => e.type === 'replayDone');
@@ -2650,8 +2658,7 @@ describe('roam: replays and free laps (Task 36)', () => {
     expect(ends[0].best).toBe(Math.max(120, ends[0].score));
     // Back in chapter 3's roam with its own lakon as it was set aside, the chariot at rest at TOWER_EXIT, the camera cut
     // to a fresh chase view behind it.
-    expect(s.run).toBe(aside.run);
-    for (const k of ['decoys', 'clouds', 'riuh', 'volleys'] as const) expect(s[k], k).toBe(aside[k]);
+    for (const k of LAKON_KEYS) expect(s[k], k).toBe(aside[k]);
     expect(poseOf(s.car)).toEqual(TOWER_EXIT);
     expect(speedOf(s.car)).toBe(0);
     expect(s.shot).toBeNull();
@@ -2695,7 +2702,7 @@ describe('roam: replays and free laps (Task 36)', () => {
       // 15 m before P1 on its line, facing along it: the first post crossed is P1.
       const f1 = forward(POSTS[0].heading);
       let s = roam3({ x: POSTS[0].at.x - f1.x * 15, z: POSTS[0].at.z - f1.z * 15, yaw: POSTS[0].heading }, { bestLap });
-      const { decoys, clouds } = s;
+      const { decoys, clouds, riuh } = s;
       // The ride is the autopilot's round parva 5's posts: it steers as that lakon would, at the free lap's next post.
       const lakon5 = { ...startRun(defOf(5)), phase: 'active' as const };
       const ride = (x: GameState) =>
@@ -2704,16 +2711,18 @@ describe('roam: replays and free laps (Task 36)', () => {
       const span = [across(POSTS[0].at, POSTS[0].heading, -4), across(POSTS[0].at, POSTS[0].heading, 4)];
       const p1: number[] = [];
       const log: GameEvent[] = [];
-      // 25 s: the lap round the posts and on into the next, longer than a lakon's clamour waits to rise on its own (10 s)
-      // and its first volley (20 s).
+      // 25 s: the lap round the posts and on into the next. A lakon's own clocks (the clamour's rise from 10 s, the first
+      // volley at 20 s) run on run.t, which stands still in roam, so no pressure is read by its value: the clamour is read
+      // by identity, since any step of it, even one that changes nothing, makes a new one.
       for (let k = 0; k < 25 / DT; k++) {
         const before = hullMid(s.car);
         s = step(s, ride(s), desktop, log);
         if (meets(before, hullMid(s.car), span[0], span[1])) p1.push(k);
         // A lap is under way from P1 on, and only then.
         expect(s.roam!.lapStart === null, `frame ${k}`).toBe(p1.length === 0);
-        // No pressure in roam: the clamour stays at 0, no volley is scheduled, no copy or haze comes.
-        expect(s.riuh.value, `frame ${k}`).toBe(0);
+        // No pressure in roam: the clamour is never stepped, no volley is scheduled, no copy or haze comes.
+        expect(s.riuh, `frame ${k}`).toBe(riuh);
+        expect(s.riuh.value).toBe(0);
         expect(s.volleys).toEqual([]);
         expect(s.nextVolley).toBeNull();
         expect(s.decoys).toBe(decoys);
@@ -2801,6 +2810,126 @@ describe('roam: replays and free laps (Task 36)', () => {
     expect(s.roam!.replays.map((d) => d.chapter)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(s.roam!.replays.some((d) => d.hints)).toBe(false);
     expect(s.hintCopy).toBeNull();
+  });
+
+  it("a replay teaches nothing: a restored session's ride into parva 1's ring and through its replay fires no hint there, and surge comes after, where the HUD shows it (fix round 1, F1)", () => {
+    // A session resumed at chapter 3: no hint shown yet, roam's data as the island passes it, the chariot at TOWER_EXIT.
+    let s = roam3(TOWER_EXIT);
+    expect(s.hintsShown).toEqual([]);
+    // Straight east at up to 7 m/s, into parva 1's ring 60 m dead ahead.
+    for (let k = 0; k < 30 / DT && s.run.def.chapter === 3; k++) s = step(s, input({ throttle: speedOf(s.car) < 7 ? 1 : 0 }));
+    expect(s.run.def.chapter).toBe(1);
+    // The autopilot rides the replay to its end: no hint fires in any frame that ends in the replay.
+    const bot = createBot();
+    let replayFrames = 0;
+    for (let k = 0; k < 150 / DT && s.run.def.chapter === 1; k++) {
+      const r = advance(s, bot(s, desktop), DT, desktop);
+      s = r.state;
+      if (!hudOf(s, desktop).replay) continue;
+      replayFrames++;
+      expect(hintKeys(r.events), `replay frame ${k}`).toEqual([]);
+    }
+    expect(s.run.def.chapter).toBe(3);
+    expect(replayFrames * DT).toBeGreaterThan(30);
+    expect(s.hintsShown).not.toContain('surge');
+    // On in chapter 3, in roam and then its own lakon: the surge lesson comes, on a HUD that shows it.
+    let surged = false;
+    for (let k = 0; k < 200 / DT && !surged; k++) {
+      const r = advance(s, bot(s, desktop), DT, desktop);
+      s = r.state;
+      if (!hintKeys(r.events).includes('surge')) continue;
+      surged = true;
+      expect(hudOf(s, desktop)).toMatchObject({ replay: false, hint: 'surge' });
+    }
+    expect(surged).toBe(true);
+  }, BOT_TIMEOUT);
+
+  it('a drift moment inside a replay fires nothing, and the same moment outside one fires drift (fix round 1, F1)', () => {
+    let s = driveIn(roam3(WEST_OF_M1), []);
+    for (let k = 0; k < 300 && s.run.phase !== 'active'; k++) s = step(s, input({}, { skip: true }));
+    expect(s.run).toMatchObject({ phase: 'active' });
+    expect(s.hintsShown).toEqual([]);
+    // At 12 m/s, facing back from where its route leads: a turn sharper than 60° ahead, above 10 m/s.
+    const mid = hullMid(s.car);
+    const to = s.route!.points[1];
+    const away = yawOf({ x: mid.x - to.x, z: mid.z - to.z });
+    const f = forward(away);
+    const fast = (x: GameState): GameState => ({ ...x, car: { ...initChariot(s.car.x, s.car.z, away), vx: f.x * 12, vz: f.z * 12 } });
+    const inReplay = advance(fast(s), input({ throttle: 1 }), DT, desktop);
+    expect(hudOf(inReplay.state, desktop).replay).toBe(true);
+    expect(hintKeys(inReplay.events)).toEqual([]);
+    expect(inReplay.state.hintsShown).toEqual([]);
+    // The same frame with no lakon set aside: the drift lesson.
+    const outside = advance(fast({ ...s, roam: { ...s.roam!, aside: null } }), input({ throttle: 1 }), DT, desktop);
+    expect(hintKeys(outside.events)).toEqual(['drift']);
+  });
+
+  it("each chapter's own lakon rides the same with roam's data as without, pressure and all (fix round 1, F2)", () => {
+    for (const ch of CHAPTERS) {
+      const def = defOf(ch);
+      /** The autopilot's ride of the lakon from its start, seed 1, until it is done (300 s at most). */
+      const ride = (roam?: RoamInput) => {
+        let s = startChapter(def, def.start, 1, desktop, roam);
+        const bot = createBot();
+        const events: GameEvent[] = [];
+        for (let k = 0; k < 300 / DT && !events.some((e) => e.type === 'done'); k++) s = step(s, bot(s, desktop), desktop, events);
+        return { s, events };
+      };
+      const plain = ride();
+      // As the island starts it: every chapter before it finished, the bests the session holds, no lap yet.
+      const roamed = ride({ finished: Array.from({ length: ch }, (_, k) => k), bests: Array.from({ length: ch }, (_, k) => 100 * k), bestLap: null, defOf });
+      expect(types(plain.events), `chapter ${ch}`).toContain('done');
+      expect(roamed.events, `chapter ${ch}`).toEqual(plain.events);
+      expect({ ...roamed.s, roam: null }, `chapter ${ch}`).toEqual({ ...plain.s, roam: null });
+    }
+  }, BOT_TIMEOUT);
+
+  it("a finished lakon's marker does nothing outside roam: not in the chapter's own intro, active part, outro or fail shot (fix round 1, F4)", () => {
+    const roam = roam3(TOWER_EXIT);
+    // At rest on parva 1's marker, the hull's middle at its centre.
+    const onM1 = initChariot(M1.x - HULL.offsets[1], M1.z, 0);
+    for (const phase of ['intro', 'active', 'outro', 'failed'] as const) {
+      const log: GameEvent[] = [];
+      const s = step({ ...roam, car: onM1, run: { ...roam.run, phase } }, IDLE, desktop, log);
+      expect(s.run.def.chapter, phase).toBe(3);
+      expect(s.roam!.aside, phase).toBeNull();
+      expect(types(log), phase).not.toContain('introStart');
+      expect(types(log), phase).not.toContain('replayDone');
+    }
+  });
+
+  it("a replay is not skipped to its record nor retried from its checkpoint: both leave it as it is, and it still ends by roam; its intro's own skip still works (fix round 1, F7)", () => {
+    const roam = roam3(WEST_OF_M1);
+    let s = driveIn(roam, []);
+    expect(s.run).toMatchObject({ phase: 'intro' });
+    // The fail card's skip, in the replay's intro: nothing recorded, nothing sent.
+    const skipped = skipToRecord(s);
+    expect(skipped.state).toBe(s);
+    expect(skipped.events).toEqual([]);
+    // The intro's own skip, from the frame's input, still cuts it short.
+    const log: GameEvent[] = [];
+    let frames = 0;
+    for (; frames < 300 && s.run.phase !== 'active'; frames++) s = step(s, input({}, { skip: true }), desktop, log);
+    expect(s.run).toMatchObject({ phase: 'active' });
+    expect(types(log)).toContain('introEnd');
+    expect(frames * DT).toBeLessThan(MISSION_TIMING.introSeconds);
+    expect(s.run.checkpoint).not.toBeNull();
+    // Its fail shot: retry leaves it failing, and it still ends by roam, at score 0.
+    let failing = step({ ...s, run: { ...s.run, t: 121 } }, IDLE, desktop, log);
+    expect(failing.run.phase).toBe('failed');
+    for (let k = 0; k < 10; k++) failing = step(failing, IDLE, desktop, log);
+    expect(retryFromCheckpoint(failing, desktop)).toBe(failing);
+    expect(skipToRecord(failing)).toEqual({ state: failing, events: [] });
+    for (let k = 0; k < 5 / DT && failing.run.def.chapter === 1; k++) failing = step(failing, IDLE, desktop, log);
+    expect(failing.run).toBe(roam.run);
+    expect(log.filter((e) => e.type === 'replayDone')).toEqual([{ type: 'replayDone', chapter: 1, score: 0, best: 0 }]);
+    // Its outro: retry leaves it closing, and it still ends by roam, with its score.
+    let closing: GameState = { ...s, run: { ...s.run, phase: 'outro', phaseT: 0, score: 230 } };
+    expect(retryFromCheckpoint(closing, desktop)).toBe(closing);
+    const ends: GameEvent[] = [];
+    for (let k = 0; k < 5 / DT && closing.run.def.chapter === 1; k++) closing = step(closing, IDLE, desktop, ends);
+    expect(closing.run).toBe(roam.run);
+    expect(ends.filter((e) => e.type === 'replayDone')).toEqual([{ type: 'replayDone', chapter: 1, score: 230, best: 230 }]);
   });
 
   it('the HUD flags a replay while it runs, and sameHud tells the two apart', () => {

@@ -724,9 +724,12 @@ const HINT_ORDER: readonly HintKey[] = ['ride', 'steer', 'rewrites', 'sight', 's
  * Step 12. A hint whose moment has come (not shown this session, not already waiting) joins the queue; the queue's
  * first hint fires once the hint on the HUD has stayed HINT_MIN, even if its own moment has passed (each is a lesson).
  * At most one fires per frame. A sight lesson that fires follows its copy (hintCopy); any other hint lets it go. The
- * queue is dropped when the lakon ends.
+ * queue is dropped when the lakon ends. A replay teaches nothing: the HUD shows no hint line in one, so a lesson whose
+ * moment comes there waits for its next, in roam or in the chapter's own lakon; the queue and the hints shown stay as
+ * they are (its return drops the queue, as a lakon's end does).
  */
 function stepHints(s: GameState): { state: GameState; event: GameEvent | null } {
+  if (s.roam !== null && s.roam.aside !== null) return { state: s, event: null };
   if (s.run.phase === 'done') return { state: s.hintQueue.length > 0 ? { ...s, hintQueue: [] } : s, event: null };
   const due = HINT_ORDER.filter((k) => !s.hintsShown.includes(k) && !s.hintQueue.includes(k) && HINT_RULES[k](s));
   const queue = due.length > 0 ? [...s.hintQueue, ...due] : s.hintQueue;
@@ -805,18 +808,23 @@ function endReplay(s: GameState, aside: Lakon, score: number, w: World, events: 
 /**
  * The free laps on parva 5's posts, timed on roam's own world seconds: the posts are crossed in order by the lakon's own
  * rule (rideLaps), and crossing P1 starts a lap and closes each one, each lap closed a freeLap with the session's best.
+ * It fills in `next`, the frame's own new state (not yet handed out), as stepPressure does.
  */
-function rideFree(s: GameState, roam: Roam, f: RunFrame, events: GameEvent[]): GameState {
-  if (!roam.laps) return s;
+function rideFree(next: GameState, roam: Roam, f: RunFrame, events: GameEvent[]): GameState {
+  if (!roam.laps) return next;
   const t = roam.t + f.dt;
   const lap = rideLaps(roam.laps, roam.lapPost, roam.lapStart, t, f);
-  if (!lap) return { ...s, roam: { ...roam, t } };
+  if (!lap) {
+    next.roam = { ...roam, t };
+    return next;
+  }
   let { bestLap } = roam;
   if (lap.seconds !== null) {
     bestLap = bestLap === null ? lap.seconds : Math.min(bestLap, lap.seconds);
     events.push({ type: 'freeLap', seconds: lap.seconds, best: bestLap });
   }
-  return { ...s, roam: { ...roam, t, lapPost: lap.post, lapStart: lap.start, bestLap } };
+  next.roam = { ...roam, t, lapPost: lap.post, lapStart: lap.start, bestLap };
+  return next;
 }
 
 /**
@@ -934,9 +942,11 @@ export function advance(
 /**
  * Back to the last checkpoint, active, at rest: what was recorded and scored stays; at least 60 s are left. The clamour
  * starts again from the checkpoint's, at most 1, at the restored run.t (its rise counts from there); the volleys are
- * called off, and the copies and haze they left go. The lakon's own copies and haze stay as they are.
+ * called off, and the copies and haze they left go. The lakon's own copies and haze stay as they are. A replay is never
+ * retried: it ends by roam (its fail shot, then its return), so the state comes back as it is.
  */
 export function retryFromCheckpoint(s: GameState, w: World): GameState {
+  if (s.roam !== null && s.roam.aside !== null) return s;
   const back = restore(s.run);
   const car = initChariot(back.car.x, back.car.z, back.car.yaw);
   const route = routeFor(back.run, car, null, w);
@@ -955,8 +965,13 @@ export function retryFromCheckpoint(s: GameState, w: World): GameState {
   };
 }
 
-/** Records every open target and goes to the outro; the run is no longer whole. Its shot starts on the next frame. */
+/**
+ * Records every open target and goes to the outro; the run is no longer whole. Its shot starts on the next frame. A
+ * replay is never skipped to its record (the fail card's skip is the story's): the state comes back as it is, with no
+ * event. Its intro's own skip is the frame's input, which stepRun takes.
+ */
 export function skipToRecord(s: GameState): { state: GameState; events: GameEvent[] } {
+  if (s.roam !== null && s.roam.aside !== null) return { state: s, events: [] };
   const r = autoRecord(s.run);
   return { state: { ...s, run: r.run, route: null }, events: r.events };
 }

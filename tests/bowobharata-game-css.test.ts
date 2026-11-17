@@ -544,6 +544,23 @@ describe('bowobharata-game.css stage and HUD', () => {
       expect(reaching.some((r) => r.selector === sel), sel).toBe(true);
     }
     expect(reaching.filter((r) => reorders.test(r.body)).map((r) => `${r.selector} { ${r.body} }`)).toEqual([]);
+    // Nor may a rule that reaches the row itself move it by an offset (fix round 1, F8): top, bottom or inset, a transform
+    // or translate, or absolute or fixed positioning would take it off the panel's top as surely. Such a rule's subject
+    // holds the row's class or a button's (.btn, a class token of its own: .bg-touch__btn is the touch buttons'), or no
+    // class at all. The panel's own placement (.bg-objective) is the panel's, not the row's.
+    const inRow = ['bg-actions', 'btn'];
+    const reachesRow = (sel: string) => {
+      const subject = sel.split(/\s*[\s>+~]\s*/).at(-1)!;
+      const classes = [...subject.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
+      return classes.length === 0 || classes.some((c) => inRow.includes(c));
+    };
+    const moves = /(?:^|;)\s*(?:top|bottom|inset(?:-(?:block|inline)(?:-(?:start|end))?)?|transform|translate)\s*:|(?:^|;)\s*position\s*:\s*(?:absolute|fixed)\b/;
+    const rowRules = rules.filter((r) => r.selector.split(',').some((s) => reachesRow(s.trim())));
+    for (const sel of ['.bg-objective .bg-actions', '.bg-actions', '.bg-hud button', '.bg-game .btn']) {
+      expect(rowRules.some((r) => r.selector === sel), sel).toBe(true);
+    }
+    expect(rowRules.some((r) => r.selector === '.bg-objective' || r.selector.startsWith('.bg-touch__btn'))).toBe(false);
+    expect(rowRules.filter((r) => moves.test(r.body)).map((r) => `${r.selector} { ${r.body} }`)).toEqual([]);
   });
 
   it('on touch: the radar at top right with the speed under it, then the toasts below them in the right column (Task 34)', () => {

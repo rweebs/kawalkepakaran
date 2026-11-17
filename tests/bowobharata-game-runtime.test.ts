@@ -9,7 +9,8 @@ import { dharmaMix, groundHeight, type Pose } from '../src/lib/bowobharata/stage
 import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
 import { NO_INPUT, speedOf } from '../src/lib/bowobharata-game/drive';
 import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
-import { worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { createWorld, worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { autopilot } from '../src/lib/bowobharata-game/autopilot';
 import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { radarRange } from '../src/lib/bowobharata-game/radar';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
@@ -531,6 +532,13 @@ describe('runtime', () => {
       const car = h.rt.state()?.car;
       return { drive: { ...NO_INPUT, throttle: car && speedOf(car) < 6 ? 1 : 0 }, sight: false, skip: true, assist: false };
     }
+    /** The world as the runtime builds it for the scene's army, for the autopilot. */
+    const WORLD = createWorld({ mobile: false, warriors: DESKTOP.warriorsPerSide });
+    /** The autopilot's input for the runtime's state. */
+    function bot(h: ReturnType<typeof harness>): Input {
+      const a = autopilot(h.rt.state()!, WORLD);
+      return { drive: a.drive, sight: a.sight, skip: a.skip, assist: a.assist };
+    }
 
     it('the first snapshot after a start, a retry and toMarker() carries nothing from the last; those between carry it', () => {
       const h = harness();
@@ -554,14 +562,15 @@ describe('runtime', () => {
 
     it('so does the snapshot of the frame a replay starts in and of the frame it returns to roam in, each of that frame\'s lakon', () => {
       let h: ReturnType<typeof harness> | null = null;
-      h = harness({ input: () => eastward(h!) });
+      let driver = eastward;
+      h = harness({ input: () => driver(h!) });
       h.rt.start(3, SLUGS(3), 1, ROAM3);
       expect(h.rt.state()!.roam!.replays.map((d) => d.chapter)).toEqual([1, 2]);
       // Roam, until the chariot rolls into parva 1's marker: one frame's snapshots at a time.
-      const frameHuds = () => {
+      const frameHuds = (dt?: number) => {
         const from = vi.mocked(hudOf).mock.calls.length;
         const before = h!.rt.state()!.run.def;
-        h!.frame();
+        h!.frame(dt);
         return { jumped: h!.rt.state()!.run.def !== before, prevs: prevsFrom(from), snaps: vi.mocked(hudOf).mock.results.slice(from) };
       };
       let f = frameHuds();
@@ -576,17 +585,41 @@ describe('runtime', () => {
       expect(h.onHud.mock.calls.at(-1)![0].chapter).toBe(1);
       expect(types(h.onEvents.mock.calls.at(-1)![0])).toContain('introStart');
       expect(hudAt).toBeLessThan(introAt);
-      // Its record taken at once (the fail card's skip, which the runtime offers in any lakon), its outro runs, and
-      // chapter 3's roam resumes at TOWER_EXIT: that frame's snapshot carries nothing either.
-      h.rt.skip();
-      f = frameHuds();
-      for (let k = 0; k < 4 * 60 && !f.jumped; k++) f = frameHuds();
+      // The autopilot rides the replay to its end, and chapter 3's roam resumes at TOWER_EXIT: that frame's snapshot
+      // carries nothing either.
+      driver = bot;
+      f = frameHuds(1 / 30);
+      for (let k = 0; k < 150 * 30 && !f.jumped; k++) f = frameHuds(1 / 30);
       expect(h.rt.state()!.run.def.chapter).toBe(3);
       expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(TOWER_EXIT));
       expect(f.prevs).toEqual([undefined]);
       expect((f.snaps[0].value as HudSnapshot)).toMatchObject({ chapter: 3, phase: 'roam', replay: false });
       expect(types(h.events)).toContain('replayDone');
       expect(types(h.events)).not.toContain('done');
+    });
+
+    it('in a replay, skip() and retry() leave it as it is: no events, and the next snapshot still eases from the last (fix round 1, F7)', () => {
+      let h: ReturnType<typeof harness> | null = null;
+      h = harness({ input: () => eastward(h!) });
+      h.rt.start(3, SLUGS(3), 1, ROAM3);
+      for (let k = 0; k < 20 * 60 && h.rt.state()!.run.def.chapter === 3; k++) h.frame();
+      expect(h.rt.state()!.run.def.chapter).toBe(1);
+      // Into its active part (the intro skipped), where it has a checkpoint.
+      for (let k = 0; k < 120 && h.rt.state()!.run.phase !== 'active'; k++) h.frame();
+      expect(h.rt.state()!.run.checkpoint).not.toBeNull();
+      h.frames(30);
+      const replay = h.rt.state();
+      const sent = h.onEvents.mock.calls.length;
+      h.rt.skip();
+      h.rt.retry();
+      expect(h.rt.state()).toBe(replay);
+      expect(h.onEvents.mock.calls.length).toBe(sent);
+      // A true no-op: the HUD's next snapshot still carries the last, as on any frame.
+      const from = vi.mocked(hudOf).mock.calls.length;
+      h.frames(12);
+      const prevs = prevsFrom(from);
+      expect(prevs.length).toBeGreaterThan(0);
+      expect(prevs.every((p) => p !== undefined)).toBe(true);
     });
 
     it('start() lays roam out from its data, the finished lakon from their slugs; without it there is no roam', () => {

@@ -71,9 +71,12 @@ export interface Runtime {
   start(chapter: number, slugs: readonly string[], seed: number, roam?: RoamOpts): void;
   /** Holds the chapter and circles the chariot where it stands, until the next start or retry. */
   orbit(): void;
-  /** Back to the lakon's last checkpoint, as a failed lakon is retried; nothing before the lakon has one. */
+  /**
+   * Back to the lakon's last checkpoint, as a failed lakon is retried; nothing before the lakon has one, and a replay is
+   * never retried.
+   */
   retry(): void;
-  /** Records the rest of the lakon and goes to its outro; its events are sent at once. */
+  /** Records the rest of the lakon and goes to its outro; its events are sent at once. A replay is never skipped. */
   skip(): void;
   /** In roam, the chariot to the lakon's marker: a jump, so the next HUD snapshot starts afresh. */
   toMarker(): void;
@@ -250,7 +253,10 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     },
     retry() {
       if (disposed || !current?.run.checkpoint) return;
-      current = retryFromCheckpoint(current, world);
+      const back = retryFromCheckpoint(current, world);
+      // A replay is not retried (the engine gives it back as it is): nothing to start afresh.
+      if (back === current) return;
+      current = back;
       mode = 'play';
       sinceHud = Infinity;
       lastHud = null;
