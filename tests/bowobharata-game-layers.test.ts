@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { FX_LAYER, createContext } from '../src/lib/bowobharata/scene/effects';
 import { createDetail } from '../src/lib/bowobharata/scene/materials';
 import { gameQuality, qualityFor } from '../src/lib/bowobharata/scene/quality';
@@ -28,7 +28,6 @@ import { createVolleys } from '../src/lib/bowobharata-game/world/volleys3d';
 import { FADE_KEY, fadeOn, fading, instanced } from '../src/lib/bowobharata-game/world/instancing';
 import { disposeGroup } from '../src/lib/bowobharata-game/world/dispose';
 import * as shapes from '../src/lib/bowobharata-game/world/shapes';
-import * as arrows from '../src/lib/bowobharata-game/arrows3d';
 
 // No DOM under vitest: a canvas whose 2D context swallows every call, so the texture painters run without drawing.
 function stubCanvas() {
@@ -3760,26 +3759,44 @@ describe('three allow-list (all of src)', () => {
   });
 });
 
-describe('arrows3d (back-compatibility)', () => {
-  it('still exports createArrowLayer and laneStart', () => {
-    expect(typeof arrows.createArrowLayer).toBe('function');
-    expect(typeof arrows.laneStart).toBe('function');
-    expect(arrows.laneStart(0).x).toBe(6);
+describe('the tap game is retired (Task 37)', () => {
+  /** The tap game's modules, as a relative import resolves them (without the extension). */
+  const RETIRED = ['rules', 'pick', 'arrows3d'].map((m) => join('src/lib/bowobharata-game', m));
+  const FILES = walk('src').filter((f) => /\.(?:tsx?|mts|mjs|js|astro)$/.test(f));
+  /** Code without its comments. */
+  const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+  /** Every module a source names: imports and re-exports (from '…'), side-effect imports and dynamic import('…'). */
+  const specifiers = (src: string) => [...code(src).matchAll(/\b(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+  /** The module a relative specifier names from `file`, without its extension; null for a package. */
+  const target = (file: string, s: string) => (s.startsWith('.') ? join(dirname(file), s).replace(/\.(?:tsx?|mjs|js)$/, '') : null);
+
+  it('the matcher reads every form of import and resolves each relative path from its own file', () => {
+    const src = [
+      "import { buildWave } from './rules';", 'import type { ScreenPoint } from "../pick";', "export * from './arrows3d.ts';",
+      "import './side-effect';", "const m = await import('../../lib/bowobharata-game/rules');", "import * as THREE from 'three';",
+      "// import { x } from './commented';", '/* import { y } from "./also-commented"; */',
+    ].join('\n');
+    expect(specifiers(src)).toEqual(['./rules', '../pick', './arrows3d.ts', './side-effect', '../../lib/bowobharata-game/rules', 'three']);
+    expect(target('src/lib/bowobharata-game/engine.ts', './rules')).toBe(RETIRED[0]);
+    expect(target('src/lib/bowobharata-game/world/runtime.ts', '../pick')).toBe(RETIRED[1]);
+    expect(target('src/components/BowobharataGame.tsx', '../lib/bowobharata-game/arrows3d.ts')).toBe(RETIRED[2]);
+    expect(target('src/lib/bowobharata-game/world/runtime.ts', './rules')).not.toBe(RETIRED[0]);
+    expect(target('src/lib/x.ts', 'three')).toBeNull();
   });
 
-  it('takes its shapes from world/shapes, which exports them with the bake and merge helpers', () => {
-    const src = read('src/lib/bowobharata-game/arrows3d.ts');
-    expect(src).toMatch(/from '\.\/world\/shapes'/);
-    for (const fn of ['realShaftGeo', 'realTipGeo', 'decoyShaftGeo', 'decoyFletchGeo', 'lotusGeo', 'brokenRingGeo', 'bake', 'merge']) {
-      expect(src, fn).not.toMatch(new RegExp(`function ${fn}\\b|const ${fn}\\b`));
-    }
-    for (const fn of ['realShaftGeo', 'realTipGeo', 'decoyShaftGeo', 'decoyFletchGeo', 'lotusGeo', 'brokenRingGeo'] as const) {
-      const geo = shapes[fn]();
-      expect(geo.getAttribute('position').count, fn).toBeGreaterThan(0);
-    }
-    expect(typeof shapes.bake).toBe('function');
-    expect(typeof shapes.merge).toBe('function');
-    expect(typeof shapes.at).toBe('function');
-    expect(typeof shapes.noUv).toBe('function');
+  it('its modules are gone: rules.ts, pick.ts and arrows3d.ts', () => {
+    for (const m of RETIRED) for (const ext of ['.ts', '.tsx']) expect(existsSync(m + ext), m + ext).toBe(false);
+  });
+
+  it('no file under src/ imports rules, pick or arrows3d, by any path', () => {
+    const found = FILES.flatMap((f) => specifiers(read(f)).filter((s) => RETIRED.includes(target(f, s) ?? '')).map((s) => `${f}: ${s}`));
+    expect(found).toEqual([]);
+  });
+
+  it('no file under src/ imports TUNING, and tuning.ts no longer holds it', () => {
+    const found = FILES.filter((f) => /\bTUNING\b/.test(code(read(f))));
+    expect(found).toEqual([]);
+    // The tables the open world drives by stay.
+    expect(read('src/lib/bowobharata-game/tuning.ts')).toMatch(/export const DRIVE = \{/);
   });
 });

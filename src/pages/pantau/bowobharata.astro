@@ -10,7 +10,8 @@ import { localizedPath, routePath, type Locale } from '../../i18n';
 import { pageLd } from '../../lib/schema-org';
 import { GAME_COPY } from '../../lib/bowobharata-game/copy';
 import { FRAMING as FRAMING_ID } from '../../lib/bowobharata';
-import { FRAMING_EN } from '../../lib/bowobharata-en';
+import { BOWO_UI, FRAMING_EN } from '../../lib/bowobharata-en';
+import { CREDITS, CREDITS_EN } from '../../lib/bowobharata/model-credits';
 const { locale = 'id' } = Astro.props as { locale?: Locale };
 const C = GAME_COPY[locale];
 const path = localizedPath('bowobharataGame', locale);
@@ -23,6 +24,8 @@ const poster = async (src: ImageMetadata) => {
 };
 const posters = { krishna: await poster(krishna), sengkuni: await poster(sengkuni) };
 const framing = (locale === 'en' ? FRAMING_EN : FRAMING_ID)[0];
+// The scene's 3D models, credited under the stage in the page's language (model-credits.ts): CC BY asks for the author.
+const credits = locale === 'en' ? CREDITS_EN : CREDITS;
 ---
 <BaseLayout title={C.title} description={C.description} path={path} locale={locale} jsonLd={ld} breadcrumbs={[{ name: C.crumbMonitor, path: routePath('monitor', locale) }, { name: C.title, path }]}>
   <div class="container pad-block">
@@ -35,5 +38,11 @@ const framing = (locale === 'en' ? FRAMING_EN : FRAMING_ID)[0];
         <p>{C.noscript} <a href={routePath('bowobharata', locale)}>{C.readLink}</a></p>
       </div>
     </BowobharataGame>
+    <section class="bb-credits muted" aria-label={BOWO_UI[locale].creditsLabel}>
+      <h2 class="bb-credits__title">{BOWO_UI[locale].credits}</h2>
+      <ul>
+        {credits.map((c) => <li>{c.text} <a href={c.source} rel="noopener noreferrer">{BOWO_UI[locale].source}</a></li>)}
+      </ul>
+    </section>
   </div>
 </BaseLayout>

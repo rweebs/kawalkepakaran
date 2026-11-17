@@ -6,6 +6,8 @@ import { GAME_DATA_SRC } from '../src/lib/bowobharata-game/data';
 import { perkara, islandData, islandSrc, ISLANDS } from '../src/lib/pantau-props';
 import { kategoriKey } from '../src/lib/perkara';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
+import { BOWO_UI } from '../src/lib/bowobharata-en';
+import { CREDITS, CREDITS_EN, MODELS } from '../src/lib/bowobharata/model-credits';
 
 const read = (f: string) => readFileSync(f, 'utf8');
 
@@ -66,6 +68,40 @@ describe('bowobharata game routes', () => {
   });
   it('GAME_DATA_SRC is the endpoint the page serves', () => {
     expect(GAME_DATA_SRC).toBe(islandSrc('bowobharata-game'));
+  });
+  it('credits the 3D models under the stage, outside the island: CREDITS or CREDITS_EN by locale, under BOWO_UI[locale].credits', () => {
+    const page = read('src/pages/pantau/bowobharata.astro');
+    // The texts come from model-credits.ts: imported, never copied into the page.
+    expect(page).toContain("import { CREDITS, CREDITS_EN } from '../../lib/bowobharata/model-credits';");
+    for (const c of [...CREDITS, ...CREDITS_EN]) expect(page).not.toContain(c.text);
+    expect(page).toContain("const credits = locale === 'en' ? CREDITS_EN : CREDITS;");
+    // One block, after the island's closing tag: under the stage, never inside the island or its fallback.
+    const island = page.indexOf('</BowobharataGame>');
+    const at = page.indexOf('<section class="bb-credits muted"');
+    expect(island).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(island);
+    expect(page.match(/<section class="bb-credits/g)).toHaveLength(1);
+    expect(page.match(/credits\.map\(/g)).toHaveLength(1);
+    const block = page.slice(at, page.indexOf('</section>', at));
+    expect(block).toContain('aria-label={BOWO_UI[locale].creditsLabel}');
+    expect(block).toContain('<h2 class="bb-credits__title">{BOWO_UI[locale].credits}</h2>');
+    // Each entry renders its text and its source link, as on the case page.
+    expect(block).toContain('{credits.map((c) => <li>{c.text} <a href={c.source} rel="noopener noreferrer">{BOWO_UI[locale].source}</a></li>)}');
+    // So the ID page and the EN page (which renders this one with locale="en") each name the author and the licence of
+    // every model whose licence asks for it: MODELS.base, CC BY 3.0.
+    const ccBy = Object.values(MODELS).filter((m) => m.license === 'CC BY 3.0');
+    expect(ccBy).toContain(MODELS.base);
+    for (const locale of ['id', 'en'] as const) {
+      const credits = locale === 'en' ? CREDITS_EN : CREDITS;
+      for (const m of ccBy) {
+        const credit = credits.find((c) => c.source === m.source);
+        expect(credit, `${locale} ${m.source}`).toBeDefined();
+        expect(credit!.text).toContain(m.author);
+        expect(credit!.text).toContain(m.license);
+      }
+      expect(BOWO_UI[locale].credits.length).toBeGreaterThan(0);
+      expect(BOWO_UI[locale].source.length).toBeGreaterThan(0);
+    }
   });
   it('the case page renders entryNote beside the button', () => {
     expect(read('src/pages/kasus/abil-sudarman/bowobharata.astro')).toContain('GAME_COPY[locale].entryNote');

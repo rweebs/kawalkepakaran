@@ -17,8 +17,8 @@ import {
   EMPTY_TOASTS, TOAST_GAP_MS, TOAST_QUEUE_MAX, queueToasts, toastPump, type Toast,
 } from '../src/lib/bowobharata-game/toast-queue';
 import {
-  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, TouchControls, cardView,
-  GameHud, Radar, chapterInfo, toastText, type HudToast,
+  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, SlowPrompt, TouchControls,
+  cardView, GameHud, Radar, chapterInfo, toastText, type GatePosters, type HudToast,
 } from '../src/components/bowobharata-game/screens';
 import BowobharataGame from '../src/components/BowobharataGame';
 
@@ -69,6 +69,14 @@ function expectFramedNames(html: string, locale: 'id' | 'en') {
 
 const sanjaya = (i: number, locale: 'id' | 'en' = 'id') =>
   renderToString(<SanjayaReport locale={locale} chapterIndex={i} chapter={chapters[i]} onNext={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
+/** The version without animation of chapter `i`, with `taken` of its steps taken in. */
+const fallbackPlay = (i: number, taken: number, locale: 'id' | 'en') =>
+  renderToString(<FallbackPlay locale={locale} chapterIndex={i} cards={game.events[i]} prologue={game.prologue} taken={taken} onTake={noop} onDone={noop} />);
+/** The gate's posters as the page hands them to the island (GatePosters): its optimised files, at two widths. */
+const PAGE_POSTERS: GatePosters = {
+  krishna: { src: '/_astro/krishna.640w.webp', srcset: '/_astro/krishna.400w.webp 400w, /_astro/krishna.640w.webp 640w', sizes: '(max-width: 700px) 100vw, 540px' },
+  sengkuni: { src: '/_astro/sengkuni.640w.webp', srcset: '/_astro/sengkuni.400w.webp 400w, /_astro/sengkuni.640w.webp 640w', sizes: '(max-width: 700px) 100vw, 540px' },
+};
 
 /** Every radar kind, some on the rim: kinds and positions only, as the snapshot carries them. */
 const RADAR: RadarItem[] = [
@@ -133,13 +141,16 @@ describe('gate', () => {
       expect(html).toContain(esc(GAME_COPY[locale].gateStart));
     });
 
-    it(`${locale}: "Sengkuni" appears only inside Abil Sudarman's labelled poster`, () => {
-      const html = renderToString(<Gate locale={locale} fallback={false} onStart={noop} />);
-      const fig = html.match(/<figure[^>]*data-poster="sengkuni"[^>]*>[\s\S]*?<\/figure>/);
-      expect(fig).not.toBeNull();
-      expect(fig![0]).toContain('Abil Sudarman');
-      const rest = html.replace(fig![0], '');
-      expect(rest).not.toMatch(/Sengkuni/);
+    it(`${locale}: "Sengkuni" appears only inside Abil Sudarman's labelled poster, with or without the page's posters`, () => {
+      for (const posters of [undefined, PAGE_POSTERS]) {
+        const html = renderToString(<Gate locale={locale} fallback={false} onStart={noop} posters={posters} />);
+        const fig = html.match(/<figure[^>]*data-poster="sengkuni"[^>]*>[\s\S]*?<\/figure>/);
+        expect(fig).not.toBeNull();
+        expect(fig![0]).toContain('Abil Sudarman');
+        if (posters) expect(fig![0]).toContain(`src="${posters.sengkuni.src}"`);
+        const rest = html.replace(fig![0], '');
+        expect(rest).not.toMatch(/Sengkuni/);
+      }
     });
   }
 
@@ -182,24 +193,33 @@ describe("Sanjaya's report", () => {
     expect(sanjaya(empty)).toContain(esc(GAME_COPY.id.sanjayaNone));
   });
 
-  it('no category E name renders on any Sanjaya screen, intro, lakon card, prologue record, fail card, the finale or the HUD and radar in play; Sengkuni never leaves the gate', () => {
-    // Whitelist, by ruling: the pause screen (FRAMING) and the event cards, alone or on a parva's Tercatat screen
-    // (linimasa titles, each under the allegation line), may contain these names; they are still counted for "Sengkuni".
-    // The gate stays out of the sweep: its own test keeps "Sengkuni" inside the labelled poster. Everything else must not.
+  it('no category E name renders on any Sanjaya screen, intro, lakon card, prologue record, fail card, the finale, the HUD and radar in play, the version without animation, the data error or the slow-device offer; Sengkuni never leaves the gate', () => {
+    // Whitelist, by ruling: the pause screen (FRAMING) and the event cards, alone, on a parva's Tercatat screen or taken in
+    // on its version without animation (linimasa titles, each under the allegation line), may contain these names; they
+    // are still counted for "Sengkuni". The gate stays out of the sweep: its own test keeps "Sengkuni" inside the labelled
+    // poster, with or without the page's posters. Everything else must not.
     const checked: string[] = [];
     const screens: string[] = [];
     for (const locale of ['id', 'en'] as const) {
       for (let i = 0; i < COUNT; i++) {
         checked.push(sanjaya(i, locale));
         checked.push(renderToString(<Intro locale={locale} chapterIndex={i} onNext={noop} />));
-        if (i < CHAPTER_TYPES.length) checked.push(renderToString(<MissionCard locale={locale} chapterIndex={i} type={CHAPTER_TYPES[i]} />));
+        if (i < CHAPTER_TYPES.length) {
+          checked.push(renderToString(<MissionCard locale={locale} chapterIndex={i} type={CHAPTER_TYPES[i]} />));
+          // Each lakon's version without animation, before its first step.
+          checked.push(fallbackPlay(i, 0, locale));
+        }
         const cards = game.events[i];
         for (const card of cards) screens.push(renderToString(<CatchCard locale={locale} card={cardView(card, locale)} />));
         if (cards.length > 0) {
           screens.push(renderToString(<Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} report={game.report} />));
+          // ... and with every one of its event cards taken in.
+          screens.push(fallbackPlay(i, cards.length, locale));
         }
       }
       checked.push(renderToString(<Recorded locale={locale} chapterIndex={0} cards={game.events[0]} prologue={game.prologue} whole={false} onNext={noop} report={game.report} />));
+      // The prologue's one step taken in, without animation: its framed dates.
+      checked.push(fallbackPlay(0, 1, locale));
       for (const reason of ['time', 'muddied'] as const) {
         checked.push(renderToString(<FailCard locale={locale} reason={reason} fails={2} assist={false} onRetry={noop} onSkip={noop} />));
       }
@@ -208,15 +228,25 @@ describe("Sanjaya's report", () => {
       const play = inPlay(locale);
       expect(play[2], 'the replay snapshot').toContain(esc(GAME_COPY[locale].roam.replay));
       checked.push(...play);
+      checked.push(renderToString(<DataError locale={locale} onRetry={noop} />));
+      checked.push(renderToString(<SlowPrompt locale={locale} onUseStill={noop} onKeepPlaying={noop} />));
       screens.push(paused(locale));
     }
-    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, Recorded (prologue), FailCard ×2, the finale, TouchControls, GameHud
-    // for 3 snapshots and the Radar; then the whitelisted 24 event cards, 8 Tercatat screens and the pause screen.
+    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, FallbackPlay ×10 (each lakon before its first step, and the
+    // prologue's dates), Recorded (prologue), FailCard ×2, the finale, TouchControls, GameHud for 3 snapshots (their toasts
+    // with them), the Radar, DataError and SlowPrompt; then the whitelisted 24 event cards, 8 Tercatat screens, the 8 parvas'
+    // versions without animation with their cards taken in, and the pause screen.
     expect(CHAPTER_TYPES).toHaveLength(COUNT - 1);
-    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + 1 + 2 + 1 + 1 + 3 + 1));
+    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + COUNT + 1 + 2 + 1 + 1 + 3 + 1 + 2));
     expect(checked.filter((h) => h.includes('class="bg-hud')).length).toBe(2 * 3);
+    // The HUD's toasts (HudToast): the course snapshot's two records, with their dates and channels.
+    expect(checked.join('\n').split('class="bg-toast"').length - 1).toBe(2 * 2);
     expect(checked.filter((h) => h.includes('class="bg-radar"')).length).toBe(2 * 4);
-    expect(screens).toHaveLength(2 * (game.events.flat().length + PARVAS.length + 1));
+    expect(checked.filter((h) => h.includes('class="bg-screen bg-fallback"')).length).toBe(2 * COUNT);
+    expect(checked.filter((h) => h.includes('class="bg-screen bg-error"')).length).toBe(2);
+    expect(checked.filter((h) => h.includes('class="bg-screen bg-slow"')).length).toBe(2);
+    expect(screens).toHaveLength(2 * (game.events.flat().length + 2 * PARVAS.length + 1));
+    expect(screens.filter((h) => h.includes('class="bg-screen bg-fallback"')).length).toBe(2 * PARVAS.length);
     const strict = checked.join('\n');
     expect(eNames).toContain('Abil Sudarman');
     for (const n of eNames) expect(strict, n).not.toContain(esc(n));
@@ -590,6 +620,11 @@ describe('island wiring (source)', () => {
     for (const s of ['pickNearest', 'PARVA_POSES', 'buildWave(', 'catchArrow(', 'catchItems(', 'linimasa-locale', 'parvaEvents(']) {
       expect(src, s).not.toContain(s);
     }
+  });
+
+  it('the screens keep none of it either: no catch items, linimasa import or parva events in screens.tsx (Task 37)', () => {
+    const screens = readFileSync('src/components/bowobharata-game/screens.tsx', 'utf8');
+    for (const s of ['catchItems', 'CatchItem', 'linimasa-locale', 'parvaEvents(']) expect(screens, s).not.toContain(s);
   });
 
   it('drives the runtime by screen: orbit on the intro, start (or retry after a fail) on play, the finale on the finale', () => {
