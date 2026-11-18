@@ -4,11 +4,8 @@
 
 .bg-stage { scroll-margin-top: var(--nav-h, 59px); position: absolute; inset: 0; border-radius: var(--radius-lg); overflow: hidden; background: var(--gradient-hero); }
 .bg-canvas { display: block; width: 100%; height: 100%; }
-.bg-surface { position: absolute; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: crosshair; }
-.bg-surface:focus-visible { outline: 2px solid var(--text-accent); outline-offset: -2px; }
-.bg-reticle { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border: 2px solid var(--accent-amber); border-radius: var(--radius-full); pointer-events: none; }
 
-.bg-screen, .bg-cards { position: relative; z-index: 1; }
+.bg-screen { position: relative; z-index: 1; }
 .bg-screen { display: grid; align-content: start; gap: 0.75rem; max-width: 46rem; width: 100%; margin: 0 auto; padding: 1.25rem; border: 1px solid var(--bg-glass-border); border-radius: var(--radius-lg);
   background: var(--bg-card); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); overflow-wrap: anywhere; box-sizing: border-box; }
 .bg-game[data-mode='3d'] .bg-screen { background: rgba(11, 16, 32, 0.86); min-height: 0; max-height: 100%; overflow-y: auto; align-self: start; }
@@ -76,8 +73,6 @@
 .bg-hud dl div { display: flex; gap: 0.35rem; }
 .bg-hud dt { color: var(--text-secondary); font-size: 0.85rem; }
 .bg-hud dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; }
-.bg-hud__sight { color: var(--accent-amber); font-size: 0.85rem; }
-.bg-hud__pause { margin-left: auto; }
 /* GameHud's parts: the objective panel's lines, the speed with the Laju and Mata rings, and the toasts, each on its own panel. */
 .bg-objective p, .bg-gauges p { margin: 0; }
 /* Pause and Full screen open the panel, with a little room under them. */
@@ -120,8 +115,6 @@
 .bg-radar__mark[data-kind='gate'] { fill: none; stroke: var(--accent-amber); stroke-width: 1.6; stroke-linecap: round; }
 .bg-radar__mark[data-kind='post'] { fill: var(--text-secondary); stroke: var(--bg-primary); stroke-width: 1; }
 .bg-radar__mark[data-kind='post'][data-next] { fill: var(--text-primary); }
-.bg-cards { position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0.75rem; display: grid; pointer-events: none; }
-.bg-cards .bg-catch { max-width: 28rem; background: rgba(11, 16, 32, 0.88); pointer-events: auto; }
 /* Above the letterbox bars (2), the lakon card and the wipe (3): a pause during a lakon intro shows the whole panel. */
 .bg-paused { position: absolute; inset: 0.75rem; max-width: none; overflow-y: auto; z-index: 4; }
 
@@ -163,7 +156,6 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
 @media (max-width: 480px) {
   .bg-screen { padding: 1rem; }
   .bg-posters { grid-template-columns: minmax(0, 1fr); }
-  .bg-cards { left: 0.5rem; right: 0.5rem; bottom: 0.5rem; }
 }
 /* Container queries need Safari 16, Chrome 105 or Firefox 110: an older browser gets neither the short-stage layout nor
    the newest-only rule (the game already needs a modern WebGL2 browser). */

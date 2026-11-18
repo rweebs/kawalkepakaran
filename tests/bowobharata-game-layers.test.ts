@@ -3759,6 +3759,21 @@ describe('three allow-list (all of src)', () => {
   });
 });
 
+describe('world/shapes', () => {
+  // The shapes every volley arrow (volleys3d) and every copy and stamp (pickups3d) are built from: none may come out empty.
+  it('each builder returns geometry with vertices', () => {
+    for (const fn of ['realShaftGeo', 'realTipGeo', 'decoyShaftGeo', 'decoyFletchGeo', 'lotusGeo', 'brokenRingGeo'] as const) {
+      expect(shapes[fn]().getAttribute('position')?.count ?? 0, fn).toBeGreaterThan(0);
+    }
+  });
+
+  it('exports the bake, merge and placement helpers the layers build with', () => {
+    expect(typeof shapes.bake).toBe('function');
+    expect(typeof shapes.merge).toBe('function');
+    expect(typeof shapes.at).toBe('function');
+  });
+});
+
 describe('the tap game is retired (Task 37)', () => {
   /** The tap game's modules, as a relative import resolves them (without the extension). */
   const RETIRED = ['rules', 'pick', 'arrows3d'].map((m) => join('src/lib/bowobharata-game', m));
@@ -3798,5 +3813,14 @@ describe('the tap game is retired (Task 37)', () => {
     expect(found).toEqual([]);
     // The tables the open world drives by stay.
     expect(read('src/lib/bowobharata-game/tuning.ts')).toMatch(/export const DRIVE = \{/);
+  });
+
+  it('its styles are gone from the game CSS: the tap surface, the reticle, the card tray, the HUD sight and pause', () => {
+    const css = read('src/styles/bowobharata-game.css');
+    for (const c of ['bg-surface', 'bg-reticle', 'bg-cards', 'bg-hud__sight', 'bg-hud__pause']) {
+      expect(css, c).not.toMatch(new RegExp(`\\.${c}(?![\\w-])`));
+    }
+    // The event card's own style stays: CatchCard renders it on Tercatat and in the version without animation.
+    expect(css).toMatch(/\.bg-catch\b/);
   });
 });

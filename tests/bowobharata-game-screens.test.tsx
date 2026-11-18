@@ -27,6 +27,7 @@ import {
   mapView, markOpacity, modelBusy, noiseGrains, radarModel, retarget, settled, stepModel, tickModel, trackMarks, type Drawn, type MapView,
   type RadarModel,
 } from '../src/components/bowobharata-game/Radar';
+import { cardOfIn } from './bowobharata-game-sweep';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 const game = gameData(data);
@@ -330,10 +331,7 @@ describe('SlowPrompt', () => {
 
 describe('toastText', () => {
   /** What the island will hand toastText: a card's date and channel in one locale, or null when the chapter has none. */
-  const cardOf = (chapter: number, locale: Locale) => (card: number) => {
-    const e = game.events[chapter]?.[card];
-    return e ? { date: e.dateLabel[locale], channel: e.channel[locale] } : null;
-  };
+  const cardOf = (chapter: number, locale: Locale) => cardOfIn(game.events, chapter, locale);
   const recorded = (card: number, n: number, total: number): GameEvent => ({ type: 'recorded', id: `r${card}`, card, n, total });
 
   it('chapter 1, recorded 1/2: the count, the date and the channel', () => {
@@ -795,7 +793,7 @@ describe('GameHud', () => {
       for (let chapter = 0; chapter < CHAPTER_TYPES.length; chapter++) {
         const cards = game.events[chapter];
         const total = chapter === 0 ? game.prologue.length : cards.length;
-        const cardOf = (card: number) => (cards[card] ? { date: cards[card].dateLabel[l], channel: cards[card].channel[l] } : null);
+        const cardOf = cardOfIn(game.events, chapter, l);
         const records: GameEvent[] = Array.from({ length: total }, (_, k) => ({ type: 'recorded', id: `r${k}`, card: k, n: k + 1, total }));
         const toasts = [...records, ...quiet].flatMap((e, id) => {
           const text = toastText(e, l, chapter, cardOf);

@@ -31,6 +31,11 @@ describe('bowobharata game routes', () => {
     expect(sm).toMatch(/'\/pantau\/bowobharata': \[[^\]]*BowobharataGame\.tsx[^\]]*bowobharata-game[^\]]*perkara\.json/);
     expect(sm).toContain('ROUTES.bowobharataGame.id');
   });
+  it('the game page\'s lastmod sources include the credits it shows (model-credits.ts)', () => {
+    const sm = read('src/lib/sitemap-entries.ts');
+    const sources = sm.match(/'\/pantau\/bowobharata': \[([^\]]*)\]/)?.[1] ?? '';
+    expect(sources).toContain("'src/lib/bowobharata/model-credits.ts'");
+  });
   it('/pantau links to the game and the case page does too, via copy', () => {
     for (const f of ['src/pages/pantau.astro', 'src/pages/kasus/abil-sudarman/bowobharata.astro']) {
       const t = read(f);

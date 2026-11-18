@@ -5,6 +5,7 @@ import type { Perkara } from '../src/lib/perkara';
 import { buildChapters } from '../src/lib/bowobharata-game/record';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { BRAND } from './bowobharata-game-brand';
+import { COMPOUND, DERIVED_FORMS, NAME_FORMS, ONE_NAME, PELAPOR, namesIn } from './bowobharata-game-sweep';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 const totals = { people: 80, events: 300, reportsBy: 13, reportsAgainst: 4, excludedE: 6 };
@@ -107,58 +108,7 @@ const ROLES = /\b(?:Sengkuni|Duryodana|Dursasana|Karna|Durna|Jayadrata|Aswatama|
 
 const unallowed = (s: string) => ALLOWED.reduce((acc, a) => acc.split(a).join(' '), s);
 
-// Terlapor names, every form, for all 86 people. The brief's three forms keep the dossier's decoration (quote marks,
-// role words, degree suffixes, a second party), so the guard also derives the plain names inside them.
-/** Entries that join several names with ' dan ' or ' / ': two parties, or one party under several names. */
-const COMPOUND = new Set(['T-062', 'T-067', 'T-072', 'T-073', 'T-074', 'T-075']);
-/** Entries whose ' dan ' belongs to one name, e.g. "Sekolah Teknik Elektro dan Informatika (STEI) ITB". */
-const ONE_NAME = new Set(['T-061', 'T-065', 'T-069']);
-/** The Pelapor's own name and sites, never a terlapor form: pelaporNote and finaleClose name the Pelapor by right. */
-const PELAPOR = new Set(['rahmat wibowo', 'rahmatwibowo.com', 'rahmatwibowo.net']);
-/** Derived leftovers that describe rather than name. */
-const GENERIC = new Set(['akun', 'akun x', 'akun threads', 'organisasi']);
-const ROLE = /^(?:(?:pengelola|pengendali|pemegang|pemilik)\s+)?akun(?:\s+(?:x|threads))?\s+|^(?:tertulis|ditulis)\s+juga\s+/i;
-const DEGREES = /,\s+(?:[A-Z][A-Za-z]{0,3}\.)+(?:,\s+(?:[A-Z][A-Za-z]{0,3}\.)+)*$/;
-
-/** A name and its plainer spellings: quote marks stripped, degree suffixes cut, leading role words dropped, then a
- * leading initial ("R.") or company form ("PT") dropped. */
-function plainForms(s: string): string[] {
-  const unquoted = s.replace(/"/g, '').trim();
-  const undegreed = unquoted.replace(DEGREES, '').trim();
-  const unroled = undegreed.replace(ROLE, '').trim();
-  return [unquoted, undegreed, unroled, unroled.replace(/^(?:[A-Z]\.|PT)\s+/, '').trim()];
-}
-
-/** The brief's three forms of an entry (the whole nama, the text before ' (', the first parenthesised text), and the
- * derived ones: every parenthesised part, every quoted segment, every @handle with and without its @, and the plain
- * forms of each name, after splitting a compound entry into its names. */
-function nameForms(t: { id: string; nama: string }): { base: string[]; derived: string[] } {
-  const n = t.nama;
-  const first = n.match(/\(([^)]+)\)/)?.[1];
-  const parts = COMPOUND.has(t.id) ? n.split(/ dan | \/ /) : [n];
-  return {
-    base: [n, n.split(' (')[0], ...(first ? [first] : [])],
-    derived: [
-      ...[...n.matchAll(/\(([^)]+)\)/g)].flatMap((m) => plainForms(m[1])),
-      ...[...n.matchAll(/"([^"]+)"/g)].map((m) => m[1]),
-      ...[...n.matchAll(/@\w+/g)].flatMap((m) => [m[0], m[0].slice(1)]),
-      ...parts.flatMap((p) => plainForms(p.split(' (')[0])),
-    ],
-  };
-}
-
-const lower = (f: string) => f.trim().toLowerCase();
-const BASE_FORMS = new Set(data.terlapor.flatMap((t) => nameForms(t).base.map(lower)));
-/** Derived forms that add something: at least 4 characters, not generic, not already a base form. */
-const DERIVED_FORMS = new Set(
-  data.terlapor.flatMap((t) => nameForms(t).derived.map(lower)).filter((f) => f.length >= 4 && !GENERIC.has(f) && !BASE_FORMS.has(f)),
-);
-const NAME_FORMS = [...BASE_FORMS, ...DERIVED_FORMS].filter((f) => !PELAPOR.has(f));
-/** Every terlapor name form a string contains, ignoring case. */
-const namesIn = (s: string): string[] => {
-  const low = s.toLowerCase();
-  return NAME_FORMS.filter((f) => low.includes(f));
-};
+// Terlapor names, every form, for all 86 people, and the matcher: shared with the island test's category E sweep.
 
 /** The game's own strings, from the open-world copy table and the ten rewritten Krishna lines: [key path, ID, EN].
  * One deviation: the ID line of parva 1 says "yang ditanyakan" where the table had the noun "pertanyaan", which the

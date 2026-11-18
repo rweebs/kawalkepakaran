@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import type { ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { readdirSync, readFileSync } from 'node:fs';
+import { parseSync } from 'vite';
 import { FRAMING, PARVAS } from '../src/lib/bowobharata';
 import { FRAMING_EN } from '../src/lib/bowobharata-en';
 import { kategoriKey, type Perkara } from '../src/lib/perkara';
@@ -20,7 +22,9 @@ import {
   Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, SlowPrompt, TouchControls,
   cardView, GameHud, Radar, chapterInfo, toastText, type GatePosters, type HudToast,
 } from '../src/components/bowobharata-game/screens';
+import type { EventCard } from '../src/lib/bowobharata-game/data';
 import BowobharataGame from '../src/components/BowobharataGame';
+import { E_FORMS, NAME_FORMS, cardOfIn, namesIn, readable } from './bowobharata-game-sweep';
 
 const data = JSON.parse(readFileSync('src/data/perkara.json', 'utf8')) as Perkara;
 /** The data the island receives: Sanjaya's chapters as ChapterView, the event cards and the prologue dates. */
@@ -32,15 +36,45 @@ const totals = game.totals;
 const COUNT = chapters.length;
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 const nonE = data.terlapor.filter((t) => kategoriKey(t.kategori) !== 'E');
-/** Each category E person by full name, by the name before the parentheses, and by the name inside them (e.g. "Abil Sudarman"). */
-const eNames = data.terlapor.filter((t) => kategoriKey(t.kategori) === 'E').flatMap((t) => {
-  const inner = t.nama.match(/\(([^)]+)\)/)?.[1];
-  return [t.nama, t.nama.split(' (')[0], ...(inner ? [inner] : [])];
-});
 const noop = () => {};
 const settings = { assist: false, easy: false };
-const paused = (locale: 'id' | 'en') =>
-  renderToString(<Paused locale={locale} onResume={noop} settings={settings} onSettings={noop} onUseStill={noop} />);
+const pausedEl = (locale: 'id' | 'en') => <Paused locale={locale} onResume={noop} settings={settings} onSettings={noop} onUseStill={noop} />;
+const paused = (locale: 'id' | 'en') => renderToString(pausedEl(locale));
+
+/** FRAMING's paragraphs as the gate and the pause panel render them. */
+const framingParas = (locale: 'id' | 'en') => (locale === 'en' ? FRAMING_EN : FRAMING).map((p) => `<p>${esc(p)}</p>`);
+/** How often FRAMING names Abil Sudarman, at Task 37: once, in the right of reply. */
+const FRAMING_ABIL = 1;
+/** The HTML with each piece cut out; each piece must occur in it exactly once. */
+function cutOut(html: string, pieces: readonly string[], where: string): string {
+  let rest = html;
+  for (const p of pieces) {
+    expect(rest.split(p).length - 1, `${where}: ${p.slice(0, 80)}`).toBe(1);
+    rest = rest.replace(p, () => ' ');
+  }
+  return rest;
+}
+/** Text that names Abil Sudarman `abil` times, holds "Sengkuni" `sengkuni` times, and no other category E form. */
+function expectOnlyAbil(text: string, abil: number, sengkuni: number, where: string) {
+  expect(text.match(/abil sudarman/gi)?.length ?? 0, `${where}: Abil Sudarman`).toBe(abil);
+  expect(text.match(/sengkuni/gi)?.length ?? 0, `${where}: Sengkuni`).toBe(sengkuni);
+  expect(namesIn(text.replace(/abil sudarman/gi, ' '), E_FORMS), `${where}: any other category E form`).toEqual([]);
+}
+/** The capitalised JSX tags a TSX source renders: the components it shows. */
+function jsxTags(name: string, src: string): Set<string> {
+  const { program, errors } = parseSync(name, src, { lang: 'tsx' });
+  if (errors.length > 0) throw new Error(`${name} does not parse: ${errors.map((e) => e.message).join('; ')}`);
+  const tags = new Set<string>();
+  const visit = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(visit);
+    if (!v || typeof v !== 'object') return;
+    const n = v as { type?: string; name?: { type?: string; name?: string } };
+    if (n.type === 'JSXOpeningElement' && n.name?.type === 'JSXIdentifier' && /^[A-Z]/.test(n.name.name ?? '')) tags.add(n.name.name!);
+    for (const [k, x] of Object.entries(v)) if (k !== 'parent') visit(x);
+  };
+  visit(program);
+  return tags;
+}
 
 /** Character ranges of every element carrying data-entry (article, li, or the report's section; never nested in its own kind). */
 function entryRanges(html: string): [number, number][] {
@@ -67,11 +101,12 @@ function expectFramedNames(html: string, locale: 'id' | 'en') {
   return seen;
 }
 
-const sanjaya = (i: number, locale: 'id' | 'en' = 'id') =>
-  renderToString(<SanjayaReport locale={locale} chapterIndex={i} chapter={chapters[i]} onNext={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
+const sanjayaEl = (i: number, locale: 'id' | 'en') =>
+  <SanjayaReport locale={locale} chapterIndex={i} chapter={chapters[i]} onNext={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />;
+const sanjaya = (i: number, locale: 'id' | 'en' = 'id') => renderToString(sanjayaEl(i, locale));
 /** The version without animation of chapter `i`, with `taken` of its steps taken in. */
 const fallbackPlay = (i: number, taken: number, locale: 'id' | 'en') =>
-  renderToString(<FallbackPlay locale={locale} chapterIndex={i} cards={game.events[i]} prologue={game.prologue} taken={taken} onTake={noop} onDone={noop} />);
+  <FallbackPlay locale={locale} chapterIndex={i} cards={game.events[i]} prologue={game.prologue} taken={taken} onTake={noop} onDone={noop} />;
 /** The gate's posters as the page hands them to the island (GatePosters): its optimised files, at two widths. */
 const PAGE_POSTERS: GatePosters = {
   krishna: { src: '/_astro/krishna.640w.webp', srcset: '/_astro/krishna.400w.webp 400w, /_astro/krishna.640w.webp 640w', sizes: '(max-width: 700px) 100vw, 540px' },
@@ -97,16 +132,15 @@ const RADAR: RadarItem[] = [
  * The HUD in play, three snapshots: the prologue on a desk; parva 4's course under static on touch, with the toasts of its
  * first two records (their real dates and channels); and a replay of Antar's gate at the top of the clamour, in Mata's sight.
  */
-function inPlay(locale: 'id' | 'en'): string[] {
+function inPlay(locale: 'id' | 'en'): { label: string; el: ReactElement }[] {
   const prologue: HudSnapshot = {
     phase: 'active', chapter: 0, type: CHAPTER_TYPES[0], objective: 'prologue', done: 3, total: game.prologue.length, lap: null, timer: 95,
     speedKmh: 31, surge: { ready: true, frac: 1 }, sight: { on: false, charge: 0.6 }, hint: 'sight', riuh: 1.2, level: 1, staticFrac: 0,
     radar: RADAR, radarM: 84.3, heading: 20, replay: false,
   };
   const cards = game.events[4];
-  const cardOf = (k: number) => (cards[k] ? { date: cards[k].dateLabel[locale], channel: cards[k].channel[locale] } : null);
   const toasts: HudToast[] = [0, 1].flatMap((k) => {
-    const text = toastText({ type: 'recorded', id: `r${k}`, card: k, n: k + 1, total: cards.length }, locale, 4, cardOf);
+    const text = toastText({ type: 'recorded', id: `r${k}`, card: k, n: k + 1, total: cards.length }, locale, 4, cardOfIn(game.events, 4, locale));
     return text === null ? [] : [{ id: k, text }];
   });
   expect(toasts).toHaveLength(2);
@@ -117,12 +151,12 @@ function inPlay(locale: 'id' | 'en'): string[] {
     sight: { on: true, charge: 0.4 }, heading: 300, replay: true,
   };
   const hud = (snap: HudSnapshot, touch: boolean, list: HudToast[]) =>
-    renderToString(<GameHud locale={locale} hud={snap} touch={touch} paused={false} toasts={list} onPause={noop} onFullscreen={noop} canFullscreen />);
+    <GameHud locale={locale} hud={snap} touch={touch} paused={false} toasts={list} onPause={noop} onFullscreen={noop} canFullscreen />;
   return [
-    hud(prologue, false, []),
-    hud(course, true, toasts),
-    hud(gate, false, []),
-    renderToString(<Radar locale={locale} items={RADAR} riuh={4.6} staticFrac={0.3} size={RADAR_PX} m={96} heading={135} sight={false} objective="tower" />),
+    { label: 'prologue', el: hud(prologue, false, []) },
+    { label: 'course', el: hud(course, true, toasts) },
+    { label: 'replay', el: hud(gate, false, []) },
+    { label: 'radar', el: <Radar locale={locale} items={RADAR} riuh={4.6} staticFrac={0.3} size={RADAR_PX} m={96} heading={135} sight={false} objective="tower" /> },
   ];
 }
 
@@ -153,6 +187,32 @@ describe('gate', () => {
       }
     });
   }
+
+  it('holds the gate to category E, in every form and case: only FRAMING and the labelled poster name Abil Sudarman, and only the poster says Sengkuni (both locales, with and without animation, with and without the page\'s posters)', () => {
+    let renders = 0;
+    for (const locale of ['id', 'en'] as const) {
+      for (const fallback of [false, true]) {
+        for (const posters of [undefined, PAGE_POSTERS]) {
+          const where = `${locale}, fallback ${fallback}, ${posters ? "the page's posters" : 'no posters'}`;
+          const html = renderToString(<Gate locale={locale} fallback={fallback} onStart={noop} posters={posters} />);
+          const figures = html.match(/<figure[^>]*data-poster="sengkuni"[^>]*>[\s\S]*?<\/figure>/g) ?? [];
+          expect(figures, `${where}: the labelled poster`).toHaveLength(1);
+          const figure = figures[0] ?? '';
+          const framing = framingParas(locale);
+          const rest = cutOut(html, [...framing, figure], where);
+          // Everything else on the gate: its text and labels, the Krishna poster, the notes, the controls and the button.
+          expect(namesIn(readable(rest), E_FORMS), `${where}: outside FRAMING and the poster`).toEqual([]);
+          expect(rest, `${where}: outside the poster`).not.toMatch(/sengkuni/i);
+          // The page's casting: Abil Sudarman as Sengkuni, once each, and nobody else.
+          expectOnlyAbil(readable(figure), 1, 1, `${where}: the labelled poster`);
+          // FRAMING names Abil Sudarman, for the right of reply, and nobody else; it never says Sengkuni.
+          expectOnlyAbil(readable(framing.join('\n')), FRAMING_ABIL, 0, `${where}: FRAMING`);
+          renders++;
+        }
+      }
+    }
+    expect(renders).toBe(8);
+  });
 
   it('the island renders the gate first, without any terlapor name or dossier entry', () => {
     const html = renderToString(<BowobharataGame locale="id" forceFallback />);
@@ -193,68 +253,94 @@ describe("Sanjaya's report", () => {
     expect(sanjaya(empty)).toContain(esc(GAME_COPY.id.sanjayaNone));
   });
 
-  it('no category E name renders on any Sanjaya screen, intro, lakon card, prologue record, fail card, the finale, the HUD and radar in play, the version without animation, the data error or the slow-device offer; Sengkuni never leaves the gate', () => {
-    // Whitelist, by ruling: the pause screen (FRAMING) and the event cards, alone, on a parva's Tercatat screen or taken in
-    // on its version without animation (linimasa titles, each under the allegation line), may contain these names; they
-    // are still counted for "Sengkuni". The gate stays out of the sweep: its own test keeps "Sengkuni" inside the labelled
-    // poster, with or without the page's posters. Everything else must not.
-    const checked: string[] = [];
-    const screens: string[] = [];
+  it('no category E name, in any form or case, in the text or labels of any screen the island shows in play or between lakon; FRAMING and the event cards\' titles and summaries are cut out, FRAMING is pinned, and "Sengkuni" shows only on Intro 1', () => {
+    // By ruling, only FRAMING (here on the pause panel; the gate has its own test) and the event cards' titles and
+    // summaries (linimasa text, each under the allegation line) may name category E people. Those are cut out of each
+    // render and FRAMING is pinned below. Everything else a person can read or hear (the text, alt, title and the ARIA
+    // labels; not URLs) is held to every form of their names, in any case.
+    /** Each render of the sweep: its component, its HTML, and what is left of it once its cut-outs are out. */
+    const checked: { component: string; label: string; html: string; strict: string }[] = [];
+    const put = (label: string, el: ReactElement, pieces: readonly string[] = []) => {
+      const component = typeof el.type === 'function' ? el.type.name : String(el.type);
+      const html = renderToString(el);
+      checked.push({ component, label: `${component} ${label}`, html, strict: cutOut(html, pieces, `${component} ${label}`) });
+      return html;
+    };
     for (const locale of ['id', 'en'] as const) {
+      /** The cards' titles and summaries, as CatchCard renders them: the only part of a card that may name category E. */
+      const cardText = (cards: readonly EventCard[]) =>
+        cards.map((e) => cardView(e, locale)).flatMap((v) => [`<h3>${esc(v.title)}</h3>`, `<p class="bg-catch__summary">${esc(v.summary)}</p>`]);
       for (let i = 0; i < COUNT; i++) {
-        checked.push(sanjaya(i, locale));
-        checked.push(renderToString(<Intro locale={locale} chapterIndex={i} onNext={noop} />));
+        put(`${locale} ${i}`, sanjayaEl(i, locale));
+        put(`${locale} ${i}`, <Intro locale={locale} chapterIndex={i} onNext={noop} />);
         if (i < CHAPTER_TYPES.length) {
-          checked.push(renderToString(<MissionCard locale={locale} chapterIndex={i} type={CHAPTER_TYPES[i]} />));
+          put(`${locale} ${i}`, <MissionCard locale={locale} chapterIndex={i} type={CHAPTER_TYPES[i]} />);
           // Each lakon's version without animation, before its first step.
-          checked.push(fallbackPlay(i, 0, locale));
+          put(`${locale} ${i} first step`, fallbackPlay(i, 0, locale));
         }
         const cards = game.events[i];
-        for (const card of cards) screens.push(renderToString(<CatchCard locale={locale} card={cardView(card, locale)} />));
+        cards.forEach((card, k) => put(`${locale} ${i}.${k}`, <CatchCard locale={locale} card={cardView(card, locale)} />, cardText([card])));
         if (cards.length > 0) {
-          screens.push(renderToString(<Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} report={game.report} />));
+          put(`${locale} ${i}`, <Recorded locale={locale} chapterIndex={i} cards={cards} prologue={game.prologue} whole onNext={noop} report={game.report} />, cardText(cards));
           // ... and with every one of its event cards taken in.
-          screens.push(fallbackPlay(i, cards.length, locale));
+          put(`${locale} ${i} all taken`, fallbackPlay(i, cards.length, locale), cardText(cards));
         }
       }
-      checked.push(renderToString(<Recorded locale={locale} chapterIndex={0} cards={game.events[0]} prologue={game.prologue} whole={false} onNext={noop} report={game.report} />));
+      put(`${locale} prologue`, <Recorded locale={locale} chapterIndex={0} cards={game.events[0]} prologue={game.prologue} whole={false} onNext={noop} report={game.report} />);
       // The prologue's one step taken in, without animation: its framed dates.
-      checked.push(fallbackPlay(0, 1, locale));
+      put(`${locale} prologue dates`, fallbackPlay(0, 1, locale));
       for (const reason of ['time', 'muddied'] as const) {
-        checked.push(renderToString(<FailCard locale={locale} reason={reason} fails={2} assist={false} onRetry={noop} onSkip={noop} />));
+        put(`${locale} ${reason}`, <FailCard locale={locale} reason={reason} fails={2} assist={false} onRetry={noop} onSkip={noop} />);
       }
-      checked.push(renderToString(<Finale locale={locale} totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />));
-      checked.push(renderToString(<TouchControls locale={locale} manual onChange={noop} surge={{ ready: true, frac: 1 }} sight={{ on: false, charge: 0 }} />));
-      const play = inPlay(locale);
-      expect(play[2], 'the replay snapshot').toContain(esc(GAME_COPY[locale].roam.replay));
-      checked.push(...play);
-      checked.push(renderToString(<DataError locale={locale} onRetry={noop} />));
-      checked.push(renderToString(<SlowPrompt locale={locale} onUseStill={noop} onKeepPlaying={noop} />));
-      screens.push(paused(locale));
+      put(locale, <Finale locale={locale} totals={totals} onAgain={noop} report={game.report} chapterIds={chapterIds} allow3d={false} />);
+      put(locale, <TouchControls locale={locale} manual onChange={noop} surge={{ ready: true, frac: 1 }} sight={{ on: false, charge: 0 }} />);
+      for (const { label, el } of inPlay(locale)) {
+        const html = put(`${locale} ${label}`, el);
+        if (label === 'replay') expect(html, 'the replay snapshot').toContain(esc(GAME_COPY[locale].roam.replay));
+      }
+      put(locale, <DataError locale={locale} onRetry={noop} />);
+      put(locale, <SlowPrompt locale={locale} onUseStill={noop} onKeepPlaying={noop} />);
+      // The pause panel, less FRAMING, which it shows whole and which is pinned below.
+      put(locale, pausedEl(locale), framingParas(locale));
     }
-    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, FallbackPlay ×10 (each lakon before its first step, and the
-    // prologue's dates), Recorded (prologue), FailCard ×2, the finale, TouchControls, GameHud for 3 snapshots (their toasts
-    // with them), the Radar, DataError and SlowPrompt; then the whitelisted 24 event cards, 8 Tercatat screens, the 8 parvas'
-    // versions without animation with their cards taken in, and the pause screen.
+    // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, FallbackPlay ×18 (each lakon before its first step, the
+    // prologue's dates, and each parva with its cards taken in), CatchCard ×24, Recorded ×9 (each parva's Tercatat and the
+    // prologue's), FailCard ×2, the finale, TouchControls, GameHud for 3 snapshots (their toasts with them), the Radar,
+    // DataError, SlowPrompt and the pause panel.
     expect(CHAPTER_TYPES).toHaveLength(COUNT - 1);
-    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + COUNT + 1 + 2 + 1 + 1 + 3 + 1 + 2));
-    expect(checked.filter((h) => h.includes('class="bg-hud')).length).toBe(2 * 3);
+    const tally: Record<string, number> = {};
+    for (const c of checked) tally[c.component] = (tally[c.component] ?? 0) + 1;
+    expect(tally).toEqual({
+      SanjayaReport: 2 * COUNT, Intro: 2 * COUNT, MissionCard: 2 * (COUNT - 1), FallbackPlay: 2 * (COUNT - 1 + 1 + PARVAS.length),
+      CatchCard: 2 * game.events.flat().length, Recorded: 2 * (PARVAS.length + 1), FailCard: 2 * 2, Finale: 2, TouchControls: 2, GameHud: 2 * 3,
+      Radar: 2, DataError: 2, SlowPrompt: 2, Paused: 2,
+    });
+    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + (COUNT - 1 + 1 + PARVAS.length) + game.events.flat().length + (PARVAS.length + 1) + 2 + 1 + 1 + 3 + 1 + 3));
+    expect(checked.filter((c) => c.html.includes('class="bg-hud')).length).toBe(2 * 3);
     // The HUD's toasts (HudToast): the course snapshot's two records, with their dates and channels.
-    expect(checked.join('\n').split('class="bg-toast"').length - 1).toBe(2 * 2);
-    expect(checked.filter((h) => h.includes('class="bg-radar"')).length).toBe(2 * 4);
-    expect(checked.filter((h) => h.includes('class="bg-screen bg-fallback"')).length).toBe(2 * COUNT);
-    expect(checked.filter((h) => h.includes('class="bg-screen bg-error"')).length).toBe(2);
-    expect(checked.filter((h) => h.includes('class="bg-screen bg-slow"')).length).toBe(2);
-    expect(screens).toHaveLength(2 * (game.events.flat().length + 2 * PARVAS.length + 1));
-    expect(screens.filter((h) => h.includes('class="bg-screen bg-fallback"')).length).toBe(2 * PARVAS.length);
-    const strict = checked.join('\n');
-    expect(eNames).toContain('Abil Sudarman');
-    for (const n of eNames) expect(strict, n).not.toContain(esc(n));
-    const all = [strict, ...screens].join('\n');
-    // The only "Sengkuni" outside the gate is the epic's own episode line of parva 1, on its intro card, with no names.
-    const intro1 = renderToString(<Intro locale="id" chapterIndex={1} onNext={noop} />);
-    for (const t of nonE) expect(intro1).not.toContain(esc(t.nama));
-    expect(all.split(/Sengkuni/).length - 1).toBe(2);
+    expect(checked.map((c) => c.html).join('\n').split('class="bg-toast"').length - 1).toBe(2 * 2);
+    expect(checked.filter((c) => c.html.includes('class="bg-radar"')).length).toBe(2 * 4);
+    expect(checked.filter((c) => c.html.includes('class="bg-screen bg-fallback"')).length).toBe(2 * (COUNT - 1 + 1 + PARVAS.length));
+    expect(checked.filter((c) => c.html.includes('class="bg-screen bg-error"')).length).toBe(2);
+    expect(checked.filter((c) => c.html.includes('class="bg-screen bg-slow"')).length).toBe(2);
+    expect(checked.filter((c) => c.html.includes('class="bg-screen bg-paused"')).length).toBe(2);
+    // Category E: every form, any case, in the text and readable labels of every render, less its cut-outs.
+    expect(E_FORMS).toContain('abil sudarman');
+    for (const c of checked) expect(namesIn(readable(c.strict), E_FORMS), c.label).toEqual([]);
+    // FRAMING, cut out of the pause panel: Abil Sudarman as at Task 37, nobody else, and no Sengkuni.
+    for (const locale of ['id', 'en'] as const) expectOnlyAbil(readable(framingParas(locale).join('\n')), FRAMING_ABIL, 0, `FRAMING ${locale}`);
+    // "Sengkuni", in any case and anywhere in the HTML: only the epic's own episode line of parva 1, on its intro card, once
+    // in each locale; no other render. That card names nobody.
+    const sengkuni = Object.fromEntries(checked.map((c) => [c.label, c.html.match(/sengkuni/gi)?.length ?? 0] as const).filter(([, n]) => n > 0));
+    expect(sengkuni).toEqual({ 'Intro id 1': 1, 'Intro en 1': 1 });
+    for (const c of checked.filter((x) => x.label in sengkuni)) expect(namesIn(readable(c.html), NAME_FORMS), c.label).toEqual([]);
+    // Every screen the island renders is in this sweep, or exempt with its reason.
+    const EXEMPT: Record<string, string> = { Gate: "its own test above: FRAMING and Abil Sudarman's labelled poster cut out and pinned" };
+    const island = jsxTags('BowobharataGame.tsx', readFileSync('src/components/BowobharataGame.tsx', 'utf8'));
+    expect(island.size).toBeGreaterThanOrEqual(13);
+    const swept = new Set(checked.map((c) => c.component));
+    for (const tag of island) expect(swept.has(tag) || tag in EXEMPT, `${tag}: the island renders it, yet it is neither swept nor exempt`).toBe(true);
+    for (const tag of Object.keys(EXEMPT)) expect(island.has(tag), `${tag}: exempt, yet the island does not render it`).toBe(true);
   });
 
   it('EN renders the EN allegation line and the EN reply link', () => {
@@ -709,7 +795,16 @@ describe('island wiring (source)', () => {
     // the cards a record's date and channel come from (a replay's own, Task 36).
     expect(src).toMatch(/toastText\(e, locale, lakonChapter\(\), cardOf, events\)/);
     expect(src).toMatch(/const lakonChapter = \(\) => runtimeRef\.current\?\.state\(\)\?\.run\.def\.chapter \?\? flowRef\.current\.chapter;/);
-    expect(src).toMatch(/const cardOf = \(card: number\) => \{\s*const e = dataRef\.current\?\.events\[lakonChapter\(\)\]\?\.\[card\];/);
+    // cardOf, whole: a record's date and channel and nothing else, from the event cards of the lakon's own chapter. The
+    // tests make their toasts with cardOfIn (bowobharata-game-sweep.ts), which returns the same, from the same line.
+    const RETURN = 'return e ? { date: e.dateLabel[locale], channel: e.channel[locale] } : null;';
+    expect(src.match(/\n {2}const cardOf = [\s\S]*?\n {2}\};\n/)?.[0]).toBe(
+      `\n  const cardOf = (card: number) => {\n    const e = dataRef.current?.events[lakonChapter()]?.[card];\n    ${RETURN}\n  };\n`,
+    );
+    expect(readFileSync('tests/bowobharata-game-sweep.ts', 'utf8').match(/\nexport const cardOfIn = [\s\S]*?\n\};\n/)?.[0]).toBe(
+      '\nexport const cardOfIn = (events: readonly (readonly EventCard[])[], chapter: number, locale: Locale) => (card: number) => {\n' +
+        `  const e = events[chapter]?.[card];\n  ${RETURN}\n};\n`,
+    );
     // Every toast event gets its line, whatever else its case does.
     expect(src).toMatch(/\n {6}if \(TOASTED\.has\(e\.type\)\) \{\s*const text = toastText\(/);
     expect(src).toContain('.slice(-TOAST_MAX)');
@@ -906,11 +1001,6 @@ describe('a replay in play (Task 36, ruling 11, decisions 1 and 2)', () => {
     expect(s.run.def.chapter).toBe(1);
     return s;
   }
-  /** As the island's cardOf: a record's date and channel from the event cards of the lakon's chapter. */
-  const cardOfLakon = (s: GameState, locale: 'id' | 'en') => (card: number) => {
-    const e = game.events[s.run.def.chapter]?.[card];
-    return e ? { date: e.dateLabel[locale], channel: e.channel[locale] } : null;
-  };
 
   it("a replay of parva 1 from chapter 3's roam shows parva 1's lakon card", () => {
     const hud = hudOf(replayOf1(), w);
@@ -931,7 +1021,8 @@ describe('a replay in play (Task 36, ruling 11, decisions 1 and 2)', () => {
       s = r.state;
       for (const e of r.events) {
         if (e.type !== 'recorded') continue;
-        const [id, en] = (['id', 'en'] as const).map((l) => toastText(e, l, s.run.def.chapter, cardOfLakon(s, l), r.events));
+        // As the island's cardOf: a record's date and channel from the event cards of the lakon's own chapter.
+        const [id, en] = (['id', 'en'] as const).map((l) => toastText(e, l, s.run.def.chapter, cardOfIn(game.events, s.run.def.chapter, l), r.events));
         toasts.push({ card: e.card, id: id!, en: en! });
       }
     }
