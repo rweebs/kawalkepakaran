@@ -703,7 +703,7 @@ describe('bowobharata-game.css stage and HUD', () => {
   /** The panel's lines other than the Pause row and the replay line. */
   const OTHER_LINES = ['.bg-objective__line', '.bg-hint', '.bg-timer', '.bg-frame'];
   for (const noCq of [false, true]) {
-    it(`in a lakon's intro and outro (the cine on), ${noCq ? 'without container queries, by the fallback' : 'with container queries'}: a tall stage lowers the panel by the letterbox's top bar exactly, a short stage keeps it; the Pause row stays on the stage and 8 px clear of the steer zone and every button; where the lowered panel would reach the lakon card only the row and the replay line show (Task 38, fix round 1, F5, F9 and F10)`, () => {
+    it(`in a lakon's intro and outro (the cine on), ${noCq ? 'without container queries, by the fallback' : 'with container queries'}: a tall stage lowers the panel by the letterbox's top bar exactly, a short stage keeps it; the Pause row stays on the stage and 8 px clear of the steer zone and every button; where the panel would reach the lakon card, lowered or not, only the row and the replay line show (Task 38, fix round 1, F5, F9, F10 and N1)`, () => {
       const bar = px(declared(".bg-stage[data-cine='on']::before", 'height')[0], 1);
       expect(bar).toBe(0.08);
       expect(declared('.bg-objective', 'transition')).toEqual(['top 0.5s ease']);
@@ -715,10 +715,15 @@ describe('bowobharata-game.css stage and HUD', () => {
        * rule: a viewport 600 px tall or more, so it leaves 320×568 in full screen (568 tall) unlowered.
        */
       const lowers = (s: Stage) => (s.noCq ? s.vh >= 600 : s.w > 480 ? s.h > 420 : s.h > 520);
-      /** Where the lowered panel would reach the card: a narrow stage, or a wide one up to 520 px tall (by the viewport:
-       * up to 512 px wide, without container queries). */
-      const near = (s: Stage) => (s.noCq ? s.vw <= 512 : s.w <= 480 || s.h <= 520);
+      /**
+       * Where the panel would reach the lakon card, which is see-through, so through the cine only the Pause row and the
+       * replay line show: a narrow stage once lowered (over 520 px tall), and every wide one up to 520 px tall, lowered
+       * (F9) or kept where it is (N1: up to 420 px). Without container queries, by the viewport: a narrow one (up to
+       * 512 px wide) from 600 px tall, a wide one up to 520 px tall.
+       */
+      const hides = (s: Stage) => (s.noCq ? (s.vw > 512 ? s.vh <= 520 : s.vh >= 600) : s.w > 480 ? s.h <= 520 : s.h > 520);
       const lowered: string[] = [];
+      const hidden: string[] = [];
       for (const base of [...STAGES, ...SMALL, ...DESK]) {
         const s: Stage = { ...base, noCq };
         const L = lay(s);
@@ -735,14 +740,15 @@ describe('bowobharata-game.css stage and HUD', () => {
           expect.soft(apart(row, L.steer, 8), `${where}: the row and the steer zone (${(L.steer.top - row.bottom).toFixed(1)} px)`).toBe(true);
           for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the row and ${name}`).toBe(true);
         }
-        // F9: where the lowered panel would run into the lakon card (a narrow tall stage), through the cine only the Pause
-        // row and the replay line show; the panel itself, its background and its other lines are hidden in place.
-        const hides = lowers(s) && near(s);
+        // F9 and N1: where the panel would run into the lakon card, through the cine only the Pause row and the replay
+        // line show; the panel itself, its background and its other lines are hidden in place.
+        const hide = hides(s);
         const panelVis = maybeValueOf(cineSels, 'visibility', s);
-        expect.soft(panelVis ?? 'visible', `${s.name}: the panel's visibility in the cine`).toBe(hides ? 'hidden' : 'visible');
+        if (panelVis === 'hidden') hidden.push(s.name);
+        expect.soft(panelVis ?? 'visible', `${s.name}: the panel's visibility in the cine`).toBe(hide ? 'hidden' : 'visible');
         for (const kept of ['.bg-actions', '.bg-replay']) {
           const v = maybeValueOf([`.bg-objective > ${kept}`, `.bg-stage[data-cine='on'] .bg-objective > ${kept}`], 'visibility', s);
-          expect.soft(v ?? 'inherit', `${s.name}: ${kept} in the cine`).toBe(hides ? 'visible' : 'inherit');
+          expect.soft(v ?? 'inherit', `${s.name}: ${kept} in the cine`).toBe(hide ? 'visible' : 'inherit');
         }
         for (const line of OTHER_LINES) {
           expect.soft(maybeValueOf([line, `.bg-objective ${line}`, `.bg-stage[data-cine='on'] .bg-objective > ${line}`], 'visibility', s), `${s.name}: ${line} sets no visibility of its own`).toBeUndefined();
@@ -758,6 +764,14 @@ describe('bowobharata-game.css stage and HUD', () => {
       for (const name of ['844×390 in full screen', '915×412 in full screen', '667×375 in full screen', '932×430 in the page']) {
         expect(lowered.includes(name), name).toBe(false);
       }
+      // N1: every wide stage up to 420 px tall, in the page and in full screen, where the panel stays put, shows only the
+      // row and the replay line through the cine, as 932×430 in full screen does lowered; the desk and the small narrow
+      // stage in the page show every line.
+      const shortWide = [...STAGES, ...SMALL].filter((x) => x.w > 480 && x.h <= 420);
+      expect(shortWide.length).toBe(15);
+      for (const st of shortWide) expect(hidden, st.name).toContain(st.name);
+      expect(hidden).toContain('932×430 in full screen');
+      for (const name of ['1280×800 in the page', '1280×800 in full screen', '320×568 in the page']) expect(hidden.includes(name), name).toBe(false);
     });
   }
 
