@@ -39,26 +39,43 @@ function blockEnd(at: number): { open: number; end: number } {
   for (let depth = 1; depth > 0; i++) depth += css[i] === '{' ? 1 : css[i] === '}' ? -1 : 0;
   return { open, end: i };
 }
-/** Every @media and @container block, in source order: its kind, a container's name, its condition and its text. */
+/** The @media blocks between two indices of the stylesheet, in source order: each one's condition and its text. */
+function mediaIn(from: number, to: number): { cond: string; text: string }[] {
+  const out: { cond: string; text: string }[] = [];
+  const re = /@media\b/g;
+  re.lastIndex = from;
+  for (let m = re.exec(css); m && m.index < to; m = re.exec(css)) {
+    const { open, end } = blockEnd(m.index);
+    out.push({ cond: css.slice(m.index + m[0].length, open).trim(), text: css.slice(open + 1, end - 1) });
+    re.lastIndex = end;
+  }
+  return out;
+}
+/**
+ * Every top-level @media, @container and @supports block, in source order: its kind, a container's name, its condition
+ * and its text, and for @supports the @media blocks inside it. A browser with container queries skips the one @supports
+ * block, `not (container-type: size)`; the model of one without them (a stage's `noCq`) reads it, and no @container.
+ */
 const BLOCKS = (() => {
-  const out: { kind: 'media' | 'container'; name: string; cond: string; text: string }[] = [];
-  const re = /@(media|container)\b/g;
+  const out: { kind: 'media' | 'container' | 'supports'; name: string; cond: string; text: string; inner: { cond: string; text: string }[] }[] = [];
+  const re = /@(media|container|supports)\b/g;
   for (let m = re.exec(css); m; m = re.exec(css)) {
     const { open, end } = blockEnd(m.index);
     const raw = css.slice(m.index + m[0].length, open).trim();
     const name = m[1] === 'container' ? (/^[a-z][\w-]*(?=\s)/.exec(raw)?.[0] ?? '') : '';
-    out.push({ kind: m[1] as 'media' | 'container', name, cond: raw.slice(name.length).trim(), text: css.slice(open + 1, end - 1) });
+    const inner = m[1] === 'supports' ? mediaIn(open + 1, end - 1) : [];
+    out.push({ kind: m[1] as 'media' | 'container' | 'supports', name, cond: raw.slice(name.length).trim(), text: css.slice(open + 1, end - 1), inner });
     re.lastIndex = end;
   }
   return out;
 })();
 /** The text of every @container block whose condition is exactly `cond`, joined. */
 const container = (cond: string) => BLOCKS.filter((b) => b.kind === 'container' && b.cond === cond).map((b) => b.text).join('\n');
-/** The CSS outside every @media and @container block. */
+/** The CSS outside every @media, @container and @supports block. */
 const base = (() => {
   let out = '';
   let i = 0;
-  const re = /@(media|container)\b/g;
+  const re = /@(media|container|supports)\b/g;
   for (let m = re.exec(css); m; m = re.exec(css)) {
     out += css.slice(i, m.index);
     i = blockEnd(m.index).end;
@@ -126,14 +143,20 @@ function holds(cond: string, w: number, h: number): boolean {
     return r[2] === '<' ? x < n : r[2] === '<=' ? x <= n : r[2] === '>' ? x > n : x >= n;
   });
 }
-interface Stage { name: string; vw: number; vh: number; w: number; h: number }
+interface Stage { name: string; vw: number; vh: number; w: number; h: number; noCq?: boolean }
 /**
  * The value of `prop` for an element that `sels` match, least specific first, on a stage: the most specific selector
  * that sets it wins, and among its rules the last block that applies. An @media block holds on the viewport (vw × vh),
- * an @container block on the stage (w × h): the HUD and the touch layer, the two containers, are the stage's size.
+ * an @container block on the stage (w × h): the HUD and the touch layer, the two containers, are the stage's size. A
+ * browser without container queries (`noCq`, Safari 15) reads no @container block, and the @media blocks of the
+ * `@supports not (container-type: size)` fallback on the viewport; one with them skips that fallback.
  */
 function maybeValueOf(sels: readonly string[], prop: string, s: Stage): string | undefined {
-  const blocks = [base, ...BLOCKS.filter((b) => (b.kind === 'media' ? holds(b.cond, s.vw, s.vh) : holds(b.cond, s.w, s.h))).map((b) => b.text)];
+  const blocks = [base, ...BLOCKS.flatMap((b) => {
+    if (b.kind === 'media') return holds(b.cond, s.vw, s.vh) ? [b.text] : [];
+    if (b.kind === 'container') return !s.noCq && holds(b.cond, s.w, s.h) ? [b.text] : [];
+    return s.noCq && b.cond === 'not (container-type: size)' ? b.inner.filter((m) => holds(m.cond, s.vw, s.vh)).map((m) => m.text) : [];
+  })];
   for (const sel of [...sels].reverse()) {
     let v: string | undefined;
     for (const b of blocks) v = within(b, sel, prop) ?? v;
@@ -649,6 +672,63 @@ describe('bowobharata-game.css stage and HUD', () => {
     for (const s of STAGES.filter((x) => x.vh > x.vw)) expect.soft(lay(s).slot.right, s.name).toBeGreaterThanOrEqual(s.w - 12);
   });
 
+  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */
+  const SMALL: Stage[] = ([[320, 568, 79], [568, 320, 69], [667, 375, 69]] as const).flatMap(([vw, vh, nav]) => [
+    { name: `${vw}×${vh} in the page`, vw, vh, w: vw - 32, h: Math.min(vh - nav, 896) },
+    { name: `${vw}×${vh} in full screen`, vw, vh, w: vw, h: vh },
+  ]);
+  /** How far two boxes overlap across (px), when they overlap at all; 0 when they do not. */
+  const overlapX = (a: Box, b: Box) => (overlaps(a, b) ? Math.min(a.right, b.right) - Math.max(a.left, b.left) : 0);
+
+  it("in a lakon's intro and outro (the cine on), a tall stage eases the panel down under the letterbox's top bar, its Pause row on the stage and 8 px clear of the steer zone and every button; a short stage keeps the panel where it is (Task 38)", () => {
+    const bar = px(declared(".bg-stage[data-cine='on']::before", 'height')[0], 1);
+    expect(bar).toBe(0.08);
+    expect(declared('.bg-objective', 'transition')).toEqual(['top 0.5s ease']);
+    const cineSels = [...panelSels(), ".bg-stage[data-cine='on'] .bg-objective"];
+    for (const s of [...STAGES, ...SMALL]) {
+      const L = lay(s);
+      const top = px(valueOf(cineSels, 'top', s), s.h);
+      const down = top - L.panel.top;
+      if (s.h > 520) {
+        // Under the bar with the panel's own inset to spare, so the whole row shows.
+        expect.soft(top, `${s.name}: the panel's top under the bar (${(bar * s.h).toFixed(1)} px)`).toBeGreaterThanOrEqual(bar * s.h + 8 - 0.01);
+      } else {
+        expect.soft(down, `${s.name}: a short stage keeps the panel`).toBe(0);
+      }
+      for (const [k, r] of L.rows.entries()) {
+        const row: Box = { ...r, top: r.top + down, bottom: r.bottom + down };
+        const where = `${s.name}, ${LANGS[k]}, in the cine`;
+        expect.soft(row.top, `${where}: the row's top`).toBeGreaterThanOrEqual(s.h > 520 ? bar * s.h + 8 - 0.01 : 8);
+        expect.soft(row.bottom, `${where}: the row's bottom`).toBeLessThanOrEqual(s.h - 8);
+        expect.soft(apart(row, L.steer, 8), `${where}: the row and the steer zone (${(L.steer.top - row.bottom).toFixed(1)} px)`).toBe(true);
+        for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the row and ${name}`).toBe(true);
+      }
+    }
+  });
+
+  it("without container queries (Safari 15: WebGL2 on iOS 15, the iPhone 6s, 7 and first SE), the @supports fallback keeps the Pause row on the stage and clear, and the radar clear of every button and no deeper in the panel than with them, at 320×568, 568×320 and 667×375 (Task 38)", () => {
+    // One fallback block, which a browser with container queries skips: the listed stages' layout stays theirs alone.
+    expect(BLOCKS.filter((b) => b.kind === 'supports').map((b) => b.cond)).toEqual(['not (container-type: size)']);
+    expect(BLOCKS.find((b) => b.kind === 'supports')!.inner.length).toBeGreaterThanOrEqual(4);
+    for (const cq of SMALL) {
+      const s: Stage = { ...cq, noCq: true };
+      const L = lay(s);
+      const C = lay(cq);
+      for (const [k, row] of L.rows.entries()) {
+        const where = `${s.name}, ${LANGS[k]}, without container queries`;
+        expect.soft(row.left, `${where}: the row, left`).toBeGreaterThanOrEqual(8);
+        expect.soft(row.top, `${where}: the row, top`).toBeGreaterThanOrEqual(8);
+        expect.soft(row.right, `${where}: the row, right`).toBeLessThanOrEqual(s.w - 8);
+        expect.soft(apart(row, L.steer, 8), `${where}: the row and the steer zone`).toBe(true);
+        for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the row and ${name}`).toBe(true);
+      }
+      expect.soft(L.slot.top, `${s.name}: the radar's top`).toBeGreaterThanOrEqual(8);
+      expect.soft(L.slot.right, `${s.name}: the radar's right`).toBeLessThanOrEqual(s.w - 8);
+      for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(L.slot, b, 8), `${s.name}: the radar and ${name}, without container queries`).toBe(true);
+      expect.soft(overlapX(L.panel, L.slot), `${s.name}: the panel over the radar, without container queries vs with`).toBeLessThanOrEqual(overlapX(C.panel, C.slot) + 0.01);
+    }
+  });
+
   it('a replay\'s roam.replay line takes one line at every listed stage in both languages, so a replay panel is never taller than the same objective with a one-line hint (Task 36)', () => {
     for (const s of STAGES) {
       const L = lay(s);
@@ -715,11 +795,15 @@ describe('bowobharata-game.css stage and HUD', () => {
     for (const r of hiding) {
       for (const x of r.selector.split(',').map((y) => y.trim())) expect(x).toBe(sel);
     }
-    // In the page the stage is shorter than the screen, so the rule asks the HUD's own size, never the viewport's.
+    // In the page the stage is shorter than the screen, so the rule asks the HUD's own size, never the viewport's; only
+    // the fallback for a browser without container queries (Safari 15, Task 38) asks the viewport, having nothing else.
     expect(within(base, sel, 'display')).toBeUndefined();
     const where = BLOCKS.filter((b) => within(b.text, sel, 'display') !== undefined);
-    expect(where.length).toBeGreaterThan(0);
-    for (const b of where) expect([b.kind, b.name], b.cond).toEqual(['container', 'bg-hud']);
+    expect(where.filter((b) => b.kind !== 'supports').length).toBeGreaterThan(0);
+    for (const b of where) {
+      if (b.kind === 'supports') expect(b.cond).toBe('not (container-type: size)');
+      else expect([b.kind, b.name], b.cond).toEqual(['container', 'bg-hud']);
+    }
     // Hidden whole: nothing clips a toast's height or its text.
     for (const s of ['.bg-toast', '.bg-toasts', '.bg-hud[data-touch] .bg-toast', '.bg-hud[data-touch] .bg-toasts']) {
       for (const p of ['max-height', 'height', 'overflow', 'text-overflow', '-webkit-line-clamp']) expect(declared(s, p), `${s} ${p}`).toEqual([]);
