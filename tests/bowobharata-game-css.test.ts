@@ -57,14 +57,27 @@ function mediaIn(from: number, to: number): { cond: string; text: string }[] {
  * block, `not (container-type: size)`; the model of one without them (a stage's `noCq`) reads it, and no @container.
  */
 const BLOCKS = (() => {
-  const out: { kind: 'media' | 'container' | 'supports'; name: string; cond: string; text: string; inner: { cond: string; text: string }[] }[] = [];
+  const out: { kind: 'media' | 'container' | 'supports'; name: string; cond: string; text: string; inner: { cond: string; text: string }[]; own: string }[] = [];
   const re = /@(media|container|supports)\b/g;
   for (let m = re.exec(css); m; m = re.exec(css)) {
     const { open, end } = blockEnd(m.index);
     const raw = css.slice(m.index + m[0].length, open).trim();
     const name = m[1] === 'container' ? (/^[a-z][\w-]*(?=\s)/.exec(raw)?.[0] ?? '') : '';
     const inner = m[1] === 'supports' ? mediaIn(open + 1, end - 1) : [];
-    out.push({ kind: m[1] as 'media' | 'container' | 'supports', name, cond: raw.slice(name.length).trim(), text: css.slice(open + 1, end - 1), inner });
+    // An @supports block's own rules, outside its @media blocks, which apply wherever the block does.
+    let own = '';
+    if (m[1] === 'supports') {
+      let i = open + 1;
+      const rm = /@media\b/g;
+      rm.lastIndex = open + 1;
+      for (let k = rm.exec(css); k && k.index < end - 1; k = rm.exec(css)) {
+        own += css.slice(i, k.index);
+        i = blockEnd(k.index).end;
+        rm.lastIndex = i;
+      }
+      own += css.slice(i, end - 1);
+    }
+    out.push({ kind: m[1] as 'media' | 'container' | 'supports', name, cond: raw.slice(name.length).trim(), text: css.slice(open + 1, end - 1), inner, own });
     re.lastIndex = end;
   }
   return out;
@@ -148,14 +161,14 @@ interface Stage { name: string; vw: number; vh: number; w: number; h: number; no
  * The value of `prop` for an element that `sels` match, least specific first, on a stage: the most specific selector
  * that sets it wins, and among its rules the last block that applies. An @media block holds on the viewport (vw × vh),
  * an @container block on the stage (w × h): the HUD and the touch layer, the two containers, are the stage's size. A
- * browser without container queries (`noCq`, Safari 15) reads no @container block, and the @media blocks of the
- * `@supports not (container-type: size)` fallback on the viewport; one with them skips that fallback.
+ * browser without container queries (`noCq`) reads no @container block, and the `@supports not (container-type: size)`
+ * fallback: its own rules, and its @media blocks on the viewport. One with container queries skips that fallback.
  */
 function maybeValueOf(sels: readonly string[], prop: string, s: Stage): string | undefined {
   const blocks = [base, ...BLOCKS.flatMap((b) => {
     if (b.kind === 'media') return holds(b.cond, s.vw, s.vh) ? [b.text] : [];
     if (b.kind === 'container') return !s.noCq && holds(b.cond, s.w, s.h) ? [b.text] : [];
-    return s.noCq && b.cond === 'not (container-type: size)' ? b.inner.filter((m) => holds(m.cond, s.vw, s.vh)).map((m) => m.text) : [];
+    return s.noCq && b.cond === 'not (container-type: size)' ? [b.own, ...b.inner.filter((m) => holds(m.cond, s.vw, s.vh)).map((m) => m.text)] : [];
   })];
   for (const sel of [...sels].reverse()) {
     let v: string | undefined;
@@ -477,6 +490,8 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(m).not.toBeNull();
     expect(m![1]).toContain('.bg-game *');
     expect(m![1]).toContain('animation: none');
+    // Transitions too: the panel's 0.5 s ease into the cine (Task 38) relies on it (fix round 1, F7).
+    expect(declared('.bg-game *', 'transition')).toEqual(['none !important']);
     expect(m![1]).toMatch(/\.bg-wipe[^{]*\{[^}]*display: none[^}]*clip-path: none[^}]*transition: none/);
   });
 
@@ -680,37 +695,76 @@ describe('bowobharata-game.css stage and HUD', () => {
   /** How far two boxes overlap across (px), when they overlap at all; 0 when they do not. */
   const overlapX = (a: Box, b: Box) => (overlaps(a, b) ? Math.min(a.right, b.right) - Math.max(a.left, b.left) : 0);
 
-  it("in a lakon's intro and outro (the cine on), a tall stage eases the panel down under the letterbox's top bar, its Pause row on the stage and 8 px clear of the steer zone and every button; a short stage keeps the panel where it is (Task 38)", () => {
-    const bar = px(declared(".bg-stage[data-cine='on']::before", 'height')[0], 1);
-    expect(bar).toBe(0.08);
-    expect(declared('.bg-objective', 'transition')).toEqual(['top 0.5s ease']);
-    const cineSels = [...panelSels(), ".bg-stage[data-cine='on'] .bg-objective"];
-    for (const s of [...STAGES, ...SMALL]) {
-      const L = lay(s);
-      const top = px(valueOf(cineSels, 'top', s), s.h);
-      const down = top - L.panel.top;
-      if (s.h > 520) {
-        // Under the bar with the panel's own inset to spare, so the whole row shows.
-        expect.soft(top, `${s.name}: the panel's top under the bar (${(bar * s.h).toFixed(1)} px)`).toBeGreaterThanOrEqual(bar * s.h + 8 - 0.01);
-      } else {
-        expect.soft(down, `${s.name}: a short stage keeps the panel`).toBe(0);
+  /** Item 9's desk: 1280×800 in the page (1100×741 under the 59 px header) and in full screen. */
+  const DESK: Stage[] = [
+    { name: '1280×800 in the page', vw: 1280, vh: 800, w: 1100, h: 741 },
+    { name: '1280×800 in full screen', vw: 1280, vh: 800, w: 1280, h: 800 },
+  ];
+  /** The panel's lines other than the Pause row and the replay line. */
+  const OTHER_LINES = ['.bg-objective__line', '.bg-hint', '.bg-timer', '.bg-frame'];
+  for (const noCq of [false, true]) {
+    it(`in a lakon's intro and outro (the cine on), ${noCq ? 'without container queries, by the fallback' : 'with container queries'}: a tall stage lowers the panel by the letterbox's top bar exactly, a short stage keeps it; the Pause row stays on the stage and 8 px clear of the steer zone and every button; where the lowered panel would reach the lakon card only the row and the replay line show (Task 38, fix round 1, F5, F9 and F10)`, () => {
+      const bar = px(declared(".bg-stage[data-cine='on']::before", 'height')[0], 1);
+      expect(bar).toBe(0.08);
+      expect(declared('.bg-objective', 'transition')).toEqual(['top 0.5s ease']);
+      const cineSels = [...panelSels(), ".bg-stage[data-cine='on'] .bg-objective"];
+      /**
+       * Whether the cine lowers the panel. With container queries: a wide stage taller than 380 px (F10: from there the
+       * lowered row and replay line keep 8 px above the tallest lakon card, measured on the build), a narrow one taller
+       * than 520 px. Without them, the fallback's own rule: a viewport 600 px tall or more, so it leaves 320×568 in full
+       * screen (568 tall) unlowered.
+       */
+      const lowers = (s: Stage) => (s.noCq ? s.vh >= 600 : s.w > 480 ? s.h > 380 : s.h > 520);
+      /** Where the lowered panel would reach the card: a narrow stage, or a wide one up to 520 px tall (by the viewport:
+       * up to 512 px wide, without container queries). */
+      const near = (s: Stage) => (s.noCq ? s.vw <= 512 : s.w <= 480 || s.h <= 520);
+      const lowered: string[] = [];
+      for (const base of [...STAGES, ...SMALL, ...DESK]) {
+        const s: Stage = { ...base, noCq };
+        const L = lay(s);
+        const top = px(valueOf(cineSels, 'top', s), s.h);
+        const down = top - L.panel.top;
+        // Lowered by the bar's height exactly, from the panel's own inset (0.5rem narrow, 0.75rem otherwise), or not at all.
+        expect.soft(down, `${s.name}: the panel's move in the cine`).toBeCloseTo(lowers(s) ? bar * s.h : 0, 2);
+        if (lowers(s)) lowered.push(s.name);
+        for (const [k, r] of L.rows.entries()) {
+          const row: Box = { ...r, top: r.top + down, bottom: r.bottom + down };
+          const where = `${s.name}, ${LANGS[k]}, in the cine`;
+          expect.soft(row.top, `${where}: the row's top`).toBeGreaterThanOrEqual(lowers(s) ? bar * s.h + 8 - 0.01 : 8);
+          expect.soft(row.bottom, `${where}: the row's bottom`).toBeLessThanOrEqual(s.h - 8);
+          expect.soft(apart(row, L.steer, 8), `${where}: the row and the steer zone (${(L.steer.top - row.bottom).toFixed(1)} px)`).toBe(true);
+          for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the row and ${name}`).toBe(true);
+        }
+        // F9: where the lowered panel would run into the lakon card (a narrow tall stage), through the cine only the Pause
+        // row and the replay line show; the panel itself, its background and its other lines are hidden in place.
+        const hides = lowers(s) && near(s);
+        const panelVis = maybeValueOf(cineSels, 'visibility', s);
+        expect.soft(panelVis ?? 'visible', `${s.name}: the panel's visibility in the cine`).toBe(hides ? 'hidden' : 'visible');
+        for (const kept of ['.bg-actions', '.bg-replay']) {
+          const v = maybeValueOf([`.bg-objective > ${kept}`, `.bg-stage[data-cine='on'] .bg-objective > ${kept}`], 'visibility', s);
+          expect.soft(v ?? 'inherit', `${s.name}: ${kept} in the cine`).toBe(hides ? 'visible' : 'inherit');
+        }
+        for (const line of OTHER_LINES) {
+          expect.soft(maybeValueOf([line, `.bg-objective ${line}`, `.bg-stage[data-cine='on'] .bg-objective > ${line}`], 'visibility', s), `${s.name}: ${line} sets no visibility of its own`).toBeUndefined();
+        }
+        // Outside the cine nothing of the panel is hidden.
+        expect.soft(maybeValueOf(panelSels(), 'visibility', s), `${s.name}: the panel outside the cine`).toBeUndefined();
       }
-      for (const [k, r] of L.rows.entries()) {
-        const row: Box = { ...r, top: r.top + down, bottom: r.bottom + down };
-        const where = `${s.name}, ${LANGS[k]}, in the cine`;
-        expect.soft(row.top, `${where}: the row's top`).toBeGreaterThanOrEqual(s.h > 520 ? bar * s.h + 8 - 0.01 : 8);
-        expect.soft(row.bottom, `${where}: the row's bottom`).toBeLessThanOrEqual(s.h - 8);
-        expect.soft(apart(row, L.steer, 8), `${where}: the row and the steer zone (${(L.steer.top - row.bottom).toFixed(1)} px)`).toBe(true);
-        for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the row and ${name}`).toBe(true);
+      // The desk decides by the wide rule; with container queries the full-screen landscape phones from 390 px tall are
+      // lowered too (F10), and 320×568 in full screen; the fallback lowers neither.
+      expect(lowered).toContain('1280×800 in the page');
+      expect(lowered).toContain('1280×800 in full screen');
+      for (const name of ['844×390 in full screen', '915×412 in full screen', '932×430 in full screen', '320×568 in full screen']) {
+        expect(lowered.includes(name), name).toBe(!noCq);
       }
-    }
-  });
+      for (const name of ['667×375 in full screen', '780×360 in full screen', '932×430 in the page']) expect(lowered.includes(name), name).toBe(false);
+    });
+  }
 
-  it("without container queries (Safari 15: WebGL2 on iOS 15, the iPhone 6s, 7 and first SE), the @supports fallback keeps the Pause row on the stage and clear, and the radar clear of every button and no deeper in the panel than with them, at 320×568, 568×320 and 667×375 (Task 38)", () => {
+  it("without container queries (a browser that reads range-syntax media queries, such as Firefox 63 to 109 and Chrome 104), the @supports fallback keeps the Pause row on the stage and clear, the radar clear of every button and no deeper in the panel than with them, at the 18 listed stages and at 320×568, 568×320 and 667×375; at the listed stages every two parts keep 8 px apart, Laju and the panel included (Task 38, fix round 1, F6 and F8)", () => {
     // One fallback block, which a browser with container queries skips: the listed stages' layout stays theirs alone.
     expect(BLOCKS.filter((b) => b.kind === 'supports').map((b) => b.cond)).toEqual(['not (container-type: size)']);
-    expect(BLOCKS.find((b) => b.kind === 'supports')!.inner.length).toBeGreaterThanOrEqual(4);
-    for (const cq of SMALL) {
+    for (const cq of [...STAGES, ...SMALL]) {
       const s: Stage = { ...cq, noCq: true };
       const L = lay(s);
       const C = lay(cq);
@@ -719,6 +773,7 @@ describe('bowobharata-game.css stage and HUD', () => {
         expect.soft(row.left, `${where}: the row, left`).toBeGreaterThanOrEqual(8);
         expect.soft(row.top, `${where}: the row, top`).toBeGreaterThanOrEqual(8);
         expect.soft(row.right, `${where}: the row, right`).toBeLessThanOrEqual(s.w - 8);
+        expect.soft(row.bottom, `${where}: the row, bottom`).toBeLessThanOrEqual(s.h - 8);
         expect.soft(apart(row, L.steer, 8), `${where}: the row and the steer zone`).toBe(true);
         for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(row, b, 8), `${where}: the row and ${name}`).toBe(true);
       }
@@ -726,6 +781,14 @@ describe('bowobharata-game.css stage and HUD', () => {
       expect.soft(L.slot.right, `${s.name}: the radar's right`).toBeLessThanOrEqual(s.w - 8);
       for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(L.slot, b, 8), `${s.name}: the radar and ${name}, without container queries`).toBe(true);
       expect.soft(overlapX(L.panel, L.slot), `${s.name}: the panel over the radar, without container queries vs with`).toBeLessThanOrEqual(overlapX(C.panel, C.slot) + 0.01);
+      if (STAGES.includes(cq)) {
+        // At the listed stages the fallback keeps what the container rules keep: the panel, the radar and every button 8 px
+        // apart, so the panel stops short of Laju on the 360-wide in-page stages too (the 321-372 px cap's twin, F8).
+        const parts: [string, Box][] = [['the objective panel', L.panel], ['the radar', L.slot], ...Object.entries(L.buttons)];
+        for (const [i, [a, x]] of parts.entries()) {
+          for (const [bn, y] of parts.slice(i + 1)) expect.soft(apart(x, y, 8), `${s.name}: ${a} and ${bn}, without container queries`).toBe(true);
+        }
+      }
     }
   });
 
