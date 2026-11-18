@@ -42,6 +42,7 @@ import {
   atMarker,
   autoRecord,
   drivable,
+  leavablePhase,
   openTargets,
   restore,
   rideLaps,
@@ -989,11 +990,13 @@ export function skipToRecord(s: GameState): { state: GameState; events: GameEven
 /**
  * Leaves a replay by the pause panel's way out (Task 38): the failed replay's return, at once, with score 0, its
  * replayDone and the cut to ROAM_RETURN. A chapter that starts at rest on a finished lakon's ring replays it at once,
- * and a replay otherwise ends only when finished or timed out. Outside a replay the state comes back as it is.
+ * and a replay otherwise ends only when finished or timed out. Only in the replay's intro or its active part
+ * (`leavablePhase`): in its outro or its fail shot, as outside a replay, the state comes back as it is with no events,
+ * so a way out offered a moment too late does nothing and the replay ends by itself with its own score.
  */
 export function leaveReplay(s: GameState, w: World): { state: GameState; events: GameEvent[] } {
   const aside = s.roam?.aside;
-  if (!aside) return { state: s, events: [] };
+  if (!aside || !leavablePhase(s.run.phase)) return { state: s, events: [] };
   const events: GameEvent[] = [];
   return { state: endReplay(s, aside, 0, w, events), events };
 }

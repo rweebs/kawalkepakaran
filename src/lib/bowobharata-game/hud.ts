@@ -3,7 +3,7 @@
 import { clamp, dist } from './geom';
 import { hullMid } from './collide';
 import { speedOf } from './drive';
-import { timeLeft, totalReal, type HintKey, type Phase, type RunState } from './mission-run';
+import { leavablePhase, timeLeft, totalReal, type HintKey, type Phase, type RunState } from './mission-run';
 import type { MissionType } from './missions';
 import { RADAR_PX, bearingOf, easeRange, radarItems, radarRange, sameRadar, type RadarItem } from './radar';
 import { levelEffects, riuhLevel } from './riuh';
@@ -163,12 +163,13 @@ export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
 }
 
 /**
- * Whether the pause panel offers the way out of a replay (Task 38): only while the replay runs its intro or its active
- * part. In its outro it ends by itself within 2.5 s and keeps its score, which leaving would set to 0; in its fail shot it
- * ends within about 1.2 s, at 0 anyway.
+ * Whether the pause panel offers the way out of a replay (Task 38): only while a replay runs its intro or its active part
+ * (`leavablePhase`, which the engine's leaveReplay asks too). The island asks it of the live state as the game pauses,
+ * not of its last HUD snapshot: snapshots come at most every 0.1 s, so the last can still show the active part for a few
+ * frames into the outro, where a leave would turn the finished score into 0.
  */
-export function leaveOffered(h: HudSnapshot | null): boolean {
-  return h !== null && h.replay && (h.phase === 'intro' || h.phase === 'active');
+export function leaveOffered(s: Pick<GameState, 'run' | 'roam'> | null | undefined): boolean {
+  return !!s?.roam?.aside && leavablePhase(s.run.phase);
 }
 
 /** Whether the fail shot has run its seconds on the game clock; a paused scene stops the clock, so a paused shot holds. */

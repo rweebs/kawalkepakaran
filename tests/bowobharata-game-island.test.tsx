@@ -13,7 +13,7 @@ import { NO_INPUT, initChariot, speedOf } from '../src/lib/bowobharata-game/driv
 import { DEFAULT_ASPECT, advance, createWorld, startChapter, type GameState } from '../src/lib/bowobharata-game/engine';
 import { createBot } from '../src/lib/bowobharata-game/autopilot';
 import { realTargets, CHAPTER_TYPES, missionFor, type StepDef } from '../src/lib/bowobharata-game/missions';
-import { startRun, stepRun, type GameEvent, type RunFrame, type RunState } from '../src/lib/bowobharata-game/mission-run';
+import { startRun, stepRun, type GameEvent, type Phase, type RunFrame, type RunState } from '../src/lib/bowobharata-game/mission-run';
 import { RADAR_PX, type RadarItem } from '../src/lib/bowobharata-game/radar';
 import {
   EMPTY_TOASTS, TOAST_GAP_MS, TOAST_QUEUE_MAX, queueToasts, toastPump, type Toast,
@@ -668,14 +668,20 @@ describe('island wiring (source)', () => {
       return src.slice(from, i - 1);
     });
 
-  it("gives the pause panel its way out of a replay only while the HUD shows one in its intro or active part: the runtime leaves the replay, then the play resumes (Task 38)", async () => {
-    expect(src).toContain('onLeaveReplay={leaveOffered(hud) ? leaveReplay : undefined}');
+  it("gives the pause panel its way out of a replay only while the live state, read as the game pauses, is in a replay's intro or active part: the runtime leaves the replay, then the play resumes (Task 38)", async () => {
+    // The offer reads the runtime's live state, not the HUD's last snapshot, which can lag the engine by 0.1 s into a
+    // replay's outro or fail shot (fix round 2, R2-1).
+    expect(src).toContain('onLeaveReplay={leaveOffered(runtimeRef.current?.state()) ? leaveReplay : undefined}');
+    expect(callArgs('leaveOffered')).toEqual(['runtimeRef.current?.state()']);
     // Offered in a replay's intro and its active part; never in its outro (it ends by itself within 2.5 s and keeps its
     // score), its fail shot (it ends at 0 within 1.2 s anyway), roam, or a chapter's own lakon (fix round 1, F3).
     const { leaveOffered } = await import('../src/lib/bowobharata-game/hud');
-    // It reads the snapshot's phase and replay flag alone.
-    const at = (phase: HudSnapshot['phase'], replay: boolean) => leaveOffered({ phase, replay } as HudSnapshot);
+    // It reads the run's phase and whether a replay is aside, alone.
+    const at = (phase: Phase, replay: boolean) =>
+      leaveOffered({ run: { phase }, roam: { aside: replay ? {} : null } } as unknown as Pick<GameState, 'run' | 'roam'>);
     expect(leaveOffered(null)).toBe(false);
+    expect(leaveOffered(undefined)).toBe(false);
+    expect(leaveOffered({ run: { phase: 'intro' }, roam: null } as unknown as Pick<GameState, 'run' | 'roam'>)).toBe(false);
     for (const phase of ['roam', 'intro', 'active', 'outro', 'failed', 'done'] as const) {
       expect([phase, at(phase, true)]).toEqual([phase, phase === 'intro' || phase === 'active']);
       expect([phase, at(phase, false)]).toEqual([phase, false]);
@@ -786,6 +792,20 @@ describe('island wiring (source)', () => {
     expect(src).toContain('const bests = useRef<number[]>([]);');
     expect(src).toContain('const bestLap = useRef<number | null>(null);');
     expect(src).toMatch(/const keepBest = \(chapter: number, score: number\) => \{\s*bests\.current\[chapter\] = Math\.max\(bests\.current\[chapter\] \?\? 0, score\);\s*\};/);
+  });
+
+  it("keeps F1's way out whole: replayDone always calls hideMission, hideMission clears the ref, the card, the letterbox and the wipe, and onEvents takes the leave's replayDone while the game is paused (Task 38, fix round 2, R2-4)", () => {
+    /** Code without its line comments. */
+    const code = (t: string) => t.replace(/\/\/[^\n]*\n/g, '\n');
+    // The case is the two statements, unguarded: a leave at any score takes the card.
+    const replay = src.match(/case 'replayDone':([\s\S]*?)break;/)?.[1] ?? '';
+    expect(code(replay)).toMatch(/^\s*keepBest\(e\.chapter, e\.best\);\s*hideMission\(\);\s*$/);
+    // All four go: with missionUp left true the next introStart would open nothing, and a wipe left set would replay.
+    expect(src).toMatch(/const hideMission = \(\) => \{\s*missionUp\.current = false;\s*setMission\(false\);\s*setCine\(false\);\s*setWipe\(null\);\s*\};/);
+    // The leave runs from the pause panel, so its replayDone arrives while the game is paused: onEvents's only early
+    // return is the screen check.
+    const head = src.match(/const onEvents = \(events: readonly GameEvent\[\]\) => \{([\s\S]*?)const toasts: Toast\[\] = \[\];/)?.[1] ?? '';
+    expect(code(head).trim()).toBe("if (flowRef.current.screen !== 'play') return;");
   });
 
   it('shows the lakon card and the cinema on introStart and on a chapter that starts in its intro; introEnd hides both; outroStart brings the bars back', () => {

@@ -3033,6 +3033,14 @@ describe("a replay's return and its way out (Task 38)", () => {
       const roam = roamIn(3, WEST_OF_M1, { bests });
       let s = intoRing(roam, log);
       expect(s.roam!.aside).not.toBeNull();
+      // Left in its intro, whose shot is live: the leave takes the shot too, so roam's first frame is the chase view's
+      // (fix round 2, R2-2).
+      expect(s.run.phase).toBe('intro');
+      expect(s.shot).not.toBeNull();
+      const fromIntro = leaveReplay(s, desktop);
+      expect(types(fromIntro.events)).toEqual(['replayDone']);
+      expect(fromIntro.state.shot).toBeNull();
+      expect(fromIntro.state.roam!.aside).toBeNull();
       // Into the replay's active part, with a record taken, so its own score is not 0.
       const bot = createBot();
       for (let k = 0; k < 60 / DT && s.run.recorded.length === 0; k++) s = step(s, bot(s, desktop), desktop, log);
@@ -3068,17 +3076,38 @@ describe("a replay's return and its way out (Task 38)", () => {
     }
   }, BOT_TIMEOUT);
 
-  it('a replay can be left in any phase: its intro, its active part, its fail shot and its outro', () => {
+  it("a replay can be left only in its intro and its active part, at score 0 with replayDone; in its outro or its fail shot the state comes back as it is, with no events, and the replay's own end keeps its score (Task 38, fix round 2, R2-1)", () => {
     const roam = roamIn(3, WEST_OF_M1);
     const s = intoRing(roam, []);
     expect(s.run.phase).toBe('intro');
-    for (const phase of ['intro', 'active', 'failed', 'outro'] as const) {
-      const x: GameState = { ...s, run: { ...s.run, phase, phaseT: 0 } };
+    for (const phase of ['intro', 'active'] as const) {
+      const x: GameState = { ...s, run: { ...s.run, phase, phaseT: 0, score: 280 } };
       const out = leaveReplay(x, desktop);
-      expect(types(out.events), phase).toEqual(['replayDone']);
+      expect(out.events, phase).toEqual([{ type: 'replayDone', chapter: 1, score: 0, best: 0 }]);
       expect(out.state.run, phase).toBe(roam.run);
     }
-  });
+    for (const phase of ['outro', 'failed'] as const) {
+      const x: GameState = { ...s, run: { ...s.run, phase, phaseT: 0, score: 280 } };
+      const out = leaveReplay(x, desktop);
+      expect(out.state, phase).toBe(x);
+      expect(out.events, phase).toEqual([]);
+    }
+    // Ridden by the autopilot into its outro: a leave at the outro's first frame changes nothing, and the outro ends by
+    // itself with the score the replay earned.
+    let r = intoRing(roamIn(3, WEST_OF_M1), []);
+    const bot = createBot();
+    for (let k = 0; k < 200 / DT && r.run.phase !== 'outro'; k++) r = step(r, bot(r, desktop), desktop, []);
+    expect(r.run.phase).toBe('outro');
+    expect(r.roam!.aside).not.toBeNull();
+    const earned = r.run.score;
+    expect(earned).toBeGreaterThan(0);
+    const atOutro = leaveReplay(r, desktop);
+    expect(atOutro.state).toBe(r);
+    expect(atOutro.events).toEqual([]);
+    const after: GameEvent[] = [];
+    for (let k = 0; k < 10 / DT && r.roam!.aside; k++) r = step(r, IDLE, desktop, after);
+    expect(after.filter((e) => e.type === 'replayDone')).toEqual([{ type: 'replayDone', chapter: 1, score: earned, best: earned }]);
+  }, BOT_TIMEOUT);
 });
 
 function chaseOptsOf(s: GameState) {

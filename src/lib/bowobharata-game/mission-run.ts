@@ -9,6 +9,15 @@ import { across, realTargets, type GateDef, type MissionDef, type PickupDef, typ
 import { MISSION_TIMING } from './tuning';
 
 export type Phase = 'roam' | 'intro' | 'active' | 'outro' | 'failed' | 'done';
+
+/**
+ * Whether a replay in this phase can be left by the pause panel's way out (Task 38): its intro and its active part. In its
+ * outro it ends by itself within 2.5 s and keeps its score, which a leave would set to 0; in its fail shot it ends within
+ * about 1.2 s, at 0 anyway. The one definition: the engine's leaveReplay and the HUD's leaveOffered both ask it.
+ */
+export function leavablePhase(phase: Phase): boolean {
+  return phase === 'intro' || phase === 'active';
+}
 export type FailReason = 'time' | 'muddied';
 export type HintKey = 'ride' | 'steer' | 'slow' | 'rewrites' | 'sight' | 'stop' | 'surge' | 'drift';
 

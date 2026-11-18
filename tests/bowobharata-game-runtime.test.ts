@@ -12,7 +12,7 @@ import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
 import { ROAM_RETURN, createWorld, worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import { NO_TOUCH, touchInput } from '../src/lib/bowobharata-game/input';
 import { autopilot } from '../src/lib/bowobharata-game/autopilot';
-import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
+import { hudOf, leaveOffered, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { radarRange } from '../src/lib/bowobharata-game/radar';
 import { missionFor } from '../src/lib/bowobharata-game/missions';
 import { scriptedVolley } from '../src/lib/bowobharata-game/volley';
@@ -141,7 +141,7 @@ function harness(o: HarnessOpts = {}) {
     ms += gapMs;
     frame(1 / 60);
   };
-  return { ...fake, rt, onHud, hudFrames, onEvents, events, onError, onSlow, frame, frames, pause };
+  return { ...fake, rt, onHud, hudFrames, onEvents, events, onError, onSlow, frame, frames, pause, frameCount: () => count };
 }
 
 const xzDist = (p: { x: number; z: number }, q: { x: number; z: number }) => Math.hypot(p.x - q.x, p.z - q.z);
@@ -644,6 +644,13 @@ describe('runtime', () => {
       expect(h.rt.state()!.run.def.chapter).toBe(1);
       for (let k = 0; k < 120 && h.rt.state()!.run.phase !== 'active'; k++) h.frame();
       h.frames(30);
+      // Left on a frame that has just sent its snapshot, so by the 0.1 s cycle none is due for 6 more frames: only the
+      // leave's own reset can send the next one at once, however the frames before it fell (fix round 2, R2-3).
+      for (let k = 0, n = h.onHud.mock.calls.length; k < 12; k++, n = h.onHud.mock.calls.length) {
+        h.frame();
+        if (h.onHud.mock.calls.length > n) break;
+      }
+      expect(h.hudFrames.at(-1)).toBe(h.frameCount());
       const sent = h.onEvents.mock.calls.length;
       h.rt.leave();
       expect(h.onEvents.mock.calls.length).toBe(sent + 1);
@@ -651,8 +658,8 @@ describe('runtime', () => {
       const back = h.rt.state()!;
       expect([back.run.def.chapter, back.run.phase, back.roam!.aside]).toEqual([3, 'roam', null]);
       expect(poseOf(back.car)).toEqual(poseOf(ROAM_RETURN));
-      // A jump: the first frame after it sends its snapshot (30 frames at 1/60 s left none due), of the chapter's own
-      // lakon, no longer a replay; and it carries nothing from the replay's.
+      // A jump: the first frame after it sends its snapshot, of the chapter's own lakon, no longer a replay; and it
+      // carries nothing from the replay's.
       const huds = h.onHud.mock.calls.length;
       const from = vi.mocked(hudOf).mock.calls.length;
       h.frame();
@@ -662,6 +669,36 @@ describe('runtime', () => {
       const prevs = prevsFrom(from);
       expect(prevs[0]).toBeUndefined();
       expect(prevs.slice(1).every((p) => p !== undefined)).toBe(true);
+    });
+
+    it("in a replay's outro and in its fail shot the way out is not offered, and a leave there sends nothing: the replay ends by itself, the outro with its own score (Task 38, fix round 2, R2-1)", () => {
+      const idle = (): Input => ({ drive: NO_INPUT, sight: false, skip: true, assist: false });
+      for (const [ride, phase] of [[bot, 'outro'], [idle, 'failed']] as const) {
+        let h: ReturnType<typeof harness> | null = null;
+        let driver: (x: ReturnType<typeof harness>) => Input = eastward;
+        h = harness({ input: () => driver(h!) });
+        h.rt.start(3, SLUGS(3), 1, ROAM3);
+        for (let k = 0; k < 20 * 60 && h.rt.state()!.run.def.chapter === 3; k++) h.frame();
+        expect(h.rt.state()!.run.def.chapter).toBe(1);
+        // Parva 1's replay, ridden by the autopilot to its outro, or left idle until its time runs out: to the first frame
+        // of that phase.
+        driver = ride;
+        for (let k = 0; k < 200 * 60 && h.rt.state()!.run.phase !== phase; k++) h.frame();
+        const s = h.rt.state()!;
+        expect([s.run.phase, s.run.phaseT, s.roam!.aside !== null], phase).toEqual([phase, 0, true]);
+        // The offer reads this state: not offered, whatever the HUD's last snapshot still shows.
+        expect(leaveOffered(s), phase).toBe(false);
+        const earned = s.run.score;
+        if (phase === 'outro') expect(earned).toBeGreaterThan(0);
+        const sent = h.onEvents.mock.calls.length;
+        h.rt.leave();
+        expect(h.rt.state(), phase).toBe(s);
+        expect(h.onEvents.mock.calls.length, phase).toBe(sent);
+        // It ends by itself: the outro with the score earned, the fail shot at 0.
+        for (let k = 0; k < 10 * 60 && h.rt.state()!.roam!.aside; k++) h.frame();
+        const done = h.events.filter((e) => e.type === 'replayDone');
+        expect(done, phase).toEqual([{ type: 'replayDone', chapter: 1, score: phase === 'outro' ? earned : 0, best: phase === 'outro' ? earned : 0 }]);
+      }
     });
 
     it('start() lays roam out from its data, the finished lakon from their slugs; without it there is no roam', () => {

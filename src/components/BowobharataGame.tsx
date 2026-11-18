@@ -587,8 +587,10 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   };
 
   /**
-   * The pause panel's way out of a replay, offered in its intro and its active part (leaveOffered): its failed return
-   * (score 0, the same toast), then the play resumes.
+   * The pause panel's way out of a replay: its failed return (score 0, the same toast), then the play resumes. It is
+   * offered while the live state, read as the game pauses, is in a replay's intro or its active part (leaveOffered), never
+   * from the HUD's last snapshot, which can lag the engine by 0.1 s. Taken in any other phase, the engine leaves the state
+   * as it is, so the play just resumes and the replay ends by itself with its own score.
    */
   const leaveReplay = () => {
     runtimeRef.current?.leave();
@@ -646,7 +648,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               onResume={() => dispatch({ type: 'togglePause' })}
               settings={settings}
               onSettings={setSettings}
-              onLeaveReplay={leaveOffered(hud) ? leaveReplay : undefined}
+              onLeaveReplay={leaveOffered(runtimeRef.current?.state()) ? leaveReplay : undefined}
               onUseStill={() => dispatch({ type: 'useFallback' })}
             />
           )}
