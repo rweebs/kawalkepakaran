@@ -641,7 +641,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               sight={hud.sight}
             />
           )}
-          {playing3d && mission && hud && <MissionCard locale={locale} chapterIndex={hud.chapter} type={hud.type} />}
+          {playing3d && mission && hud && (
+            <div className="bg-cardbox">
+              <MissionCard locale={locale} chapterIndex={hud.chapter} type={hud.type} />
+            </div>
+          )}
           {playing3d && flow.paused && (
             <Paused
               locale={locale}

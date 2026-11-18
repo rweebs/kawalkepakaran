@@ -814,8 +814,11 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/case 'outroStart':\s*setCine\(true\);/);
     // The prologue begins in its intro, so no introStart comes for it: its first HUD snapshot opens the card instead.
     expect(src).toMatch(/if \(first\.current\) \{\s*first\.current = false;\s*if \(h\.phase === 'intro'\) showMission\(\);/);
-    // The lakon running names the card: a replay's own chapter, not the play's (Task 36).
+    // The lakon running names the card: a replay's own chapter, not the play's (Task 36). It sits alone in its box, the
+    // stage-sized container its padding trim queries (fix round 2, R2-5).
     expect(src).toMatch(/<MissionCard locale=\{locale\} chapterIndex=\{hud\.chapter\} type=\{hud\.type\} \/>/);
+    expect(src).toMatch(/<div className="bg-cardbox">\s*<MissionCard locale=\{locale\} chapterIndex=\{hud\.chapter\} type=\{hud\.type\} \/>\s*<\/div>/);
+    expect(src.split('bg-cardbox').length - 1).toBe(1);
     // The gunungan wipe: in at the intro's start, out shortly after.
     expect(src).toContain('<div className="bg-wipe" aria-hidden="true" />');
     // One attribute change per transition ('a' and 'b' alternate so the CSS animation restarts): no second flip.

@@ -474,9 +474,11 @@ describe('bowobharata-game.css stage and HUD', () => {
       return Number(v[0]);
     };
     const paused = z('.bg-paused');
-    for (const sel of [".bg-stage[data-cine='on']::before", ".bg-stage[data-cine='on']::after", '.bg-mission', '.bg-wipe', '.bg-hud']) {
+    for (const sel of [".bg-stage[data-cine='on']::before", ".bg-stage[data-cine='on']::after", '.bg-mission', '.bg-cardbox', '.bg-wipe', '.bg-hud']) {
       expect(paused, sel).toBeGreaterThan(z(sel));
     }
+    // The card's box keeps the card's own layer: over the letterbox's bars, under the pause panel (fix round 2, R2-5).
+    expect(z('.bg-cardbox')).toBe(z('.bg-mission'));
   });
 
   it('uses only the site fonts and no @font-face', () => {
@@ -527,16 +529,22 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(declared('.bg-touch__capsule', 'height')).toEqual(['56px']);
   });
 
-  it('makes the HUD and the touch layer size containers, so their layout follows the stage, in the page or in full screen (Task 34)', () => {
+  it("makes the HUD, the touch layer and the lakon card's box size containers, so their layout follows the stage, in the page or in full screen (Task 34; the card's box, fix round 2, R2-5)", () => {
     expect(has('.bg-hud', 'container: bg-hud / size')).toBe(true);
     expect(has('.bg-touch', 'container: bg-touch / size')).toBe(true);
-    // Each @container block names one of the two, and styles only its own container's parts.
+    expect(has('.bg-cardbox', 'container: bg-card / size')).toBe(true);
+    for (const d of ['position: absolute', 'inset: 0', 'pointer-events: none']) expect(has('.bg-cardbox', d), d).toBe(true);
+    expect(has('.bg-cardbox > .bg-mission', 'pointer-events: auto')).toBe(true);
+    // Each @container block names one of the three, and styles only its own container's parts.
     const blocks = BLOCKS.filter((b) => b.kind === 'container');
     expect(blocks.length).toBeGreaterThan(0);
     for (const b of blocks) {
-      expect(['bg-hud', 'bg-touch'], b.cond).toContain(b.name);
+      expect(['bg-hud', 'bg-touch', 'bg-card'], b.cond).toContain(b.name);
       const sels = [...b.text.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((x) => x.trim()));
-      for (const sel of sels) expect(b.name === 'bg-touch' ? sel.startsWith('.bg-touch') : !sel.includes('bg-touch'), `${b.name}: ${sel}`).toBe(true);
+      for (const sel of sels) {
+        const own = b.name === 'bg-touch' ? sel.startsWith('.bg-touch') : b.name === 'bg-card' ? sel.startsWith('.bg-cardbox') : !sel.includes('bg-touch') && !sel.includes('bg-cardbox');
+        expect(own, `${b.name}: ${sel}`).toBe(true);
+      }
     }
     // The HUD's corner rules moved off the viewport: none is left in an @media block.
     for (const b of BLOCKS.filter((x) => x.kind === 'media')) {
@@ -703,7 +711,7 @@ describe('bowobharata-game.css stage and HUD', () => {
   /** The panel's lines other than the Pause row and the replay line. */
   const OTHER_LINES = ['.bg-objective__line', '.bg-hint', '.bg-timer', '.bg-frame'];
   for (const noCq of [false, true]) {
-    it(`in a lakon's intro and outro (the cine on), ${noCq ? 'without container queries, by the fallback' : 'with container queries'}: a tall stage lowers the panel by the letterbox's top bar exactly, a short stage keeps it; the Pause row stays on the stage and 8 px clear of the steer zone and every button; where the panel would reach the lakon card, lowered or not, only the row and the replay line show (Task 38, fix round 1, F5, F9, F10 and N1)`, () => {
+    it(`in a lakon's intro and outro (the cine on), ${noCq ? 'without container queries, by the fallback' : 'with container queries'}: a tall stage lowers the panel by the letterbox's top bar exactly, a short stage keeps it; the Pause row stays on the stage and 8 px clear of the steer zone and every button; where the panel would reach the lakon card, lowered or not, only the row and the replay line show; a wide stage up to 380 px tall trims the card's vertical padding (Task 38, fix round 1, F5, F9, F10 and N1; fix round 2, R2-5)`, () => {
       const bar = px(declared(".bg-stage[data-cine='on']::before", 'height')[0], 1);
       expect(bar).toBe(0.08);
       expect(declared('.bg-objective', 'transition')).toEqual(['top 0.5s ease']);
@@ -724,6 +732,7 @@ describe('bowobharata-game.css stage and HUD', () => {
       const hides = (s: Stage) => (s.noCq ? (s.vw > 512 ? s.vh <= 520 : s.vh >= 600) : s.w > 480 ? s.h <= 520 : s.h > 520);
       const lowered: string[] = [];
       const hidden: string[] = [];
+      const trimmed: string[] = [];
       for (const base of [...STAGES, ...SMALL, ...DESK]) {
         const s: Stage = { ...base, noCq };
         const L = lay(s);
@@ -755,6 +764,12 @@ describe('bowobharata-game.css stage and HUD', () => {
         }
         // Outside the cine nothing of the panel is hidden.
         expect.soft(maybeValueOf(panelSels(), 'visibility', s), `${s.name}: the panel outside the cine`).toBeUndefined();
+        // R2-5: on a wide stage up to 380 px tall (without container queries, a wide viewport up to 380 px tall) the lakon
+        // card trims its vertical padding, so the tallest cards keep 8 px under the replay line; nowhere else.
+        const trims = s.noCq ? s.vw > 512 && s.vh <= 380 : s.w > 480 && s.h <= 380;
+        const pad = maybeValueOf(['.bg-cardbox > .bg-mission'], 'padding-block', s);
+        if (pad !== undefined) trimmed.push(s.name);
+        expect.soft(pad, `${s.name}: the lakon card's vertical padding`).toBe(trims ? '0.75rem' : undefined);
       }
       // The desk decides by the wide rule; with container queries 932×430 in full screen is lowered too (F10), and 320×568
       // in full screen; the fallback lowers neither.
@@ -772,6 +787,16 @@ describe('bowobharata-game.css stage and HUD', () => {
       for (const st of shortWide) expect(hidden, st.name).toContain(st.name);
       expect(hidden).toContain('932×430 in full screen');
       for (const name of ['1280×800 in the page', '1280×800 in full screen', '320×568 in the page']) expect(hidden.includes(name), name).toBe(false);
+      // R2-5: the three shortest landscape phones in full screen trim the card in both runs; 844×390 in full screen and
+      // the desk keep it whole. In the page, the landscape phones' stages (285 to 325 px tall) trim it too with container
+      // queries; the fallback goes by the viewport, so it leaves those over 380 px tall whole.
+      for (const name of ['780×360 in full screen', '640×360 in full screen', '667×375 in full screen', '568×320 in full screen', '780×360 in the page']) {
+        expect(trimmed, name).toContain(name);
+      }
+      for (const name of ['844×390 in full screen', '915×412 in full screen', '932×430 in full screen', '1280×800 in the page', '360×640 in the page']) {
+        expect(trimmed.includes(name), name).toBe(false);
+      }
+      for (const name of ['844×390 in the page', '915×412 in the page', '932×430 in the page']) expect(trimmed.includes(name), name).toBe(!noCq);
     });
   }
 
