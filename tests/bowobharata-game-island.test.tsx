@@ -38,7 +38,8 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const nonE = data.terlapor.filter((t) => kategoriKey(t.kategori) !== 'E');
 const noop = () => {};
 const settings = { assist: false, easy: false };
-const pausedEl = (locale: 'id' | 'en') => <Paused locale={locale} onResume={noop} settings={settings} onSettings={noop} onUseStill={noop} />;
+// With the way out of a replay (Task 38), so its line is swept too.
+const pausedEl = (locale: 'id' | 'en') => <Paused locale={locale} onResume={noop} settings={settings} onSettings={noop} onLeaveReplay={noop} onUseStill={noop} />;
 const paused = (locale: 'id' | 'en') => renderToString(pausedEl(locale));
 
 /** FRAMING's paragraphs as the gate and the pause panel render them. */
@@ -666,6 +667,13 @@ describe('island wiring (source)', () => {
       for (; i < src.length && depth > 0; i++) depth += src[i] === '(' ? 1 : src[i] === ')' ? -1 : 0;
       return src.slice(from, i - 1);
     });
+
+  it("gives the pause panel its way out of a replay only while the HUD shows one: the runtime leaves the replay, then the play resumes (Task 38)", () => {
+    expect(src).toContain('onLeaveReplay={hud?.replay ? leaveReplay : undefined}');
+    expect(src).toMatch(/const leaveReplay = \(\) => \{\s*runtimeRef\.current\?\.leave\(\);\s*dispatch\(\{ type: 'togglePause' \}\);\s*\};/);
+    expect(callArgs('leave')).toEqual(['']);
+    expect(src.split('onLeaveReplay=').length - 1).toBe(1);
+  });
 
   it('loads the scene dynamically as the game, and falls back on failure', () => {
     expect(src).toContain("import('../lib/bowobharata/KurukshetraScene')");

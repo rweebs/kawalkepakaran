@@ -677,11 +677,12 @@ export function DataError({ locale, onRetry }: { locale: Locale; onRetry: () => 
   );
 }
 
-/** The pause panel, in the brief's order: resume (and, when given, retry and the way to the marker); FRAMING, the notes
- * and the reply link; the controls; the two settings toggles; then the link to the version without animation. */
-export function Paused({ locale, onResume, settings, onSettings, onRetry, onToMarker, onUseStill }: {
+/** The pause panel, in the brief's order: resume (and, when given, retry, the way to the marker and, during a replay, the
+ * way out of it); FRAMING, the notes and the reply link; the controls; the two settings toggles; then the link to the
+ * version without animation. */
+export function Paused({ locale, onResume, settings, onSettings, onRetry, onToMarker, onLeaveReplay, onUseStill }: {
   locale: Locale; onResume: () => void; settings: Settings; onSettings: (s: Settings) => void;
-  onRetry?: () => void; onToMarker?: () => void; onUseStill: () => void;
+  onRetry?: () => void; onToMarker?: () => void; onLeaveReplay?: () => void; onUseStill: () => void;
 }) {
   const c = GAME_COPY[locale];
   const framing = locale === 'en' ? FRAMING_EN : FRAMING;
@@ -693,6 +694,7 @@ export function Paused({ locale, onResume, settings, onSettings, onRetry, onToMa
         <button type="button" className="btn" onClick={onResume}>{c.actions.resume}</button>
         {onRetry && <button type="button" className="btn" onClick={onRetry}>{c.settings.retry}</button>}
         {onToMarker && <button type="button" className="btn" onClick={onToMarker}>{c.settings.toMarker}</button>}
+        {onLeaveReplay && <button type="button" className="btn" onClick={onLeaveReplay}>{c.settings.leaveReplay}</button>}
       </div>
       {framing.map((p) => <p key={p}>{p}</p>)}
       <Notes locale={locale} />

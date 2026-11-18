@@ -250,6 +250,19 @@ describe('Paused', () => {
     });
   }
 
+  for (const l of LOCALES) {
+    it(`${l}: offers the way out of a replay only when given, as the first row's action after resume (Task 38)`, () => {
+      const c = GAME_COPY[l];
+      const without = renderToString(<Paused locale={l} onResume={noop} settings={settings} onSettings={noop} onUseStill={noop} />);
+      expect(without).not.toContain(esc(c.settings.leaveReplay));
+      const html = renderToString(<Paused locale={l} onResume={noop} settings={settings} onSettings={noop} onLeaveReplay={noop} onUseStill={noop} />);
+      const open = html.indexOf('<div class="bg-actions">');
+      const firstRow = html.slice(open, html.indexOf('</div>', open));
+      expect(firstRow).toBe(`<div class="bg-actions"><button type="button" class="btn">${esc(c.actions.resume)}</button><button type="button" class="btn">${esc(c.settings.leaveReplay)}</button>`);
+      expect(count(html, esc(c.settings.leaveReplay))).toBe(1);
+    });
+  }
+
   it('offers retry and the way to the marker only when given', () => {
     const c = GAME_COPY.en;
     const html = renderToString(<Paused locale="en" onResume={noop} settings={settings} onSettings={noop} onRetry={noop} onToMarker={noop} onUseStill={noop} />);

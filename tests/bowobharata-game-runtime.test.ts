@@ -9,7 +9,7 @@ import { dharmaMix, groundHeight, type Pose } from '../src/lib/bowobharata/stage
 import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
 import { NO_INPUT, speedOf } from '../src/lib/bowobharata-game/drive';
 import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
-import { createWorld, worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { REPLAY_RETURN, createWorld, worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
 import { autopilot } from '../src/lib/bowobharata-game/autopilot';
 import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { radarRange } from '../src/lib/bowobharata-game/radar';
@@ -585,13 +585,13 @@ describe('runtime', () => {
       expect(h.onHud.mock.calls.at(-1)![0].chapter).toBe(1);
       expect(types(h.onEvents.mock.calls.at(-1)![0])).toContain('introStart');
       expect(hudAt).toBeLessThan(introAt);
-      // The autopilot rides the replay to its end, and chapter 3's roam resumes at TOWER_EXIT: that frame's snapshot
-      // carries nothing either.
+      // The autopilot rides the replay to its end, and chapter 3's roam resumes at REPLAY_RETURN (TOWER_EXIT's place,
+      // turned north-east: Task 38): that frame's snapshot carries nothing either.
       driver = bot;
       f = frameHuds(1 / 30);
       for (let k = 0; k < 150 * 30 && !f.jumped; k++) f = frameHuds(1 / 30);
       expect(h.rt.state()!.run.def.chapter).toBe(3);
-      expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(TOWER_EXIT));
+      expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(REPLAY_RETURN));
       expect(f.prevs).toEqual([undefined]);
       expect((f.snaps[0].value as HudSnapshot)).toMatchObject({ chapter: 3, phase: 'roam', replay: false });
       expect(types(h.events)).toContain('replayDone');
@@ -620,6 +620,37 @@ describe('runtime', () => {
       const prevs = prevsFrom(from);
       expect(prevs.length).toBeGreaterThan(0);
       expect(prevs.every((p) => p !== undefined)).toBe(true);
+    });
+
+    it("leave() ends a replay at once: replayDone at score 0 sent at once, back in roam at REPLAY_RETURN, the next snapshot afresh; outside a replay it does nothing (Task 38)", () => {
+      let h: ReturnType<typeof harness> | null = null;
+      h = harness({ input: () => eastward(h!) });
+      h.rt.start(3, SLUGS(3), 1, ROAM3);
+      // Outside a replay: nothing changes and nothing is sent.
+      h.frames(10);
+      const roam = h.rt.state();
+      const sentBefore = h.onEvents.mock.calls.length;
+      h.rt.leave();
+      expect(h.rt.state()).toBe(roam);
+      expect(h.onEvents.mock.calls.length).toBe(sentBefore);
+      // Into parva 1's replay, then out of it from its active part.
+      for (let k = 0; k < 20 * 60 && h.rt.state()!.run.def.chapter === 3; k++) h.frame();
+      expect(h.rt.state()!.run.def.chapter).toBe(1);
+      for (let k = 0; k < 120 && h.rt.state()!.run.phase !== 'active'; k++) h.frame();
+      h.frames(30);
+      const sent = h.onEvents.mock.calls.length;
+      h.rt.leave();
+      expect(h.onEvents.mock.calls.length).toBe(sent + 1);
+      expect(h.onEvents.mock.calls.at(-1)![0]).toEqual([{ type: 'replayDone', chapter: 1, score: 0, best: 0 }]);
+      const back = h.rt.state()!;
+      expect([back.run.def.chapter, back.run.phase, back.roam!.aside]).toEqual([3, 'roam', null]);
+      expect(poseOf(back.car)).toEqual(poseOf(REPLAY_RETURN));
+      // A jump: the next snapshot carries nothing from the replay's.
+      const from = vi.mocked(hudOf).mock.calls.length;
+      h.frames(12);
+      const prevs = prevsFrom(from);
+      expect(prevs[0]).toBeUndefined();
+      expect(prevs.slice(1).every((p) => p !== undefined)).toBe(true);
     });
 
     it('start() lays roam out from its data, the finished lakon from their slugs; without it there is no roam', () => {

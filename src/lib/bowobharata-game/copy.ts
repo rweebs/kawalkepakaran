@@ -143,8 +143,11 @@ export interface GameCopy {
   /** The Tercatat screen: its title, the prologue's count line, the heading of the framed prologue dates, and the note
    * shown when the skip filled part of the record in. */
   recordedScreen: { title: string; prologue: (o: { n: number }) => string; dates: string; skipped: string };
-  /** The pause panel: the two toggles, retry, the way to the lotus marker, and the version without animation. */
-  settings: { title: string; assist: string; easy: string; retry: string; toMarker: string; still: string };
+  /**
+   * The pause panel: the two toggles, retry, the way to the lotus marker, the way out of a replay (`leaveReplay`, which
+   * ends it at score 0: Task 38), and the version without animation.
+   */
+  settings: { title: string; assist: string; easy: string; retry: string; toMarker: string; leaveReplay: string; still: string };
   /** The prompt offered to a device that stays slow. */
   slow: { message: string; useStill: string; keepPlaying: string };
   /** The controls as two titled lists: keyboard, and touch. */
@@ -281,6 +284,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       easy: 'Kontrol mudah',
       retry: 'Ulangi dari titik simpan',
       toMarker: 'Langsung ke penanda teratai',
+      leaveReplay: 'Akhiri main lagi',
       still: 'Versi tanpa animasi',
     },
     slow: {
@@ -488,6 +492,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
       easy: 'Easy control',
       retry: 'Try again from the checkpoint',
       toMarker: 'Go straight to the lotus marker',
+      leaveReplay: 'End the replay',
       still: 'Version without animation',
     },
     slow: {

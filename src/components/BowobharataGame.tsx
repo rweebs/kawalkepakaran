@@ -585,6 +585,12 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (canSkip()) skipPulse.current = true;
   };
 
+  /** The pause panel's way out of a replay: its failed return (score 0, the same toast), then the play resumes. */
+  const leaveReplay = () => {
+    runtimeRef.current?.leave();
+    dispatch({ type: 'togglePause' });
+  };
+
   const next = () => dispatch({ type: 'next' });
   const chapter = data?.chapters[flow.chapter];
   const cards = data?.events[flow.chapter] ?? [];
@@ -636,6 +642,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               onResume={() => dispatch({ type: 'togglePause' })}
               settings={settings}
               onSettings={setSettings}
+              onLeaveReplay={hud?.replay ? leaveReplay : undefined}
               onUseStill={() => dispatch({ type: 'useFallback' })}
             />
           )}

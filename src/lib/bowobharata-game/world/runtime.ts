@@ -11,6 +11,7 @@ import {
   DEFAULT_ASPECT,
   advance,
   createWorld,
+  leaveReplay,
   mixOf,
   retryFromCheckpoint,
   skipToRecord,
@@ -78,6 +79,11 @@ export interface Runtime {
   retry(): void;
   /** Records the rest of the lakon and goes to its outro; its events are sent at once. A replay is never skipped. */
   skip(): void;
+  /**
+   * Leaves a replay at once, by its failed return (score 0, its replayDone sent at once, the cut back to roam); outside a
+   * replay it does nothing.
+   */
+  leave(): void;
   /** In roam, the chariot to the lakon's marker: a jump, so the next HUD snapshot starts afresh. */
   toMarker(): void;
   /** The finale, with or without a chapter played: the engine rests and the camera circles Sanjaya's tower at full dawn. */
@@ -267,6 +273,16 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
       const out = skipToRecord(current);
       current = out.state;
       if (out.events.length > 0) o.onEvents(out.events);
+    },
+    leave() {
+      if (disposed || !current) return;
+      const out = leaveReplay(current, world);
+      if (out.state === current) return;
+      current = out.state;
+      // A jump, as at the replay's own return: the HUD starts afresh with the next snapshot.
+      sinceHud = Infinity;
+      lastHud = null;
+      o.onEvents(out.events);
     },
     toMarker() {
       if (disposed || !current) return;
