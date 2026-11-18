@@ -2776,7 +2776,8 @@ describe('pickups', () => {
         expect(drawn(game.root, 'lontar')).toBe(2);
         for (const k of [0, 1]) expect(fadeAt(leaves, k)).toBe(1);
         expect(flatDist(placeOf(named(game.root, 'marker-ring')), lakonOf(1).marker!)).toBeLessThanOrEqual(1e-9);
-        // Its end, after its outro: back in chapter 3's roam at REPLAY_RETURN, under the cut to the chase view.
+        // Its end, after its outro: back in chapter 3's roam at ROAM_RETURN (TOWER_EXIT's place, facing north), under the
+        // cut to the chase view.
         let s: GameState = { ...replay, run: { ...replay.run, phase: 'outro', phaseT: 0 } };
         for (let k = 0; k < 4 * 64 && s.run.def.chapter === 1; k++) s = advance(s, IDLE, 1 / 64, WORLD).state;
         expect(s.run.def.chapter).toBe(3);

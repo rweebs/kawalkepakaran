@@ -234,15 +234,20 @@ html:has(.bg-stage[data-play='on']:not([data-paused])) :is(.theme-song, .theme-s
    which is the viewport less the page's 1rem margins and the site header: a narrow stage up to 512 px wide, a short one
    up to 520 px tall, a tall one from 600. The radar keeps clear of the buttons and the panel, the panel stops short of
    Laju from 321 to 372 px wide, the older toast hides where two may not fit, and the cine eases the panel under the
-   letterbox, or, where the panel would meet the lakon card, shows only its Pause row and replay line; the card trims its
-   padding on a wide viewport up to 380 px tall. It reaches only
-   browsers that read range-syntax media queries (Firefox 63 to 109, Chrome 104), since the site's CSS build writes them
-   so. Known differences from the container rules: the cine lowers the panel only from a 600 px viewport, so at 320×568
-   in full screen 29 px of the row stays under the bar (iPhones have no element full screen); the older toast hides on
-   more stages; the cine keeps every line of the panel where the container rules would hide all but the row and the
-   replay line, in full screen from 481 to 512 px wide and in the page with a viewport over 520 px tall whose stage is
-   still at most 520 px; and by the same measure the card keeps its full padding in full screen from 481 to 512 px wide
-   and in the page with a viewport over 380 px tall whose stage is at most 380 px (844×390 to 932×430). */
+   letterbox, or, where the panel would meet the lakon card, shows only its Pause row and replay line; the card trims
+   its padding on a wide viewport up to 380 px tall. It reaches only browsers that read range-syntax media queries
+   (Firefox 63 to 109, Chrome 104), since the site's CSS build writes them so. Known differences from the container
+   rules:
+   - the cine lowers the panel only from a 600 px viewport, so at 320×568 in full screen 29 px of the row stays under
+     the bar (iPhones have no element full screen);
+   - the older toast hides on more stages;
+   - the panel's cap also holds on in-page viewports 321 to 352 px wide, whose stages (289 to 320 px) the container
+     rules leave at 46%: no viewport range matches both bands;
+   - the cine keeps every line of the panel where the container rules would hide all but the row and the replay line,
+     in full screen from 481 to 512 px wide and in the page with a viewport over 520 px tall whose stage is at most
+     520 px;
+   - by the same measure, the card keeps its full padding in full screen from 481 to 512 px wide and in the page with a
+     viewport over 380 px tall whose stage is at most 380 px (844×390 to 932×430). */
 @supports not (container-type: size) {
   @media (max-width: 512px) {
     .bg-objective { top: 0.5rem; left: 0.5rem; }

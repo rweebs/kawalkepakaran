@@ -2816,7 +2816,8 @@ describe('roam: replays and free laps (Task 36)', () => {
   });
 
   it("a replay teaches nothing: a restored session's ride into parva 1's ring and through its replay fires no hint there, and surge comes after, where the HUD shows it (fix round 1, F1)", () => {
-    // A session resumed at chapter 3: no hint shown yet, roam's data as the island passes it, the chariot at TOWER_EXIT.
+    // A session resumed at chapter 3: no hint shown yet, roam's data as the island passes it. A resumed session starts at
+    // ROAM_RETURN, facing north; here the chariot stands at TOWER_EXIT's place facing east, parva 1's ring dead ahead.
     let s = roam3(TOWER_EXIT);
     expect(s.hintsShown).toEqual([]);
     // Straight east at up to 7 m/s, into parva 1's ring 60 m dead ahead.
