@@ -709,12 +709,12 @@ describe('bowobharata-game.css stage and HUD', () => {
       expect(declared('.bg-objective', 'transition')).toEqual(['top 0.5s ease']);
       const cineSels = [...panelSels(), ".bg-stage[data-cine='on'] .bg-objective"];
       /**
-       * Whether the cine lowers the panel. With container queries: a wide stage taller than 380 px (F10: from there the
-       * lowered row and replay line keep 8 px above the tallest lakon card, measured on the build), a narrow one taller
-       * than 520 px. Without them, the fallback's own rule: a viewport 600 px tall or more, so it leaves 320×568 in full
-       * screen (568 tall) unlowered.
+       * Whether the cine lowers the panel. With container queries: a wide stage taller than 420 px (F10: from about 413 px
+       * the lowered row and replay line keep 8 px above the tallest lakon card, measured on the build: −10.7 px at
+       * 844×390, 7.8 at 915×412, 22.9 at 932×430), a narrow one taller than 520 px. Without them, the fallback's own
+       * rule: a viewport 600 px tall or more, so it leaves 320×568 in full screen (568 tall) unlowered.
        */
-      const lowers = (s: Stage) => (s.noCq ? s.vh >= 600 : s.w > 480 ? s.h > 380 : s.h > 520);
+      const lowers = (s: Stage) => (s.noCq ? s.vh >= 600 : s.w > 480 ? s.h > 420 : s.h > 520);
       /** Where the lowered panel would reach the card: a narrow stage, or a wide one up to 520 px tall (by the viewport:
        * up to 512 px wide, without container queries). */
       const near = (s: Stage) => (s.noCq ? s.vw <= 512 : s.w <= 480 || s.h <= 520);
@@ -750,14 +750,14 @@ describe('bowobharata-game.css stage and HUD', () => {
         // Outside the cine nothing of the panel is hidden.
         expect.soft(maybeValueOf(panelSels(), 'visibility', s), `${s.name}: the panel outside the cine`).toBeUndefined();
       }
-      // The desk decides by the wide rule; with container queries the full-screen landscape phones from 390 px tall are
-      // lowered too (F10), and 320×568 in full screen; the fallback lowers neither.
+      // The desk decides by the wide rule; with container queries 932×430 in full screen is lowered too (F10), and 320×568
+      // in full screen; the fallback lowers neither.
       expect(lowered).toContain('1280×800 in the page');
       expect(lowered).toContain('1280×800 in full screen');
-      for (const name of ['844×390 in full screen', '915×412 in full screen', '932×430 in full screen', '320×568 in full screen']) {
-        expect(lowered.includes(name), name).toBe(!noCq);
+      for (const name of ['932×430 in full screen', '320×568 in full screen']) expect(lowered.includes(name), name).toBe(!noCq);
+      for (const name of ['844×390 in full screen', '915×412 in full screen', '667×375 in full screen', '932×430 in the page']) {
+        expect(lowered.includes(name), name).toBe(false);
       }
-      for (const name of ['667×375 in full screen', '780×360 in full screen', '932×430 in the page']) expect(lowered.includes(name), name).toBe(false);
     });
   }
 

@@ -142,13 +142,13 @@
 .bg-stage[data-cine='on']::after { bottom: 0; }
 /* The bars are opaque and drawn above the HUD, so on a tall stage (a phone held upright, a desk) the top one hid the Pause
    row through every intro and outro. There the panel eases down below the bar, and back after. A wide stage is lowered
-   from 380 px tall, a narrow one from 520 px. Shorter stages keep the panel where it is, the bar covering at most 10 px
-   of the 44 px row (667×375 in full screen), since a lowered row would meet the tallest lakon card. Where the lowered
+   from 420 px tall, a narrow one from 520 px. Shorter stages keep the panel where it is, the bar covering at most 13 px
+   of the 44 px row (915×412 in full screen), since a lowered row and replay line would meet the tallest lakon card. Where the lowered
    panel would run into the card (a narrow tall stage, or a wide one up to 520 px tall), through the cine only its Pause
    row and, in a replay, its line show: the rest is hidden in place, so nothing reflows when the cine ends. */
 .bg-objective { transition: top 0.5s ease; }
-@container bg-hud (width > 480px) and (height > 380px) { .bg-stage[data-cine='on'] .bg-objective { top: calc(8% + 0.75rem); } }
-@container bg-hud (width > 480px) and (height > 380px) and (height <= 520px) {
+@container bg-hud (width > 480px) and (height > 420px) { .bg-stage[data-cine='on'] .bg-objective { top: calc(8% + 0.75rem); } }
+@container bg-hud (width > 480px) and (height > 420px) and (height <= 520px) {
   .bg-stage[data-cine='on'] .bg-objective { visibility: hidden; }
   .bg-stage[data-cine='on'] .bg-objective > .bg-actions, .bg-stage[data-cine='on'] .bg-objective > .bg-replay { visibility: visible; }
 }
