@@ -780,17 +780,19 @@ function startReplay(s: GameState, def: MissionDef, f: RunFrame, w: World, event
 }
 
 /**
- * Where a replay's return leaves the chariot: TOWER_EXIT's place, turned north-east (Task 38). Facing east, as TOWER_EXIT
- * does, parva 8's marker lies 7.2 m ahead and to the right, and a throttle held through the outro, or touch's cruise,
- * carried the chariot into it within a second, starting the final lakon by accident. North-east, every marker lies
- * at least 7 m off the chariot's way, beyond the markerR it would have to come within.
+ * Where roam takes the chariot back up (Task 38): a replay's return, and a resumed session's chapter, which has no car of
+ * its own to start from. TOWER_EXIT's place, turned due north. Facing east, as TOWER_EXIT does, parva 8's marker lies
+ * 7.2 m ahead and to the right, and a throttle held through a replay's outro, or touch's cruise from a resumed start,
+ * carried the chariot into it within a second, starting the final lakon by accident; north-east (π/4) to 5π/12 ran it
+ * into the ranks' guard within 8 s. North, every marker and ring lies off its way, and 8 s of cruise or full throttle
+ * meets no marker, post, guard, contact or wall in any chapter (the engine test's matrix).
  */
-export const REPLAY_RETURN: Readonly<{ x: number; z: number; yaw: number }> = { x: TOWER_EXIT.x, z: TOWER_EXIT.z, yaw: Math.PI / 4 };
+export const ROAM_RETURN: Readonly<{ x: number; z: number; yaw: number }> = { x: TOWER_EXIT.x, z: TOWER_EXIT.z, yaw: Math.PI / 2 };
 
 /**
  * A replay's end, with its score (0 for one that failed or was left): replayDone, with the chapter's best of the session
  * as it now stands; the chapter's own lakon back as it was set aside, its hints' queue dropped as at a lakon's end; and
- * the chariot at rest at REPLAY_RETURN, where the camera cuts to the chase view behind it in this frame.
+ * the chariot at rest at ROAM_RETURN, where the camera cuts to the chase view behind it in this frame.
  */
 function endReplay(s: GameState, aside: Lakon, score: number, w: World, events: GameEvent[]): GameState {
   const roam = s.roam!;
@@ -799,7 +801,7 @@ function endReplay(s: GameState, aside: Lakon, score: number, w: World, events: 
   const bests = roam.bests.slice();
   bests[chapter] = best;
   events.push({ type: 'replayDone', chapter, score, best });
-  const car = initChariot(REPLAY_RETURN.x, REPLAY_RETURN.z, REPLAY_RETURN.yaw);
+  const car = initChariot(ROAM_RETURN.x, ROAM_RETURN.z, ROAM_RETURN.yaw);
   return {
     ...s,
     ...aside,
@@ -986,7 +988,7 @@ export function skipToRecord(s: GameState): { state: GameState; events: GameEven
 
 /**
  * Leaves a replay by the pause panel's way out (Task 38): the failed replay's return, at once, with score 0, its
- * replayDone and the cut to REPLAY_RETURN. A chapter that starts at rest on a finished lakon's ring replays it at once,
+ * replayDone and the cut to ROAM_RETURN. A chapter that starts at rest on a finished lakon's ring replays it at once,
  * and a replay otherwise ends only when finished or timed out. Outside a replay the state comes back as it is.
  */
 export function leaveReplay(s: GameState, w: World): { state: GameState; events: GameEvent[] } {

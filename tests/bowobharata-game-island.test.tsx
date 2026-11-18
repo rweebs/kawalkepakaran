@@ -668,8 +668,18 @@ describe('island wiring (source)', () => {
       return src.slice(from, i - 1);
     });
 
-  it("gives the pause panel its way out of a replay only while the HUD shows one: the runtime leaves the replay, then the play resumes (Task 38)", () => {
-    expect(src).toContain('onLeaveReplay={hud?.replay ? leaveReplay : undefined}');
+  it("gives the pause panel its way out of a replay only while the HUD shows one in its intro or active part: the runtime leaves the replay, then the play resumes (Task 38)", async () => {
+    expect(src).toContain('onLeaveReplay={leaveOffered(hud) ? leaveReplay : undefined}');
+    // Offered in a replay's intro and its active part; never in its outro (it ends by itself within 2.5 s and keeps its
+    // score), its fail shot (it ends at 0 within 1.2 s anyway), roam, or a chapter's own lakon (fix round 1, F3).
+    const { leaveOffered } = await import('../src/lib/bowobharata-game/hud');
+    // It reads the snapshot's phase and replay flag alone.
+    const at = (phase: HudSnapshot['phase'], replay: boolean) => leaveOffered({ phase, replay } as HudSnapshot);
+    expect(leaveOffered(null)).toBe(false);
+    for (const phase of ['roam', 'intro', 'active', 'outro', 'failed', 'done'] as const) {
+      expect([phase, at(phase, true)]).toEqual([phase, phase === 'intro' || phase === 'active']);
+      expect([phase, at(phase, false)]).toEqual([phase, false]);
+    }
     expect(src).toMatch(/const leaveReplay = \(\) => \{\s*runtimeRef\.current\?\.leave\(\);\s*dispatch\(\{ type: 'togglePause' \}\);\s*\};/);
     expect(callArgs('leave')).toEqual(['']);
     expect(src.split('onLeaveReplay=').length - 1).toBe(1);
@@ -759,7 +769,10 @@ describe('island wiring (source)', () => {
     const caseOf = (type: string) => src.match(new RegExp(`case '${type}':([\\s\\S]*?)break;`))?.[1] ?? '';
     const replay = caseOf('replayDone');
     expect(replay).toContain('keepBest(e.chapter, e.best);');
-    expect(replay).toContain('setCine(false);');
+    // The card, the letterbox and the wipe all go, as at introEnd: a replay left in its intro takes its card with it, and
+    // the next introStart opens them afresh (Task 38, fix round 1, F1).
+    expect(replay).toContain('hideMission();');
+    expect(replay).not.toContain('setCine(');
     for (const x of ['playResult', "type: 'skip'", 'failClock', 'writeSaved', 'dispatch(']) expect(replay, x).not.toContain(x);
     expect(caseOf('freeLap')).toContain('bestLap.current = e.best;');
     expect(caseOf('freeLap')).not.toContain('dispatch(');

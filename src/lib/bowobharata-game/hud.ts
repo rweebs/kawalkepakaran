@@ -162,6 +162,15 @@ export function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
   );
 }
 
+/**
+ * Whether the pause panel offers the way out of a replay (Task 38): only while the replay runs its intro or its active
+ * part. In its outro it ends by itself within 2.5 s and keeps its score, which leaving would set to 0; in its fail shot it
+ * ends within about 1.2 s, at 0 anyway.
+ */
+export function leaveOffered(h: HudSnapshot | null): boolean {
+  return h !== null && h.replay && (h.phase === 'intro' || h.phase === 'active');
+}
+
 /** Whether the fail shot has run its seconds on the game clock; a paused scene stops the clock, so a paused shot holds. */
 export function failShotDone(clock: number, failClock: number | null, seconds: number): boolean {
   return failClock !== null && clock - failClock >= seconds;

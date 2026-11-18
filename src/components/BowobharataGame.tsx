@@ -17,7 +17,7 @@ import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
 import { speedOf } from '../lib/bowobharata-game/drive';
 import type { FrameInput, GameState } from '../lib/bowobharata-game/engine';
 import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
-import { failShotDone, sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
+import { failShotDone, leaveOffered, sameHud, type HudSnapshot } from '../lib/bowobharata-game/hud';
 import { gamepadInput, keyAction, keyboardInput, mergeInputs, NO_TOUCH, type InputPart, touchInput, type TouchState } from '../lib/bowobharata-game/input';
 import type { FailReason, GameEvent } from '../lib/bowobharata-game/mission-run';
 import { toastPump, type Toast } from '../lib/bowobharata-game/toast-queue';
@@ -237,10 +237,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
           keepBest(flowRef.current.chapter, e.score);
           break;
         case 'replayDone':
-          // A replay ends back in roam, with no new screen and nothing stored: its best stays for the session, and the
-          // letterbox of its outro goes. A replay that failed ends here too, at score 0; its failed never reaches the island.
+          // A replay ends back in roam, with no new screen and nothing stored: its best stays for the session. A replay that
+          // failed ends here too, at score 0 (its failed never reaches the island), and so does one left from the pause
+          // panel, even in its intro: the card, the letterbox and the wipe all go, so the next introStart opens them afresh.
           keepBest(e.chapter, e.best);
-          setCine(false);
+          hideMission();
           break;
         case 'freeLap':
           bestLap.current = e.best;
@@ -585,7 +586,10 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (canSkip()) skipPulse.current = true;
   };
 
-  /** The pause panel's way out of a replay: its failed return (score 0, the same toast), then the play resumes. */
+  /**
+   * The pause panel's way out of a replay, offered in its intro and its active part (leaveOffered): its failed return
+   * (score 0, the same toast), then the play resumes.
+   */
   const leaveReplay = () => {
     runtimeRef.current?.leave();
     dispatch({ type: 'togglePause' });
@@ -642,7 +646,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
               onResume={() => dispatch({ type: 'togglePause' })}
               settings={settings}
               onSettings={setSettings}
-              onLeaveReplay={hud?.replay ? leaveReplay : undefined}
+              onLeaveReplay={leaveOffered(hud) ? leaveReplay : undefined}
               onUseStill={() => dispatch({ type: 'useFallback' })}
             />
           )}

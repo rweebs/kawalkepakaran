@@ -9,7 +9,8 @@ import { dharmaMix, groundHeight, type Pose } from '../src/lib/bowobharata/stage
 import { fovForAspect, orbitView } from '../src/lib/bowobharata-game/chase';
 import { NO_INPUT, speedOf } from '../src/lib/bowobharata-game/drive';
 import { angleDiff, segPointDist } from '../src/lib/bowobharata-game/geom';
-import { REPLAY_RETURN, createWorld, worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { ROAM_RETURN, createWorld, worldDtOf, type FrameInput, type GameState } from '../src/lib/bowobharata-game/engine';
+import { NO_TOUCH, touchInput } from '../src/lib/bowobharata-game/input';
 import { autopilot } from '../src/lib/bowobharata-game/autopilot';
 import { hudOf, type HudSnapshot } from '../src/lib/bowobharata-game/hud';
 import { radarRange } from '../src/lib/bowobharata-game/radar';
@@ -527,10 +528,15 @@ describe('runtime', () => {
     const ROAM3: RoamOpts = { finished: [0, 1, 2], bests: [], bestLap: null, slugsOf: SLUGS };
     /** The `prev` of each hudOf call since `from`: the snapshot the runtime carried into it. */
     const prevsFrom = (from: number) => vi.mocked(hudOf).mock.calls.slice(from).map((c) => c[2]);
-    /** Toward the east at up to 6 m/s, the intro skipped: from TOWER_EXIT, into parva 1's marker. */
+    /**
+     * Toward parva 1's marker (20, 62) at up to 6 m/s, the intro skipped: from the resumed start, ROAM_RETURN, which faces
+     * north (Task 38), it turns east and rolls into the marker.
+     */
     function eastward(h: ReturnType<typeof harness>): Input {
       const car = h.rt.state()?.car;
-      return { drive: { ...NO_INPUT, throttle: car && speedOf(car) < 6 ? 1 : 0 }, sight: false, skip: true, assist: false };
+      if (!car) return { drive: NO_INPUT, sight: false, skip: true, assist: false };
+      const off = angleDiff(Math.atan2(-(62 - car.z), 20 - car.x), car.yaw);
+      return { drive: { ...NO_INPUT, throttle: speedOf(car) < 6 ? 1 : 0, steer: Math.max(-1, Math.min(1, -2 * off)) }, sight: false, skip: true, assist: false };
     }
     /** The world as the runtime builds it for the scene's army, for the autopilot. */
     const WORLD = createWorld({ mobile: false, warriors: DESKTOP.warriorsPerSide });
@@ -585,13 +591,13 @@ describe('runtime', () => {
       expect(h.onHud.mock.calls.at(-1)![0].chapter).toBe(1);
       expect(types(h.onEvents.mock.calls.at(-1)![0])).toContain('introStart');
       expect(hudAt).toBeLessThan(introAt);
-      // The autopilot rides the replay to its end, and chapter 3's roam resumes at REPLAY_RETURN (TOWER_EXIT's place,
-      // turned north-east: Task 38): that frame's snapshot carries nothing either.
+      // The autopilot rides the replay to its end, and chapter 3's roam resumes at ROAM_RETURN (TOWER_EXIT's place,
+      // turned north: Task 38): that frame's snapshot carries nothing either.
       driver = bot;
       f = frameHuds(1 / 30);
       for (let k = 0; k < 150 * 30 && !f.jumped; k++) f = frameHuds(1 / 30);
       expect(h.rt.state()!.run.def.chapter).toBe(3);
-      expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(REPLAY_RETURN));
+      expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(ROAM_RETURN));
       expect(f.prevs).toEqual([undefined]);
       expect((f.snaps[0].value as HudSnapshot)).toMatchObject({ chapter: 3, phase: 'roam', replay: false });
       expect(types(h.events)).toContain('replayDone');
@@ -622,7 +628,7 @@ describe('runtime', () => {
       expect(prevs.every((p) => p !== undefined)).toBe(true);
     });
 
-    it("leave() ends a replay at once: replayDone at score 0 sent at once, back in roam at REPLAY_RETURN, the next snapshot afresh; outside a replay it does nothing (Task 38)", () => {
+    it("leave() ends a replay at once: replayDone at score 0 sent at once, back in roam at ROAM_RETURN, the next snapshot afresh; outside a replay it does nothing (Task 38)", () => {
       let h: ReturnType<typeof harness> | null = null;
       h = harness({ input: () => eastward(h!) });
       h.rt.start(3, SLUGS(3), 1, ROAM3);
@@ -644,10 +650,15 @@ describe('runtime', () => {
       expect(h.onEvents.mock.calls.at(-1)![0]).toEqual([{ type: 'replayDone', chapter: 1, score: 0, best: 0 }]);
       const back = h.rt.state()!;
       expect([back.run.def.chapter, back.run.phase, back.roam!.aside]).toEqual([3, 'roam', null]);
-      expect(poseOf(back.car)).toEqual(poseOf(REPLAY_RETURN));
-      // A jump: the next snapshot carries nothing from the replay's.
+      expect(poseOf(back.car)).toEqual(poseOf(ROAM_RETURN));
+      // A jump: the first frame after it sends its snapshot (30 frames at 1/60 s left none due), of the chapter's own
+      // lakon, no longer a replay; and it carries nothing from the replay's.
+      const huds = h.onHud.mock.calls.length;
       const from = vi.mocked(hudOf).mock.calls.length;
-      h.frames(12);
+      h.frame();
+      expect(h.onHud.mock.calls.length).toBe(huds + 1);
+      expect(h.onHud.mock.calls.at(-1)![0]).toMatchObject({ chapter: 3, phase: 'roam', replay: false });
+      h.frames(11);
       const prevs = prevsFrom(from);
       expect(prevs[0]).toBeUndefined();
       expect(prevs.slice(1).every((p) => p !== undefined)).toBe(true);
@@ -784,19 +795,38 @@ describe('runtime', () => {
     expect(s.hintsShown).toContain('ride');
   });
 
-  it('starts chapter 0 at SPAWN, a later chapter where the last left the car, or at TOWER_EXIT before any', () => {
+  it('starts chapter 0 at SPAWN, a later chapter where the last left the car, or at ROAM_RETURN before any (Task 38: TOWER_EXIT\'s place, turned north)', () => {
     const h = harness();
     h.rt.start(1, SLUGS_1, 1);
-    expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(TOWER_EXIT));
+    expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(ROAM_RETURN));
+    expect([ROAM_RETURN.x, ROAM_RETURN.z]).toEqual([TOWER_EXIT.x, TOWER_EXIT.z]);
     expect(h.rt.state()!.run.phase).toBe('roam');
     h.frames(60);
     const left = poseOf(h.rt.state()!.car);
-    expect(xzDist(left, TOWER_EXIT)).toBeGreaterThan(3);
+    expect(xzDist(left, ROAM_RETURN)).toBeGreaterThan(3);
     h.rt.start(2, ['a', 'b'], 1);
     expect(poseOf(h.rt.state()!.car)).toEqual(left);
     expect(h.rt.state()!.run.def.chapter).toBe(2);
     h.rt.start(0, [], 1);
     expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(SPAWN));
+  });
+
+  it("a resumed chapter 8, every lakon before it finished, under touch's cruise with nothing touched: 8 s of roam start no lakon and no replay (Task 38, fix round 1, F2)", () => {
+    const SLUGS8 = (c: number) => ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].slice(0, [0, 2, 2, 4, 9, 1, 2, 2, 2][c]);
+    let h: ReturnType<typeof harness> | null = null;
+    const cruise = (): Input => {
+      const car = h!.rt.state()?.car;
+      return { drive: touchInput(NO_TOUCH, car ? speedOf(car) : 0, true).drive, sight: false, skip: false, assist: false };
+    };
+    h = harness({ input: cruise });
+    h.rt.start(8, SLUGS8(8), 1, { finished: [0, 1, 2, 3, 4, 5, 6, 7], bests: [], bestLap: null, slugsOf: SLUGS8 });
+    expect(poseOf(h.rt.state()!.car)).toEqual(poseOf(ROAM_RETURN));
+    h.frames(8 * 60);
+    expect(types(h.events)).not.toContain('introStart');
+    expect(h.rt.state()!.run.phase).toBe('roam');
+    expect(h.rt.state()!.roam!.aside).toBeNull();
+    // It did drive: the cruise is on.
+    expect(xzDist(poseOf(h.rt.state()!.car), ROAM_RETURN)).toBeGreaterThan(50);
   });
 
   it('start() puts the finale’s lamps out again', () => {

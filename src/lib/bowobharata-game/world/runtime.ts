@@ -9,6 +9,7 @@ import type { XZ } from '../geom';
 import { NO_TALL, fovForAspect, orbitView } from '../chase';
 import {
   DEFAULT_ASPECT,
+  ROAM_RETURN,
   advance,
   createWorld,
   leaveReplay,
@@ -26,7 +27,7 @@ import {
 import { hudOf, type HudSnapshot } from '../hud';
 import type { GameEvent } from '../mission-run';
 import { missionFor } from '../missions';
-import { ANCHORS, SPAWN, TOWER_EXIT } from '../world';
+import { ANCHORS, SPAWN } from '../world';
 import { bindChariot } from './chariot-bind';
 import { createGround } from './ground3d';
 import { createLandmarks } from './landmarks3d';
@@ -66,8 +67,9 @@ export interface RoamOpts {
 
 export interface Runtime {
   /**
-   * A chapter's lakon: the prologue from SPAWN, any other from where the last left the car (TOWER_EXIT before any). With
-   * `roam`, its roam replays the finished lakon and gives free laps on parva 5's posts.
+   * A chapter's lakon: the prologue from SPAWN, any other from where the last left the car; a resumed session's first
+   * chapter, with no car yet, from ROAM_RETURN (TOWER_EXIT's place, turned north). With `roam`, its roam replays the
+   * finished lakon and gives free laps on parva 5's posts.
    */
   start(chapter: number, slugs: readonly string[], seed: number, roam?: RoamOpts): void;
   /** Holds the chapter and circles the chariot where it stands, until the next start or retry. */
@@ -233,7 +235,7 @@ export function createRuntime(scene: KurukshetraScene, o: RuntimeOpts): Runtime 
     start(chapter, slugs, seed, roam) {
       if (disposed) return;
       const def = missionFor(chapter, slugs);
-      const from = chapter === 0 ? SPAWN : (current?.car ?? TOWER_EXIT);
+      const from = chapter === 0 ? SPAWN : (current?.car ?? ROAM_RETURN);
       const roamData = roam && {
         finished: roam.finished,
         bests: roam.bests,
