@@ -673,6 +673,17 @@ describe('island wiring (source)', () => {
     // replay's outro or fail shot (fix round 2, R2-1).
     expect(src).toContain('onLeaveReplay={leaveOffered(runtimeRef.current?.state()) ? leaveReplay : undefined}');
     expect(callArgs('leaveOffered')).toEqual(['runtimeRef.current?.state()']);
+    // ...and it is read in the render that pauses (fix round 3, R3-2): the one Paused element sits inline in the JSX block
+    // that renders on the pause, the offer among its props, and no memo or callback builds the panel or reads the offer,
+    // which would freeze it at the last snapshot or at mount.
+    expect(src.match(/<Paused\b/g)).toHaveLength(1);
+    expect(src).toMatch(/\{playing3d && flow\.paused && \(\s*<Paused\b(?:(?!\/>)[\s\S])*?onLeaveReplay=\{leaveOffered\(runtimeRef\.current\?\.state\(\)\) \? leaveReplay : undefined\}(?:(?!\/>)[\s\S])*?\/>\s*\)\}/);
+    for (const hook of ['useMemo', 'useCallback']) {
+      for (const args of callArgs(hook)) {
+        expect(args, hook).not.toContain('<Paused');
+        expect(args, hook).not.toContain('leaveOffered(');
+      }
+    }
     // Offered in a replay's intro and its active part; never in its outro (it ends by itself within 2.5 s and keeps its
     // score), its fail shot (it ends at 0 within 1.2 s anyway), roam, or a chapter's own lakon (fix round 1, F3).
     const { leaveOffered } = await import('../src/lib/bowobharata-game/hud');
@@ -794,18 +805,37 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/const keepBest = \(chapter: number, score: number\) => \{\s*bests\.current\[chapter\] = Math\.max\(bests\.current\[chapter\] \?\? 0, score\);\s*\};/);
   });
 
-  it("keeps F1's way out whole: replayDone always calls hideMission, hideMission clears the ref, the card, the letterbox and the wipe, and onEvents takes the leave's replayDone while the game is paused (Task 38, fix round 2, R2-4)", () => {
+  it("keeps F1's way out whole: replayDone always calls hideMission, hideMission does its four things, and onEvents, wired to the runtime as it is, takes every event while the game is paused, the leave's replayDone too (Task 38, fix round 2, R2-4; fix round 3, R3-1)", () => {
     /** Code without its line comments. */
     const code = (t: string) => t.replace(/\/\/[^\n]*\n/g, '\n');
+    /** The body of the block that `head` opens (`head` ends at its opening brace), read to the matching brace. */
+    const bodyOf = (head: string): string => {
+      const at = src.indexOf(head);
+      expect(at, head).toBeGreaterThanOrEqual(0);
+      const from = at + head.length;
+      let depth = 1;
+      let i = from;
+      for (; i < src.length && depth > 0; i++) depth += src[i] === '{' ? 1 : src[i] === '}' ? -1 : 0;
+      return src.slice(from, i - 1);
+    };
     // The case is the two statements, unguarded: a leave at any score takes the card.
     const replay = src.match(/case 'replayDone':([\s\S]*?)break;/)?.[1] ?? '';
     expect(code(replay)).toMatch(/^\s*keepBest\(e\.chapter, e\.best\);\s*hideMission\(\);\s*$/);
-    // All four go: with missionUp left true the next introStart would open nothing, and a wipe left set would replay.
-    expect(src).toMatch(/const hideMission = \(\) => \{\s*missionUp\.current = false;\s*setMission\(false\);\s*setCine\(false\);\s*setWipe\(null\);\s*\};/);
-    // The leave runs from the pause panel, so its replayDone arrives while the game is paused: onEvents's only early
-    // return is the screen check.
-    const head = src.match(/const onEvents = \(events: readonly GameEvent\[\]\) => \{([\s\S]*?)const toasts: Toast\[\] = \[\];/)?.[1] ?? '';
-    expect(code(head).trim()).toBe("if (flowRef.current.screen !== 'play') return;");
+    // All four go, in any order, comments allowed: with missionUp left true the next introStart would open nothing, and a
+    // wipe left set would replay.
+    const hide = code(bodyOf('const hideMission = () => {')).split(';').map((x) => x.trim()).filter(Boolean).sort();
+    expect(hide).toEqual(['missionUp.current = false', 'setCine(false)', 'setMission(false)', 'setWipe(null)']);
+    // The leave runs from the pause panel, so its replayDone arrives while the game is paused. Over onEvents's whole body:
+    // its one return is the screen check that opens it, and it reads no paused flag and skips no event.
+    const events = code(bodyOf('const onEvents = (events: readonly GameEvent[]) => {'));
+    expect(events).toContain('pump.add(toasts);');
+    expect(events.trimStart().startsWith("if (flowRef.current.screen !== 'play') return;")).toBe(true);
+    expect(events.match(/\breturn\b/g)).toEqual(['return']);
+    expect(events).not.toMatch(/\bpaused\b|\bcontinue\b/);
+    // And every event reaches it: the runtime calls the latest render's handler, and that handler is onEvents itself.
+    expect(src).toContain('onEvents: (e) => handlers.current.onEvents(e),');
+    expect(src).toContain('handlers.current = { onHud, onEvents, readInput };');
+    expect(src.match(/handlers\.current = /g)).toHaveLength(1);
   });
 
   it('shows the lakon card and the cinema on introStart and on a chapter that starts in its intro; introEnd hides both; outroStart brings the bars back', () => {

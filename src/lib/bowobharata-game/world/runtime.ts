@@ -82,8 +82,10 @@ export interface Runtime {
   /** Records the rest of the lakon and goes to its outro; its events are sent at once. A replay is never skipped. */
   skip(): void;
   /**
-   * Leaves a replay at once, by its failed return (score 0, its replayDone sent at once, the cut back to roam); outside a
-   * replay it does nothing.
+   * Leaves a replay at once, by its failed return (score 0, its replayDone sent at once, the cut back to roam), while the
+   * replay runs its intro or its active part. Anywhere else it does nothing: outside a replay, and in a replay's outro or
+   * fail shot, where the engine's leaveReplay gives the same state back, so nothing is sent and the replay ends by itself
+   * with its own score.
    */
   leave(): void;
   /** In roam, the chariot to the lakon's marker: a jump, so the next HUD snapshot starts afresh. */
