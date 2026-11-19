@@ -334,34 +334,31 @@ function panelHeight(width: number, s: Stage): number {
   }));
 }
 /** Where the touch HUD's parts and the touch controls lie on a stage, in px from its top left, in their worst case. */
+/**
+ * An absolutely placed box's start on one axis, as CSS resolves it on a stage (fix round 2, R2-7; fix round 3, R3-6): its
+ * near inset (`left`, `top`) where that is set, else its far one (`right`, `bottom`) less its size. An inset that is
+ * `auto`, or unset, does not count; with both insets and the size set, the box is over-constrained and the near inset
+ * wins (left to right, top down), as a browser drops the far one.
+ */
+function startOf(sels: readonly string[], near: 'top' | 'left', size: number, s: Stage): number {
+  const far = near === 'top' ? 'bottom' : 'right';
+  const of = near === 'top' ? s.h : s.w;
+  const n = maybeValueOf(sels, near, s);
+  if (n !== undefined && n !== 'auto') return px(n, of);
+  const f = maybeValueOf(sels, far, s);
+  if (f === undefined || f === 'auto') throw new Error(`${sels.join(' / ')}: neither ${near} nor ${far}`);
+  return of - px(f, of) - size;
+}
+
 function lay(s: Stage) {
   const v = (sels: readonly string[], prop: string) => valueOf(sels, prop, s);
-  /**
-   * A box's edge from its insets: its own (`top` or `left`), or, where that is `auto` or unset, the far one (`bottom` or
-   * `right`) less the box's own size. A rule that moves a box by its far inset is read, not thrown on (fix round 2, R2-7).
-   */
-  const edge = (sels: readonly string[], near: 'top' | 'left', size: number): number => {
-    const far = near === 'top' ? 'bottom' : 'right';
-    const of = near === 'top' ? s.h : s.w;
-    const n = maybeValueOf(sels, near, s);
-    if (n !== undefined && n !== 'auto') return px(n, of);
-    const f = maybeValueOf(sels, far, s);
-    if (f === undefined || f === 'auto') throw new Error(`${sels.join(' / ')}: neither ${near} nor ${far}`);
-    return of - px(f, of) - size;
-  };
-  /** Likewise its right edge: the stage's width less its `right`, or, where that is `auto` or unset, its `left` plus its width. */
-  const rightEdge = (sels: readonly string[], width: number): number => {
-    const r = maybeValueOf(sels, 'right', s);
-    if (r !== undefined && r !== 'auto') return s.w - px(r, s.w);
-    const l = maybeValueOf(sels, 'left', s);
-    if (l === undefined || l === 'auto') throw new Error(`${sels.join(' / ')}: neither right nor left`);
-    return px(l, s.w) + width;
-  };
+  /** A box's start on one axis, from its insets (`startOf`). */
+  const start = (sels: readonly string[], near: 'top' | 'left', size: number) => startOf(sels, near, size, s);
   const objSels = ['.bg-objective', '.bg-hud[data-touch] .bg-objective'];
   const panelW = px(v(objSels, 'max-width'), s.w);
   const panelH = panelHeight(panelW, s);
-  const panelLeft = edge(objSels, 'left', panelW);
-  const panelTop = edge(objSels, 'top', panelH);
+  const panelLeft = start(objSels, 'left', panelW);
+  const panelTop = start(objSels, 'top', panelH);
   const panel: Box = { left: panelLeft, top: panelTop, right: panelLeft + panelW, bottom: panelTop + panelH };
   // The Pause and Full screen row at the panel's top, inside its padding: the same for every objective, hint and timer,
   // since it comes first, so only the panel's width and the language move it.
@@ -372,8 +369,8 @@ function lay(s: Stage) {
   });
   const radar = px(maybeValueOf(['.bg-radar__map', '.bg-hud[data-touch] .bg-radar__map'], 'width', s) ?? `${RADAR_PX}px`, s.w);
   const slotSels = ['.bg-radar-slot', '.bg-hud[data-touch] .bg-radar-slot'];
-  const slotRight = rightEdge(slotSels, radar);
-  const slotTop = edge(slotSels, 'top', radar + PILL);
+  const slotRight = start(slotSels, 'left', radar) + radar;
+  const slotTop = start(slotSels, 'top', radar + PILL);
   const slot: Box = { left: slotRight - radar, right: slotRight, top: slotTop, bottom: slotTop + radar + PILL };
   const toastSels = ['.bg-toasts', '.bg-hud[data-touch] .bg-toasts'];
   const column = px(v(toastSels, 'max-width'), s.w);
@@ -382,17 +379,19 @@ function lay(s: Stage) {
   // Where the CSS hides the older toasts, only the newest shows.
   const newestOnly = maybeValueOf(['.bg-hud[data-touch] .bg-toast:not(:last-child)'], 'display', s) === 'none';
   const shown = newestOnly ? 1 : 2;
-  const toastsRight = rightEdge(toastSels, column);
-  const toastsTop = edge(toastSels, 'top', shown * toastH + (shown - 1) * gap);
+  const toastsRight = start(toastSels, 'left', column) + column;
+  const toastsTop = start(toastSels, 'top', shown * toastH + (shown - 1) * gap);
   const toasts: Box = { left: toastsRight - column, right: toastsRight, top: toastsTop, bottom: toastsTop + shown * toastH + (shown - 1) * gap };
-  const buttons = Object.fromEntries(BUTTONS.map((k): [string, Box] => {
-    const sel = [`.bg-touch__btn--${k}`];
-    const right = s.w - px(v(sel, 'right'), s.w);
-    const bottom = s.h - px(v(sel, 'bottom'), s.h);
-    const size = px(v(sel, 'width'), s.w);
-    return [k, { left: right - size, right, top: bottom - size, bottom }];
-  }));
-  const steer: Box = { left: 0, right: px(v(['.bg-touch__steer'], 'width'), s.w), top: s.h - px(v(['.bg-touch__steer'], 'height'), s.h), bottom: s.h };
+  /** A box of its own width and height, placed by its insets on both axes (fix round 3, R3-6). */
+  const placed = (sels: readonly string[]): Box => {
+    const w = px(v(sels, 'width'), s.w);
+    const h = px(v(sels, 'height'), s.h);
+    const left = start(sels, 'left', w);
+    const top = start(sels, 'top', h);
+    return { left, top, right: left + w, bottom: top + h };
+  };
+  const buttons = Object.fromEntries(BUTTONS.map((k): [string, Box] => [k, placed([`.bg-touch__btn--${k}`])]));
+  const steer = placed(['.bg-touch__steer']);
   // The room under the toasts' top: to the stage's bottom or the highest button under their column, less the margin.
   const below = Object.values(buttons).filter((b) => b.left < toasts.right && toasts.left < b.right).map((b) => b.top);
   const room = Math.min(s.h, ...below) - 8 - toastsTop;
@@ -650,6 +649,45 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(rowRules.filter((r) => moves.test(r.body)).map((r) => `${r.selector} { ${r.body} }`)).toEqual([]);
   });
 
+  it("keeps the lakon card's box and its trim exactly as they are: every rule naming .bg-cardbox, in any block, with its declarations; no class-less rule that reaches the box; the trim's edges (Task 38, fix round 3, R3-4 and R3-5)", () => {
+    // Every rule in the stylesheet, with the block that holds it.
+    const placed = [
+      ...rulesOf(base).map((r) => ({ where: 'top level', ...r })),
+      ...BLOCKS.flatMap((b) =>
+        b.kind === 'supports'
+          ? b.parts.flatMap((p) => rulesOf(p.text).map((r) => ({ where: `@supports ${b.cond}${p.cond === null ? '' : ` @media ${p.cond}`}`, ...r })))
+          : rulesOf(b.text).map((r) => ({ where: `@${b.kind} ${b.name ? `${b.name} ` : ''}${b.cond}`, ...r })),
+      ),
+    ];
+    // The box takes no touch and the card does; the trim and its fallback twin set the vertical padding and nothing else.
+    expect(placed.filter((r) => r.sels.some((x) => x.includes('.bg-cardbox')))).toEqual([
+      { where: 'top level', sels: ['.bg-cardbox'], decls: [['position', 'absolute'], ['inset', '0'], ['pointer-events', 'none'], ['z-index', '3'], ['container', 'bg-card / size']] },
+      { where: 'top level', sels: ['.bg-cardbox > .bg-mission'], decls: [['pointer-events', 'auto']] },
+      { where: '@container bg-card (width > 480px) and (height <= 380px)', sels: ['.bg-cardbox > .bg-mission'], decls: [['padding-block', '0.75rem']] },
+      { where: '@supports not (container-type: size) @media (min-width: 513px) and (max-height: 380px)', sels: ['.bg-cardbox > .bg-mission'], decls: [['padding-block', '0.75rem']] },
+    ]);
+    expect(declared('.bg-cardbox', 'pointer-events')).toEqual(['none']);
+    expect(declared('.bg-cardbox > .bg-mission', 'pointer-events')).toEqual(['auto']);
+    // Nor may a rule reach the box without naming it: one whose subject has no class (an element, *, an attribute), could
+    // be the box's div, and names no class but the box's ancestors' may not set its touch, its placement or its size.
+    const ancestors = ['bg-game', 'bg-stage'];
+    const reachesBox = (sel: string) => {
+      const compounds = sel.split(/\s*[\s>+~]\s*/);
+      const subject = compounds.at(-1)!;
+      if (/\.[\w-]/.test(subject)) return false;
+      const tag = /^[a-z][\w-]*/i.exec(subject)?.[0];
+      if (tag && tag !== 'div') return false;
+      return compounds.slice(0, -1).every((c) => [...c.matchAll(/\.([\w-]+)/g)].every((m) => ancestors.includes(m[1])));
+    };
+    const placing = /^(?:pointer-events|position|inset(?:-[a-z-]+)?|top|right|bottom|left|(?:min-|max-)?(?:width|height)|(?:min-|max-)?(?:block|inline)-size)$/;
+    expect(placed.filter((r) => r.sels.some(reachesBox) && r.decls.some(([k]) => placing.test(k))).map((r) => `${r.where}: ${r.sels.join(', ')}`)).toEqual([]);
+    // The trim's edges, on their own (the cine test's stages keep their misfits): with container queries a wide stage from
+    // 481 px, up to 380 px tall; without them a viewport from 513 px wide, up to 380 px tall.
+    const pad = (w: number, h: number, noCq: boolean) => maybeValueOf(['.bg-cardbox > .bg-mission'], 'padding-block', { name: `${w}×${h}`, vw: w, vh: h, w, h, noCq });
+    expect([pad(480, 380, false), pad(481, 380, false), pad(481, 381, false)]).toEqual([undefined, '0.75rem', undefined]);
+    expect([pad(512, 380, true), pad(513, 380, true), pad(513, 381, true)]).toEqual([undefined, '0.75rem', undefined]);
+  });
+
   it("never reflows the objective panel through the cine: no rule keyed on data-cine sets display, a height or content-visibility on the panel or anything in it, so when the cine ends every line is back where it was (Task 38, fix round 2, R2-9)", () => {
     // The cine only lowers the panel (top) and hides lines in place (visibility); a rule that took a line out of the flow
     // or capped the panel's height would move the lines under it, and they would jump back as the cine ends.
@@ -788,7 +826,7 @@ describe('bowobharata-game.css stage and HUD', () => {
       for (const base of [...STAGES, ...SMALL, ...DESK]) {
         const s: Stage = { ...base, noCq };
         const L = lay(s);
-        const top = px(valueOf(cineSels, 'top', s), s.h);
+        const top = startOf(cineSels, 'top', L.panel.bottom - L.panel.top, s);
         const down = top - L.panel.top;
         // Lowered by the bar's height exactly, from the panel's own inset (0.5rem narrow, 0.75rem otherwise), or not at all.
         expect.soft(down, `${s.name}: the panel's move in the cine`).toBeCloseTo(lowers(s) ? bar * s.h : 0, 2);
@@ -852,7 +890,7 @@ describe('bowobharata-game.css stage and HUD', () => {
     });
   }
 
-  it("without container queries (a browser that reads range-syntax media queries, such as Firefox 63 to 109 and Chrome 104), the @supports fallback keeps the Pause row on the stage and clear, the radar on the stage, clear of every button, over the toasts and no deeper in the panel than with them, at the 18 listed stages and at 320×568, 568×320 and 667×375; at the listed stages every two parts keep 8 px apart, Laju and the panel included (Task 38, fix round 1, F6 and F8; fix round 2, R2-8)", () => {
+  it("without container queries (a browser that reads range-syntax media queries, such as Firefox 63 to 109 and Chrome 104), the @supports fallback keeps the Pause row on the stage and clear, the radar on the stage, clear of every button, over the toasts and no deeper in the panel than with them, the toasts on the stage and clear of the buttons and the steer zone, at the 18 listed stages and at 320×568, 568×320 and 667×375; at the listed stages every two parts keep 8 px apart, Laju and the panel included (Task 38, fix round 1, F6 and F8; fix round 2, R2-8; fix round 3, R3-7)", () => {
     // One fallback block, which a browser with container queries skips: the listed stages' layout stays theirs alone.
     expect(BLOCKS.filter((b) => b.kind === 'supports').map((b) => b.cond)).toEqual(['not (container-type: size)']);
     for (const cq of [...STAGES, ...SMALL]) {
@@ -874,14 +912,30 @@ describe('bowobharata-game.css stage and HUD', () => {
       // stage test; fix round 2, R2-8).
       expect.soft(L.slot.bottom, `${s.name}: the radar's bottom`).toBeLessThanOrEqual(s.h - 8);
       expect.soft(L.toasts.top, `${s.name}: the toasts' top, 4 px under the radar`).toBeGreaterThanOrEqual(L.slot.bottom + 4);
+      if (STAGES.some((x) => x.name === cq.name)) {
+        // The toasts that show (the newest alone, where the CSS hides the older one): on the stage, and 8 px clear of every
+        // button and of the steer zone, as the stage test keeps them at the listed stages (fix round 3, R3-7).
+        expect.soft(L.toasts.bottom, `${s.name}: the toasts' bottom`).toBeLessThanOrEqual(s.h - 8);
+        for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(L.toasts, b, 8), `${s.name}: the toasts and ${name}, without container queries`).toBe(true);
+        expect.soft(apart(L.toasts, L.steer, 8), `${s.name}: the toasts and the steer zone, without container queries`).toBe(true);
+      } else {
+        // At the small unlisted stages the toasts sit exactly where the container rules put them: their misfits there,
+        // over Maju at 320×568 in the page and past the stage at 568×320 in the page, are Task 34's, ruled, and none is
+        // the fallback's own.
+        expect.soft(L.toasts, `${s.name}: the toasts, as with container queries`).toEqual(C.toasts);
+      }
       for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(L.slot, b, 8), `${s.name}: the radar and ${name}, without container queries`).toBe(true);
       expect.soft(overlapX(L.panel, L.slot), `${s.name}: the panel over the radar, without container queries vs with`).toBeLessThanOrEqual(overlapX(C.panel, C.slot) + 0.01);
       if (STAGES.includes(cq)) {
         // At the listed stages the fallback keeps what the container rules keep: the panel, the radar and every button 8 px
         // apart, so the panel stops short of Laju on the 360-wide in-page stages too (the 321-372 px cap's twin, F8).
-        const parts: [string, Box][] = [['the objective panel', L.panel], ['the radar', L.slot], ...Object.entries(L.buttons)];
+        const parts: [string, Box][] = [['the objective panel', L.panel], ['the radar', L.slot], ['the toasts', L.toasts], ...Object.entries(L.buttons)];
         for (const [i, [a, x]] of parts.entries()) {
-          for (const [bn, y] of parts.slice(i + 1)) expect.soft(apart(x, y, 8), `${s.name}: ${a} and ${bn}, without container queries`).toBe(true);
+          for (const [bn, y] of parts.slice(i + 1)) {
+            // The toasts hang under the speed pill, in the radar's column (4 px at least: checked above).
+            if (a === 'the radar' && bn === 'the toasts') continue;
+            expect.soft(apart(x, y, 8), `${s.name}: ${a} and ${bn}, without container queries`).toBe(true);
+          }
         }
       }
     }
