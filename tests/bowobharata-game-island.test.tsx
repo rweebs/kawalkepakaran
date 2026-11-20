@@ -671,8 +671,44 @@ describe('toast pacing: the island\'s own pump, every toast the newest for 1.5 s
   });
 });
 
+/**
+ * `src` as code: every comment, line or block, becomes spaces (its newlines kept, so indices and line breaks stay), while
+ * strings and template literals are read as such, so a `//` inside a string is not taken for a comment and a comment
+ * mark inside a comment does not end it early. JSX comments are block comments in braces: `{ }` is left.
+ */
+function codeOf(src: string): string {
+  let out = '';
+  let i = 0;
+  const blank = (t: string) => t.replace(/[^\n]/g, ' ');
+  while (i < src.length) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === '/' && d === '/') {
+      const end = src.indexOf('\n', i);
+      const to = end === -1 ? src.length : end;
+      out += blank(src.slice(i, to));
+      i = to;
+    } else if (c === '/' && d === '*') {
+      const end = src.indexOf('*/', i + 2);
+      const to = end === -1 ? src.length : end + 2;
+      out += blank(src.slice(i, to));
+      i = to;
+    } else if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1;
+      while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
+      out += src.slice(i, j + 1);
+      i = j + 1;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
 describe('island wiring (source)', () => {
-  const src = readFileSync('src/components/BowobharataGame.tsx', 'utf8');
+  // The pins read code, not comments: a commented-out line does not pass for the line, and a comment does not break them.
+  const src = codeOf(readFileSync('src/components/BowobharataGame.tsx', 'utf8'));
   /** The argument text of every call to `name`, read up to its matching parenthesis. */
   const callArgs = (name: string): string[] =>
     [...src.matchAll(new RegExp(`\\b${name}\\(`, 'g'))].map((m) => {
@@ -693,6 +729,27 @@ describe('island wiring (source)', () => {
     // which would freeze it at the last snapshot or at mount.
     expect(src.match(/<Paused\b/g)).toHaveLength(1);
     expect(src).toMatch(/\{playing3d && flow\.paused && \(\s*<Paused\b(?:(?!\/>)[\s\S])*?onLeaveReplay=\{leaveOffered\(runtimeRef\.current\?\.state\(\)\) \? leaveReplay : undefined\}(?:(?!\/>)[\s\S])*?\/>\s*\)\}/);
+    // The panel is part of the island's own render: inside the `return (...)` that closes the component, and in no call's
+    // arguments, whatever the callee is named (a custom hook over useMemo would freeze it too: G1R3-A3).
+    const ret = src.indexOf('\n  return (\n');
+    expect(ret).toBeGreaterThan(0);
+    let depth = 0;
+    let end = src.indexOf('(', ret);
+    for (; end < src.length; end++) {
+      depth += src[end] === '(' ? 1 : src[end] === ')' ? -1 : 0;
+      if (depth === 0) break;
+    }
+    expect(src.slice(end + 1).trim(), 'the return closes the component').toBe(';\n}');
+    const panel = src.indexOf('<Paused');
+    expect(panel > ret && panel < end, 'the panel sits in the return').toBe(true);
+    for (const m of src.matchAll(/\b(\w+)\(/g)) {
+      if (m.index! > ret && m.index! < end) continue;
+      let d = 1;
+      let i = m.index! + m[0].length;
+      const from = i;
+      for (; i < src.length && d > 0; i++) d += src[i] === '(' ? 1 : src[i] === ')' ? -1 : 0;
+      expect(src.slice(from, i - 1), `${m[1]}(...) outside the return`).not.toContain('<Paused');
+    }
     for (const hook of ['useMemo', 'useCallback']) {
       for (const args of callArgs(hook)) {
         expect(args, hook).not.toContain('<Paused');
@@ -821,8 +878,6 @@ describe('island wiring (source)', () => {
   });
 
   it("keeps F1's way out whole: replayDone always calls hideMission, hideMission does its four things, and onEvents, wired to the runtime as it is, takes every event while the game is paused, the leave's replayDone too (Task 38, fix round 2, R2-4; fix round 3, R3-1)", () => {
-    /** Code without its line comments. */
-    const code = (t: string) => t.replace(/\/\/[^\n]*\n/g, '\n');
     /** The body of the block that `head` opens (`head` ends at its opening brace), read to the matching brace. */
     const bodyOf = (head: string): string => {
       const at = src.indexOf(head);
@@ -835,22 +890,82 @@ describe('island wiring (source)', () => {
     };
     // The case is the two statements, unguarded: a leave at any score takes the card.
     const replay = src.match(/case 'replayDone':([\s\S]*?)break;/)?.[1] ?? '';
-    expect(code(replay)).toMatch(/^\s*keepBest\(e\.chapter, e\.best\);\s*hideMission\(\);\s*$/);
+    expect(replay).toMatch(/^\s*keepBest\(e\.chapter, e\.best\);\s*hideMission\(\);\s*$/);
     // All four go, in any order, comments allowed: with missionUp left true the next introStart would open nothing, and a
     // wipe left set would replay.
-    const hide = code(bodyOf('const hideMission = () => {')).split(';').map((x) => x.trim()).filter(Boolean).sort();
+    const hide = bodyOf('const hideMission = () => {').split(';').map((x) => x.trim()).filter(Boolean).sort();
     expect(hide).toEqual(['missionUp.current = false', 'setCine(false)', 'setMission(false)', 'setWipe(null)']);
     // The leave runs from the pause panel, so its replayDone arrives while the game is paused. Over onEvents's whole body:
     // its one return is the screen check that opens it, and it reads no paused flag and skips no event.
-    const events = code(bodyOf('const onEvents = (events: readonly GameEvent[]) => {'));
+    const events = bodyOf('const onEvents = (events: readonly GameEvent[]) => {');
     expect(events).toContain('pump.add(toasts);');
     expect(events.trimStart().startsWith("if (flowRef.current.screen !== 'play') return;")).toBe(true);
     expect(events.match(/\breturn\b/g)).toEqual(['return']);
     expect(events).not.toMatch(/\bpaused\b|\bcontinue\b/);
+    // Nor does any helper it calls, at any depth, read the paused flag: a helper that does could drop events while paused
+    // (fix round 3, G1R3-2).
+    expect(pausedHelpers(events)).toEqual([]);
     // And every event reaches it: the runtime calls the latest render's handler, and that handler is onEvents itself.
     expect(src).toContain('onEvents: (e) => handlers.current.onEvents(e),');
     expect(src).toContain('handlers.current = { onHud, onEvents, readInput };');
     expect(src.match(/handlers\.current = /g)).toHaveLength(1);
+    // handlers.current is written by that one assignment and otherwise only read, to call one of its three handlers: no
+    // field is set, nothing is assigned into it, and it is handed to nothing (G1R3-1).
+    const uses = [...src.matchAll(/\bhandlers\.current\b/g)].map((m) => src.slice(m.index!, m.index! + 60));
+    expect(uses.length).toBeGreaterThanOrEqual(4);
+    for (const u of uses) {
+      expect(u, u).toMatch(/^handlers\.current(?: = \{ onHud, onEvents, readInput \};|\.(?:onHud|onEvents|readInput)\()/);
+    }
+    expect(src.match(/\bhandlers\b/g)?.length, 'every use of handlers is through handlers.current, but its declaration').toBe(uses.length + 1);
+  });
+
+  /**
+   * The local helpers that `body` calls, at any depth, whose own definition reads `paused`: each named `const name = ` in
+   * the island, read to the end of its arrow body (its braces, or its expression up to the `;`).
+   */
+  function pausedHelpers(body: string): string[] {
+    const definitionOf = (name: string): string | null => {
+      const m = new RegExp(`\\bconst ${name} = (?:\\([^)]*\\)|\\w+)(?:: [^=]+)? => `).exec(src);
+      if (!m) return null;
+      let i = m.index + m[0].length;
+      const from = i;
+      if (src[i] === '{') {
+        let depth = 0;
+        for (; i < src.length; i++) {
+          depth += src[i] === '{' ? 1 : src[i] === '}' ? -1 : 0;
+          if (depth === 0) break;
+        }
+        return src.slice(from, i + 1);
+      }
+      let depth = 0;
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if ('([{'.includes(c)) depth++;
+        else if (')]}'.includes(c)) depth--;
+        if (depth < 0 || (depth === 0 && c === ';')) break;
+      }
+      return src.slice(from, i);
+    };
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const visit = (text: string, path: string[]) => {
+      for (const [, name] of text.matchAll(/(?<![.\w])(\w+)\(/g)) {
+        if (seen.has(name)) continue;
+        seen.add(name);
+        const def = definitionOf(name);
+        if (def === null) continue;
+        if (/\bpaused\b/.test(def)) out.push([...path, name].join(' > '));
+        visit(def, [...path, name]);
+      }
+    };
+    visit(body, []);
+    return out;
+  }
+
+  it('finds a helper that reads the paused flag, at any depth, and passes the helpers onEvents calls today (G1R3-2)', () => {
+    expect(pausedHelpers('showMission(); keepBest(e.chapter, e.best); hideMission(); lakonChapter();')).toEqual([]);
+    // canSkip reads it, so a call to it would be found; so would one through a helper of a helper.
+    expect(pausedHelpers('if (canSkip()) x();')).toEqual(['canSkip']);
   });
 
   it('shows the lakon card and the cinema on introStart and on a chapter that starts in its intro; introEnd hides both; outroStart brings the bars back', () => {

@@ -37,6 +37,8 @@ other form.
   or a page).
 - Branch from `main`, keep one logical change per commit, and use messages like `feat(seo): …` or `fix(build): …`.
 - Run `npm run scan && npm run typecheck && npm test && npm run build` before opening the PR. CI runs the same.
+- `npm test` runs both suites (`npm run test:unit`, then `npm run test:astro` for the rendered `.astro` pages). To run one
+  file, use `npx vitest run <file>` or `npm run test:unit -- <file>`.
 - Keep wording about people hedged ("I allege", "in my opinion"). Do not change the disclaimer or right-of-reply text without
   the author's approval.
 
@@ -75,6 +77,8 @@ Kode dan konten situs ini terbuka. Siapa pun boleh mengirim bukti, baik yang mem
   atau halaman).
 - Cabangkan dari `main`, satu perubahan logis per commit, dan pakai pesan seperti `feat(seo): …` atau `fix(build): …`.
 - Jalankan `npm run scan && npm run typecheck && npm test && npm run build` sebelum membuka PR. CI menjalankan hal yang sama.
+- `npm test` menjalankan kedua rangkaian tes (`npm run test:unit`, lalu `npm run test:astro` untuk halaman `.astro` yang
+  dirender). Untuk menjalankan satu berkas, pakai `npx vitest run <berkas>` atau `npm run test:unit -- <berkas>`.
 - Jaga kalimat tentang orang tetap berhati-hati ("saya menduga", "menurut saya"). Jangan mengubah disclaimer atau teks hak
   jawab tanpa persetujuan penulis.
 

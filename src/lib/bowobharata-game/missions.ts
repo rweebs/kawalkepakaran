@@ -249,8 +249,9 @@ const LAKON: Lakon[] = [
   // The corridor is open at its north mouth, so a chariot that first reverses up it can go round the line (no teaching
   // volley), or come back and cross it fast enough for the volley to be absorbed.
   // Over the tests' 216 bot runs (speedCap 0.2–1, a reaction of 0–1 s, careless and careful, Laju never, always or on
-  // straights), every chariot meets the line once, with L1 open. These are full-throttle starts: they meet it at
-  // 2.3–3.6 m/s, and a gentler start meets it slower. Without Laju the volley always lands, 21.1 m or more from every
+  // straights), every chariot meets the line once, with L1 open. All but 6 of those 216 starts are full throttle; the 6
+  // ease off to 0.614 of it, and one of them is the slowest meeting, at 2.3 m/s. They meet it at 2.3–3.6 m/s, and a
+  // gentler start meets it slower. Without Laju the volley always lands, 21.1 m or more from every
   // hull circle's centre. On a 16:9 screen it lands within 0.9 of the half-width from the middle; on an upright phone
   // (speedCap 0.3–0.8 at a 0.4 s reaction, and the autopilot) within the half-width, shown for at least half of its
   // telegraph.
@@ -351,6 +352,8 @@ export function missionFor(chapter: number, slugs: readonly string[]): MissionDe
     softTime: row.softTime,
     legTimes: row.legTimes && row.legTimes.map((l) => ({ ...l })),
     decoyLimit: row.decoyLimit,
+    // The same for every lakon today (ruling SP-08): `frozen` and `volleys` stay in MissionDef on purpose, so a lakon can
+    // hold its clamour still or go without volleys again without a change to the engine.
     riuh: { start: 0, frozen: false, volleys: true },
     scripted: {
       decoys: row.decoys.map(clonePt),

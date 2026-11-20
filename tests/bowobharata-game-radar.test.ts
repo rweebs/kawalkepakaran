@@ -513,7 +513,7 @@ describe('radarItems', () => {
     });
 
     it('the cut follows the rim in arcs: a point between crossings, chords of 15° at most', () => {
-      // At level 5 the radius shown is 55% of the inner one, 38.5 m at rest. From 30 m north of the Kurawa block it cuts
+      // At level 5 the radius shown is 55% of the inner one, 38.5 m at rest. From 30 m south of the Kurawa block it cuts
       // the 16 m-wide block across, an arc of about 25°, and the Pandawa block's corner, an arc of about 18°.
       const car: Pose = { x: 11, z: 45, yaw: NORTH };
       const radius = 0.55 * R;

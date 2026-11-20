@@ -14,6 +14,12 @@ const rules: Rule[] = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
   body: m[2].trim().replace(/\s+/g, ' '),
 }));
 
+/** The style rules alone: `rules` less the stops of every @keyframes block (`from`, `to`, `50%`), which style no element. */
+const styleRules: Rule[] = [...css.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+  selector: m[1].trim().replace(/\s+/g, ' '),
+  body: m[2].trim().replace(/\s+/g, ' '),
+}));
+
 /** Bodies of every rule whose selector list contains `sel` exactly. */
 function bodies(sel: string): string[] {
   return rules.filter((r) => r.selector.split(',').map((s) => s.trim()).includes(sel)).map((r) => r.body);
@@ -333,7 +339,6 @@ function panelHeight(width: number, s: Stage): number {
     return worst;
   }));
 }
-/** Where the touch HUD's parts and the touch controls lie on a stage, in px from its top left, in their worst case. */
 /**
  * An absolutely placed box's start on one axis, as CSS resolves it on a stage (fix round 2, R2-7; fix round 3, R3-6): its
  * near inset (`left`, `top`) where that is set, else its far one (`right`, `bottom`) less its size. An inset that is
@@ -350,6 +355,7 @@ function startOf(sels: readonly string[], near: 'top' | 'left', size: number, s:
   return of - px(f, of) - size;
 }
 
+/** Where the touch HUD's parts and the touch controls lie on a stage, in px from its top left, in their worst case. */
 function lay(s: Stage) {
   const v = (sels: readonly string[], prop: string) => valueOf(sels, prop, s);
   /** A box's start on one axis, from its insets (`startOf`). */
@@ -635,13 +641,19 @@ describe('bowobharata-game.css stage and HUD', () => {
     // holds the row's class or a button's (.btn, a class token of its own: .bg-touch__btn is the touch buttons'), or no
     // class at all. The panel's own placement (.bg-objective) is the panel's, not the row's.
     const inRow = ['bg-actions', 'btn'];
+    // A keyframe stop (`from`, `50%`) styles no element, and a subject that is a pseudo-element (`.btn::after`) is a box of
+    // its own: neither moves the row (Task 36's F8), so the stops are left out (styleRules) and such subjects skipped.
     const reachesRow = (sel: string) => {
       const subject = sel.split(/\s*[\s>+~]\s*/).at(-1)!;
+      if (/::[\w-]+|:(?:before|after)\b/.test(subject)) return false;
       const classes = [...subject.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
       return classes.length === 0 || classes.some((c) => inRow.includes(c));
     };
+    expect(rules.some((r) => /^(?:from|to|[\d.]+%)$/.test(r.selector)), 'the stylesheet has keyframe stops').toBe(true);
+    expect(styleRules.filter((r) => /^(?:from|to|[\d.]+%)(?:\s*,|$)/.test(r.selector))).toEqual([]);
+    expect([reachesRow('.btn::after'), reachesRow('::before'), reachesRow('.bg-actions'), reachesRow('button')]).toEqual([false, false, true, true]);
     const moves = /(?:^|;)\s*(?:top|bottom|inset(?:-(?:block|inline)(?:-(?:start|end))?)?|transform|translate)\s*:|(?:^|;)\s*position\s*:\s*(?:absolute|fixed)\b/;
-    const rowRules = rules.filter((r) => r.selector.split(',').some((s) => reachesRow(s.trim())));
+    const rowRules = styleRules.filter((r) => r.selector.split(',').some((s) => reachesRow(s.trim())));
     for (const sel of ['.bg-objective .bg-actions', '.bg-actions', '.bg-hud button', '.bg-game .btn']) {
       expect(rowRules.some((r) => r.selector === sel), sel).toBe(true);
     }
@@ -776,6 +788,8 @@ describe('bowobharata-game.css stage and HUD', () => {
       // The radar and the toasts stay clear of the steer zone too (the panel may run into it: see the z-order test).
       expect.soft(apart(L.slot, L.steer, 8), `${where}: the radar and the steer zone`).toBe(true);
       expect.soft(apart(L.toasts, L.steer, 8), `${where}: the toasts and the steer zone`).toBe(true);
+      // So does every touch button: a thumb that steers never presses Rem, Laju, Mata or Maju (REG3-1).
+      for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(b, L.steer, 8), `${where}: ${name} and the steer zone`).toBe(true);
       // The newest toast always fits under the radar; the older one shows exactly where two fit, in both directions.
       expect.soft(L.toastH, `${where}: the newest toast needs ${L.toastH} of ${L.room} px`).toBeLessThanOrEqual(L.room);
       const two = 2 * L.toastH + L.gap;
@@ -785,7 +799,31 @@ describe('bowobharata-game.css stage and HUD', () => {
     for (const s of STAGES.filter((x) => x.vh > x.vw)) expect.soft(lay(s).slot.right, s.name).toBeGreaterThanOrEqual(s.w - 12);
   });
 
-  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */
+  it('places every modelled box by its four inset longhands alone: no rule that reaches the panel, the radar, the toasts, a touch button or the steer zone sets `inset` or a logical inset, which the model does not read (REG3-2)', () => {
+    /** The boxes lay() places, by the classes that name them. */
+    const MODELLED = ['bg-objective', 'bg-radar-slot', 'bg-toasts', 'bg-touch__btn', ...BUTTONS.map((k) => `bg-touch__btn--${k}`), 'bg-touch__steer'];
+    /** Whether a selector's subject can be one of those boxes: it holds one of their classes, or no class at all. */
+    const reachesBox = (sel: string) => {
+      const subject = sel.split(/\s*[\s>+~]\s*/).at(-1)!;
+      if (/::?(?:before|after)\b|::[\w-]+/.test(subject)) return false;
+      const classes = [...subject.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
+      return classes.length === 0 || classes.some((c) => MODELLED.includes(c));
+    };
+    const logical = /(?:^|;)\s*inset(?:-(?:block|inline)(?:-(?:start|end))?)?\s*:/;
+    const reaching = styleRules.filter((r) => r.selector.split(',').some((x) => reachesBox(x.trim())));
+    for (const sel of ['.bg-touch__steer', '.bg-touch__btn--ride']) expect(reaching.some((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)), sel).toBe(true);
+    expect(reaching.filter((r) => logical.test(r.body)).map((r) => `${r.selector} { ${r.body} }`)).toEqual([]);
+    // The rule itself: what it catches, and the boxes it leaves alone.
+    expect(logical.test('inset: auto auto 184px 1rem')).toBe(true);
+    expect(logical.test('position: absolute; inset-inline-start: 1rem')).toBe(true);
+    expect(logical.test('inset-block: 0')).toBe(true);
+    expect(logical.test('left: 1rem; bottom: 24px')).toBe(false);
+    expect(reachesBox('.bg-hud[data-touch] .bg-toasts')).toBe(true);
+    expect(reachesBox('.bg-stage')).toBe(false);
+    expect(reachesBox('.bg-touch__btn::after')).toBe(false);
+  });
+
+  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */
   const SMALL: Stage[] = ([[320, 568, 79], [568, 320, 69], [667, 375, 69]] as const).flatMap(([vw, vh, nav]) => [
     { name: `${vw}×${vh} in the page`, vw, vh, w: vw - 32, h: Math.min(vh - nav, 896) },
     { name: `${vw}×${vh} in full screen`, vw, vh, w: vw, h: vh },
@@ -890,7 +928,7 @@ describe('bowobharata-game.css stage and HUD', () => {
     });
   }
 
-  it("without container queries (a browser that reads range-syntax media queries, such as Firefox 63 to 109 and Chrome 104), the @supports fallback keeps the Pause row on the stage and clear, the radar on the stage, clear of every button, over the toasts and no deeper in the panel than with them, the toasts on the stage and clear of the buttons and the steer zone, at the 18 listed stages and at 320×568, 568×320 and 667×375; at the listed stages every two parts keep 8 px apart, Laju and the panel included (Task 38, fix round 1, F6 and F8; fix round 2, R2-8; fix round 3, R3-7)", () => {
+  it("without container queries (a browser that reads range-syntax media queries, such as Firefox 63 to 109 and Chrome 104), the @supports fallback keeps, at the 18 listed stages and at 320×568, 568×320 and 667×375, the Pause row on the stage and clear, and the radar on the stage, clear of every button, over the toasts and no deeper in the panel than with them; at the listed stages (667×375 among them) the toasts on the stage on all four sides and clear of the buttons and the steer zone, every button clear of the steer zone, and every two parts 8 px apart, Laju and the panel included; at 320×568 and 568×320 the toasts, the buttons and the steer zone exactly where the container rules put them (Task 38, fix round 1, F6 and F8; fix round 2, R2-8; fix round 3, R3-7)", () => {
     // One fallback block, which a browser with container queries skips: the listed stages' layout stays theirs alone.
     expect(BLOCKS.filter((b) => b.kind === 'supports').map((b) => b.cond)).toEqual(['not (container-type: size)']);
     for (const cq of [...STAGES, ...SMALL]) {
@@ -916,6 +954,9 @@ describe('bowobharata-game.css stage and HUD', () => {
         // The toasts that show (the newest alone, where the CSS hides the older one): on the stage, and 8 px clear of every
         // button and of the steer zone, as the stage test keeps them at the listed stages (fix round 3, R3-7).
         expect.soft(L.toasts.bottom, `${s.name}: the toasts' bottom`).toBeLessThanOrEqual(s.h - 8);
+        expect.soft(L.toasts.right, `${s.name}: the toasts' right`).toBeLessThanOrEqual(s.w - 8);
+        expect.soft(L.toasts.left, `${s.name}: the toasts' left`).toBeGreaterThanOrEqual(8);
+        expect.soft(L.toasts.top, `${s.name}: the toasts' top`).toBeGreaterThanOrEqual(8);
         for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(L.toasts, b, 8), `${s.name}: the toasts and ${name}, without container queries`).toBe(true);
         expect.soft(apart(L.toasts, L.steer, 8), `${s.name}: the toasts and the steer zone, without container queries`).toBe(true);
       } else {
@@ -923,6 +964,15 @@ describe('bowobharata-game.css stage and HUD', () => {
         // over Maju at 320×568 in the page and past the stage at 568×320 in the page, are Task 34's, ruled, and none is
         // the fallback's own.
         expect.soft(L.toasts, `${s.name}: the toasts, as with container queries`).toEqual(C.toasts);
+      }
+      if (STAGES.includes(cq)) {
+        // Every touch button 8 px clear of the steer zone, as the stage test keeps them (REG3-1).
+        for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(b, L.steer, 8), `${s.name}: ${name} and the steer zone, without container queries`).toBe(true);
+      } else {
+        // At the small unlisted stages the buttons and the steer zone sit where the container rules put them: the fallback
+        // adds no misfit of its own there (Laju lies under 8 px from the steer zone at 320×568 either way: an unlisted stage).
+        expect.soft(L.buttons, `${s.name}: the buttons, as with container queries`).toEqual(C.buttons);
+        expect.soft(L.steer, `${s.name}: the steer zone, as with container queries`).toEqual(C.steer);
       }
       for (const [name, b] of Object.entries(L.buttons)) expect.soft(apart(L.slot, b, 8), `${s.name}: the radar and ${name}, without container queries`).toBe(true);
       expect.soft(overlapX(L.panel, L.slot), `${s.name}: the panel over the radar, without container queries vs with`).toBeLessThanOrEqual(overlapX(C.panel, C.slot) + 0.01);
