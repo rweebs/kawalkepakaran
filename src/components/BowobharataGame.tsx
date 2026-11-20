@@ -119,6 +119,8 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   // The game clock at the failed event, until the fail shot has run; and the chapter the stage was last scrolled for.
   const failClock = useRef<number | null>(null);
   const scrolledFor = useRef(-1);
+  /** Whether the island has rendered once: the scroll on a screen change leaves the first render alone. */
+  const shownOnce = useRef(false);
   // The last screen each runtime was given its command for (see the command effect), and the plays started so far.
   const issued = useRef<{ rt: Runtime | null; screen: Screen | null; chapter: number }>({ rt: null, screen: null, chapter: -1 });
   const plays = useRef(0);
@@ -555,6 +557,21 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   useEffect(() => {
     if (flow.screen === 'gate' || flow.screen === 'intro') scrolledFor.current = -1;
   }, [flow.screen]);
+  // Any other screen change (Start, a chapter's next screen, the version without animation's every step) can shrink the
+  // page under the reader, whose scroll the browser then clamps onto the credits and the footer: when the game's top has
+  // gone above the sticky header, it is brought back under it at once. A 3D play's start scrolls itself (above).
+  useEffect(() => {
+    if (!shownOnce.current) {
+      shownOnce.current = true;
+      return;
+    }
+    if (flow.screen === 'gate' || (flow.screen === 'play' && flowRef.current.mode === '3d')) return;
+    const game = gameRef.current;
+    if (!game) return;
+    const nav = document.querySelector('.nav');
+    const navBottom = nav ? nav.getBoundingClientRect().bottom : 0;
+    if (game.getBoundingClientRect().top < navBottom) game.scrollIntoView({ block: 'start', behavior: 'auto' });
+  }, [flow.screen, flow.chapter]);
 
   // Fallback play starts from the first event each time a chapter's play begins.
   useEffect(() => { setTaken(0); }, [flow.screen, flow.chapter, flow.mode]);

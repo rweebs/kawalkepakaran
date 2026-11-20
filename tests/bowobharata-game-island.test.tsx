@@ -1027,6 +1027,20 @@ describe('island wiring (source)', () => {
     expect(src).toMatch(/data-paused=\{flow\.paused \? 'on' : undefined\}/);
   });
 
+  it('brings the game back under the header after a screen change that left its top above it (C-ISLAND-1), with a scroll margin', () => {
+    // Comments become spaces, so a commented-out line does not pass.
+    const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => ' '.repeat(c.length));
+    const effect = code.match(/useEffect\(\(\) => \{\s*if \(!shownOnce\.current\) \{[\s\S]*?\n {2}\}, \[flow\.screen, flow\.chapter\]\);/)?.[0] ?? '';
+    expect(effect, 'the effect on [flow.screen, flow.chapter] that skips the first render').not.toBe('');
+    expect(effect).toMatch(/shownOnce\.current = true;\s*return;/);
+    expect(effect).toMatch(/flow\.screen === 'gate' \|\| \(flow\.screen === 'play' && flowRef\.current\.mode === '3d'\)\) return;/);
+    expect(effect).toContain("document.querySelector('.nav')");
+    expect(effect).toMatch(/if \(game\.getBoundingClientRect\(\)\.top < navBottom\) game\.scrollIntoView\(\{ block: 'start', behavior: 'auto' \}\);/);
+    expect(effect).toMatch(/const game = gameRef\.current;/);
+    const css = readFileSync('src/styles/bowobharata-game.css', 'utf8');
+    expect(css).toMatch(/^\.bg-game \{[^}]*scroll-margin-top: var\(--nav-h, 59px\);/m);
+  });
+
   it('reads touch and a gamepad, guarded, and feeds the rings to TouchControls', () => {
     expect(src).toContain('(pointer: coarse)');
     expect(src).toContain('getGamepads');

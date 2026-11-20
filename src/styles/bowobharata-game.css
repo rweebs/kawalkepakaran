@@ -1,5 +1,5 @@
 /* BOWOBHARATA game island. Uses the site tokens from global.css; cards wrap long names and dossier text. */
-.bg-game { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; color: var(--text-primary); }
+.bg-game { scroll-margin-top: var(--nav-h, 59px); position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; color: var(--text-primary); }
 .bg-game[data-mode='3d']:not([data-screen='gate']) { height: min(calc(100svh - var(--nav-h, 59px)), 56rem); grid-template-rows: minmax(0, 1fr); }
 
 .bg-stage { scroll-margin-top: var(--nav-h, 59px); position: absolute; inset: 0; border-radius: var(--radius-lg); overflow: hidden; background: var(--gradient-hero); }

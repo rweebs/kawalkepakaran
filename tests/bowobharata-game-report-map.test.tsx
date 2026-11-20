@@ -863,6 +863,24 @@ describe('world/report-map: createReportMap with a stub renderer', () => {
     api.dispose();
   });
 
+  it('takes its keydown and keyup capture listeners off the document on dispose, even once the canvas has left the page (3D-1)', () => {
+    const page = fakePage();
+    const keyListeners = () => (page.doc.map.get('keydown')?.size ?? 0) + (page.doc.map.get('keyup')?.size ?? 0);
+    const before = keyListeners();
+    const added = vi.spyOn(page.doc, 'addEventListener');
+    const removed = vi.spyOn(page.doc, 'removeEventListener');
+    const { api } = open(page, true);
+    // OrbitControls adds a keydown capture listener to the canvas's root node, the document while it is in the page.
+    expect(added.mock.calls.filter(([t, , opt]) => t === 'keydown' && (opt as AddEventListenerOptions | undefined)?.capture === true)).toHaveLength(1);
+    expect(keyListeners()).toBe(before + 1);
+    // As React unmounts: the canvas leaves the page first, so its root node is now the detached subtree.
+    const detached = new Target();
+    page.canvas.getRootNode = () => detached;
+    api.dispose();
+    expect(removed.mock.calls.some(([t, , opt]) => t === 'keydown' && (opt as EventListenerOptions | undefined)?.capture === true)).toBe(true);
+    expect(keyListeners()).toBe(before);
+  });
+
   it('reports hover and a short press as a pick at a node’s screen position, and empty space as null', () => {
     const page = fakePage();
     const { api, calls } = open(page, true);

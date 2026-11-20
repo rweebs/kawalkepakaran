@@ -604,6 +604,12 @@ function start(
       controls.removeEventListener('start', onStart);
       controls.removeEventListener('end', onEnd);
       controls.removeEventListener('change', wake);
+      // OrbitControls takes its capture listeners off canvas.getRootNode(); once the canvas has left the page (React runs
+      // a passive effect's cleanup after the removal) that is the detached subtree, and the document would keep them and,
+      // through them, the controls, the canvas and the whole screen. So they come off the canvas's document here first.
+      const keyed = controls as unknown as { _interceptControlDown: EventListener; _interceptControlUp: EventListener };
+      o.canvas.ownerDocument.removeEventListener('keydown', keyed._interceptControlDown, { capture: true });
+      o.canvas.ownerDocument.removeEventListener('keyup', keyed._interceptControlUp, { capture: true });
       controls.dispose();
       objects.dispose();
       renderer.dispose();

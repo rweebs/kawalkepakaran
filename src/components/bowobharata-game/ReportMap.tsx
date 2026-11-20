@@ -5,7 +5,7 @@
 // tooltip, the panel and the parva rail are DOM around the picture: the canvas draws no text, and no aria-label names
 // anyone, because names belong only inside the framed block the screen puts this map in. Every word comes in `labels`.
 import '../../styles/bowobharata-game-map.css';
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import type { Locale } from '../../i18n';
 import type { MapGraph, MapLinkKind, MapNode } from '../../lib/bowobharata-game/report-types';
 import {
@@ -190,7 +190,8 @@ export function ReportMap({ graph, chapterIds, upTo, focus: focusProp, rail, all
   }, [allow3d]);
 
   // The scene lives as long as its canvas: loaded on demand, then freed with its context. Any failure keeps the still picture.
-  useEffect(() => {
+  // A layout effect, so its cleanup runs while the canvas is still in the page (report-map.ts's dispose does not rely on it).
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!want3d || !canvas) return;
     let live = true;
