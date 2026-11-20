@@ -775,6 +775,11 @@ describe("the Mata lesson in every driver's hands", () => {
    * hull's middle. For the attentive drivers (a reaction of 0.4 s or less), the sight lesson is still on the HUD there
    * in 95% of runs or more. Slower hands wander for up to 52 s between the lesson and the copy, past any lesson's stay.
    */
+  /** The share of met runs with the sight lesson still on the HUD at the copy, by reaction and seed, as measured. */
+  const SLOW_SHOWN: Record<string, Record<number, number>> = {
+    '0.8': { 1: 34 / 54, 2: 34 / 54, 3: 34 / 54 },
+    '1': { 1: 17 / 54, 2: 16 / 54, 3: 16 / 54 },
+  };
   const GROUPS = SEEDS.flatMap((seed) => [
     [seed, '0 and 0.4', [0, 0.4]] as const,
     [seed, '0.8', [0.8]] as const,
@@ -817,6 +822,8 @@ describe("the Mata lesson in every driver's hands", () => {
         if (!reach.touched() && !near) continue;
         met++;
         const at = reach.at();
+        // A run that met the copy was told of Mata: without this, `told` left at -Infinity would pass the lead check.
+        expect(Number.isFinite(told), `${name(d)}, seed ${seed}: met the lesson copy without the sight lesson`).toBe(true);
         expect(at.clock - told, `${name(d)}, seed ${seed}`).toBeGreaterThanOrEqual(0.8 - 1e-9);
         if (at.hint === 'sight') shown++;
       }
@@ -824,6 +831,9 @@ describe("the Mata lesson in every driver's hands", () => {
       expect(checked).toBeGreaterThanOrEqual(2 * met);
       // The sight lesson is still on the HUD when an attentive driver reaches the lesson copy, in 95% of runs or more.
       if (reactions.every((x) => x <= 0.4)) expect(shown / met, `${shown} of ${met}`).toBeGreaterThanOrEqual(0.95);
+      // Slower hands, at the shares measured at the final fix (L751): the lesson is still up at the copy in 34 of 54 runs
+      // at 0.8 s on every seed, and in 17 (seed 1) or 16 (seeds 2 and 3) of 54 at 1 s.
+      else expect(shown / met, `${shown} of ${met}`).toBeGreaterThanOrEqual(SLOW_SHOWN[_label][seed]);
     },
     BOT_TIMEOUT,
   );
@@ -2639,7 +2649,10 @@ describe('roam: replays and free laps (Task 36)', () => {
 
   it("in chapter 3's roam, driving into parva 1's marker starts its replay at the cut into its intro; the autopilot finishes it with replayDone for chapter 1, never done, and chapter 3's roam resumes at ROAM_RETURN", () => {
     const log: GameEvent[] = [];
-    const roam = roam3(WEST_OF_M1, { bests: [0, 120] });
+    // Chapter 3's level, next volley and scripted flag set apart from what a replay ends with (level 0, no volley due, not
+    // planned), so the return is seen to bring back the lakon's own and not keep the replay's; and its volleys' rng apart
+    // from the seed's, so the replay is seen to take the state's.
+    const roam: GameState = { ...roam3(WEST_OF_M1, { bests: [0, 120] }), level: 4, nextVolley: 999, scriptedPlanned: true, rng: 0x2545f491 };
     let s = driveIn(roam, log);
     // Parva 1's lakon, by its own marker rule: in its intro, the camera cut to the intro's first shot.
     expect(s.run.def.chapter).toBe(1);
@@ -2657,6 +2670,8 @@ describe('roam: replays and free laps (Task 36)', () => {
     expect(s.decoys.map((d) => d.at)).toEqual(defOf(1).scripted.decoys);
     expect(s.clouds.map((c) => c.at)).toEqual(defOf(1).scripted.clouds);
     expect(s.riuh.value).toBe(defOf(1).riuh.start);
+    // Its volleys draw from the state's rng, as it stood when the replay began.
+    expect(s.rng).toBe(roam.rng);
     // The autopilot rides it to the end, under the lakon's own pressure: its clamour moves, its levels and volleys come.
     const bot = createBot();
     const from = log.length;

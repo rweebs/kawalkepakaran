@@ -331,6 +331,27 @@ describe('radarItems', () => {
       expectAt(gates({ dayIndex: 1 }), [target(realGate(1).id), target('day3'), target('day4')], car);
     });
 
+    it("the route leads to the day's real gate by that gate's key: held back at the edge, the route stops HOLD m short of it", () => {
+      // Level 4 at rest: the edge lies at 49 m. Day 1's real gate, the run's first aim, stands 48.5 m due north: within the
+      // edge but not HOLD m within it, so a snapshot that did not show it holds it back, and one that showed it keeps it.
+      const g = realGate(1);
+      expect(openTargets(stateAt(4, car, {}, { dayIndex: 0 }).run)[0].at).toEqual(g.at);
+      const at: Pose = { x: g.at.x, z: g.at.z + 48.5, yaw: NORTH };
+      const s = loud(stateAt(4, at, { route: { target: 'gate', points: [{ x: at.x, z: at.z }, g.at] } }, { dayIndex: 0 }), 4.2);
+      const key = `gate:${g.id}`;
+      const shownBefore = radarItems(s, w, RADAR_PX, 70, [{ kind: 'gate', key, x: 0, y: 0, clamped: false, dist: 48.5 }]);
+      expect(ofKind(shownBefore, 'gate').map((i) => i.key)).toEqual([key]);
+      const reached = ofKind(shownBefore, 'route')[0];
+      expect(reached.clamped).toBe(false);
+      expect(fromCentre(reached)).toBeCloseTo((48.5 * R) / 70, 9);
+      // Not shown before: the gate is held back, and the route, which leads to that gate's key, stops short of it.
+      const held = radarItems(s, w, RADAR_PX, 70, []);
+      expect(ofKind(held, 'gate')).toEqual([]);
+      const route = ofKind(held, 'route')[0];
+      expect(route.clamped).toBe(true);
+      expect(fromCentre(route)).toBeCloseTo(((49 - HOLD) * R) / 70, 9);
+    });
+
     it('shows nothing of the course in roam, and no record items: its records are its gates', () => {
       expect(gates({ phase: 'roam' })).toEqual([]);
       expect(ofKind(items(stateAt(4, car, {}, { dayIndex: 0 })), 'record')).toEqual([]);

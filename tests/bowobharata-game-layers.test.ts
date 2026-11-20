@@ -1647,6 +1647,27 @@ describe('pickups', () => {
     expect(frames.size).toBe(0);
   });
 
+  it('dispose frees the replay rings\' material once, even when no roam ever laid a ring out (3D-5)', () => {
+    // The material is made with the layer and held by the group only while rings are out: caught as it is made.
+    const made = vi.spyOn(THREE.MeshBasicMaterial.prototype, 'setValues');
+    const { game } = fakeGame();
+    const layer = createPickups(game);
+    const replays = made.mock.calls.flatMap((args, k) => {
+      const p = args[0] as THREE.MeshBasicMaterialParameters | undefined;
+      return p && p.color === '#b9bcc0' && p.opacity === 0.4 && p.blending === THREE.AdditiveBlending ? [made.mock.contexts[k] as THREE.MeshBasicMaterial] : [];
+    });
+    made.mockRestore();
+    expect(replays).toHaveLength(1);
+    const replay = replays[0];
+    layer.sync(BASE, 0);
+    // Not in the scene: no ring was laid out.
+    expect(ownedBy(named(game.root, 'pickups'), game).has(replay)).toBe(false);
+    let freed = 0;
+    replay.addEventListener('dispose', () => { freed++; });
+    layer.dispose();
+    expect(freed).toBe(1);
+  });
+
   it('allocates nothing per frame: no new, literal, spread or closure from function sync( to function dispose(, where every per-frame helper lives', () => {
     const src = read('src/lib/bowobharata-game/world/pickups3d.ts');
     const from = src.indexOf('function sync(');
@@ -3429,6 +3450,56 @@ describe('volleys', () => {
     for (const name of NAMES) expect(drawnOf(game, name), name).toBe(0);
     // The layer never pulses: the runtime does, once per 'absorbed' event.
     expect(pulse).not.toHaveBeenCalled();
+  });
+
+  it('keeps the hide rule on an absorbed volley\'s fading arrows: a chariot at 25 m/s that turns into them in their 0.3 s finds none within 3 m of a hull circle below 4 m (3D-4)', () => {
+    const dt = 1 / 60;
+    const SPEED = 25;
+    let checked = 0;
+    // Straight in at 25 m/s, its front hull circle `short` m short of the landing and 3 m to its side, turning from the
+    // moment the light takes the volley at `rate` deg/s (0: straight on). The look-ahead of the arrows in flight follows
+    // the chariot's way straight on, so a turn brings the hull onto arrows it left out: their own hide rule takes them.
+    for (const [rate, yaw0, side] of [[0, -0.4, 3], [60, -0.4, 3], [120, -0.4, 3], [180, -0.4, 3], [-120, 2.1, -3]] as const) {
+      for (const short of [4, 6, 8]) {
+        const { game } = fakeGame();
+        const layer = createVolleys(game, false);
+        const f = forward(yaw0);
+        const r = rightOf(yaw0);
+        const from = { x: LAND.x - f.x * (3.6 + short) + r.x * side, z: LAND.z - f.z * (3.6 + short) + r.z * side };
+        /** The chariot at time t: on its straight way before the landing, then along its turn (integrated at 600 Hz). */
+        const at = (t: number) => {
+          if (t <= LANDS) return car(from.x + f.x * SPEED * (t - LANDS), from.z + f.z * SPEED * (t - LANDS), yaw0, SPEED);
+          let { x, z } = from;
+          let yaw = yaw0;
+          for (let i = Math.round((t - LANDS) * 600); i > 0; i--) {
+            const g = forward(yaw);
+            x += (g.x * SPEED) / 600;
+            z += (g.z * SPEED) / 600;
+            yaw += (rate * Math.PI) / 180 / 600;
+          }
+          return car(x, z, yaw, SPEED);
+        };
+        let clock = 10;
+        for (let t = flightT(0.6); t < LANDS; t += dt, clock += dt) layer.sync(stateAtT(t, [volleyAt(t)], { car: at(t) }), clock);
+        // Absorbed: gone from s.volleys at the landing; its arrows fade where they were.
+        for (let j = 1; j <= Math.ceil(0.3 / dt) + 2; j++, clock += dt) {
+          const t = LANDS + j * dt;
+          const c = at(t);
+          layer.sync(stateAtT(t, [], { car: c }), clock);
+          for (const name of ['volley-arrows', 'volley-fletching']) {
+            const mesh = meshOf(game, name);
+            for (let k = 0; k < drawnOf(game, name); k++) {
+              for (const p of vertices(mesh, k)) {
+                if (hullGap(c, p) < 3) expect(p.y - groundHeight(p.x, p.z), `${name} ${k}, ${rate}°/s, ${short} m short, frame ${j}`).toBeGreaterThanOrEqual(4);
+              }
+              checked++;
+            }
+          }
+        }
+      }
+    }
+    // Fading arrows were drawn and checked, frame by frame.
+    expect(checked).toBeGreaterThan(300);
   });
 
   it('draws nothing in roam, nor with nothing in flight or standing: empty lists, and a lakon’s own haze waits for its intro', () => {

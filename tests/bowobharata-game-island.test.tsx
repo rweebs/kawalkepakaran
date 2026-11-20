@@ -61,7 +61,15 @@ function expectOnlyAbil(text: string, abil: number, sengkuni: number, where: str
   expect(text.match(/sengkuni/gi)?.length ?? 0, `${where}: Sengkuni`).toBe(sengkuni);
   expect(namesIn(text.replace(/abil sudarman/gi, ' '), E_FORMS), `${where}: any other category E form`).toEqual([]);
 }
-/** The capitalised JSX tags a TSX source renders: the components it shows. */
+type JsxName = { type?: string; name?: string; object?: JsxName; property?: JsxName };
+/** A member tag's dotted name (`<Screens.Gate>` gives 'Screens.Gate'), or null for any other kind of name. */
+const memberName = (n: JsxName | undefined): string | null => {
+  if (n?.type === 'JSXIdentifier') return n.name ?? null;
+  if (n?.type !== 'JSXMemberExpression') return null;
+  const object = memberName(n.object);
+  return object && n.property?.name ? `${object}.${n.property.name}` : null;
+};
+/** The JSX tags a TSX source renders as components: the capitalised ones, and every member tag (`<Screens.Gate>`). */
 function jsxTags(name: string, src: string): Set<string> {
   const { program, errors } = parseSync(name, src, { lang: 'tsx' });
   if (errors.length > 0) throw new Error(`${name} does not parse: ${errors.map((e) => e.message).join('; ')}`);
@@ -69,8 +77,12 @@ function jsxTags(name: string, src: string): Set<string> {
   const visit = (v: unknown): void => {
     if (Array.isArray(v)) return v.forEach(visit);
     if (!v || typeof v !== 'object') return;
-    const n = v as { type?: string; name?: { type?: string; name?: string } };
+    const n = v as { type?: string; name?: JsxName };
     if (n.type === 'JSXOpeningElement' && n.name?.type === 'JSXIdentifier' && /^[A-Z]/.test(n.name.name ?? '')) tags.add(n.name.name!);
+    if (n.type === 'JSXOpeningElement' && n.name?.type === 'JSXMemberExpression') {
+      const dotted = memberName(n.name);
+      if (dotted) tags.add(dotted);
+    }
     for (const [k, x] of Object.entries(v)) if (k !== 'parent') visit(x);
   };
   visit(program);
@@ -338,6 +350,8 @@ describe("Sanjaya's report", () => {
     for (const c of checked.filter((x) => x.label in sengkuni)) expect(namesIn(readable(c.html), NAME_FORMS), c.label).toEqual([]);
     // Every screen the island renders is in this sweep, or exempt with its reason.
     const EXEMPT: Record<string, string> = { Gate: "its own test above: FRAMING and Abil Sudarman's labelled poster cut out and pinned" };
+    // The tag reader sees member tags too, so a screen rendered as <Screens.Gate> or <ui.Card> is not missed.
+    expect([...jsxTags('t.tsx', 'const a = <><Screens.Gate /><ui.Card.Head /><div /><Intro /></>;')].sort()).toEqual(['Intro', 'Screens.Gate', 'ui.Card.Head']);
     const island = jsxTags('BowobharataGame.tsx', readFileSync('src/components/BowobharataGame.tsx', 'utf8'));
     expect(island.size).toBeGreaterThanOrEqual(13);
     const swept = new Set(checked.map((c) => c.component));
