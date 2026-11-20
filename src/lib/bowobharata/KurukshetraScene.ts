@@ -257,6 +257,9 @@ export function createScene({ canvas, reducedMotion, mobile, onLost, game }: Sce
       probe.dispose();
       post?.dispose();
       renderer.dispose();
+      // three's shared empty texture keeps a listener from every renderer that bound it, so a torn-down game scene (play
+      // again, the switch to the version without animation) would keep its context; the page makes one scene per load.
+      if (game) renderer.forceContextLoss();
     },
   };
 }

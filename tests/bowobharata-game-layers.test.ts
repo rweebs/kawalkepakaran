@@ -766,6 +766,32 @@ describe('frame-code check', () => {
   });
 });
 
+describe('per-frame distances (3D-6)', () => {
+  /** The body of `function name(`, from its first brace to the matching one, comments taken out. */
+  const bodyOf = (file: string, name: string) => {
+    const code = read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const at = code.indexOf(`function ${name}(`);
+    expect(at, `${file}: function ${name}`).toBeGreaterThan(-1);
+    let i = code.indexOf('{', code.indexOf(')', at));
+    const from = i;
+    for (let depth = 0; i < code.length; i++) {
+      depth += code[i] === '{' ? 1 : code[i] === '}' ? -1 : 0;
+      if (depth === 0) break;
+    }
+    return code.slice(from, i + 1);
+  };
+  it('fadeTufts (up to 320 tufts a moving frame) and nearHull measure with Math.sqrt, never Math.hypot, which allocates', () => {
+    for (const [file, name] of [
+      ['src/lib/bowobharata-game/world/ground3d.ts', 'fadeTufts'],
+      ['src/lib/bowobharata-game/world/volleys3d.ts', 'nearHull'],
+    ] as const) {
+      const body = bodyOf(file, name);
+      expect(body, name).toContain('Math.sqrt(');
+      expect(body, name).not.toMatch(/\bhypot\b/);
+    }
+  });
+});
+
 describe('pickups', () => {
   type Run = GameState['run'];
   /** Whether o is drawn: it and every parent visible. */

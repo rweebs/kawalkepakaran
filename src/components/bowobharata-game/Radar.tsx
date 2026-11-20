@@ -38,12 +38,13 @@ const ARC = { from: 210, span: 300 } as const;
 const MATCH_PX = 16;
 /**
  * How near (px) a point's copy on its way out must lie to come back for it: the point's own place. The cut shapes move
- * with the chariot and have no neighbour of their look to take from: the route's copy comes back at any distance, and a
- * ranks block's own copy (by its key) within MATCH_PX.
+ * with the chariot and have no neighbour of their look to take from: the route's copy comes back at any distance, and so
+ * does a ranks block's own copy, by its key (ruling 845: a slow Mata tap in a fast turn moves an outline past MATCH_PX).
  */
 const REVIVE_PX = 2;
-/** How far (px²) a copy of `kind` may lie from its item and still come back for it. */
-const reviveD2 = (kind: RadarKind) => (kind === 'route' ? Infinity : kind === 'ranks' ? MATCH_PX * MATCH_PX : REVIVE_PX * REVIVE_PX);
+/** How far (px²) a copy may lie from `item` and still come back for it: a ranks block's only by its key. */
+const reviveD2 = (item: RadarItem) =>
+  item.kind === 'route' || (item.kind === 'ranks' && item.key !== undefined) ? Infinity : item.kind === 'ranks' ? MATCH_PX * MATCH_PX : REVIVE_PX * REVIVE_PX;
 /**
  * How far (px) past the radius shown the route's clip reaches: the route's end chevron reaches 3 px from its end, and
  * its stroke 1 px more, so at rest the chevron and the line's round end are whole. The ranks get no such margin: their
@@ -174,7 +175,7 @@ function capRoute(marks: RadarMark[], now: number): RadarMark[] {
  *   the new cut left as it was keeps its look. If its own mark has that look, it moves on with the item.
  * - If not, that mark fades out where it is, in its old look, and the item gets a mark of the new look: a copy of that
  *   look on its way out comes back from where it is, or a new key fades in from 0. A point's copy comes back only at its
- *   own place (REVIVE_PX), a ranks block's own copy within MATCH_PX, the route's at any distance (reviveD2): the cut
+ *   own place (REVIVE_PX), a ranks block's own copy (by its key) and the route's at any distance (reviveD2): the cut
  *   shapes move with the chariot, and Mata tapped while it turns or drives must not leave their outlines faint. An item
  *   with no mark of its own comes in the same way.
  * - The tower's halo turns to the aim and fades on its own, so aiming never re-keys the tower.
@@ -222,9 +223,11 @@ export function trackMarks(
     }
     if (mine) leaving.add(mine);
     let back: RadarMark | null = null;
-    let backD = reviveD2(item.kind);
+    let backD = reviveD2(item);
+    // At any distance a ranks block takes back only its own copy: the same key, not a copy that has none.
+    const byKey = item.kind === 'ranks' && item.key !== undefined;
     for (const m of pool) {
-      if (m.to !== 0 || taken.has(m) || !kin(m, item) || !looks(m)) continue;
+      if (m.to !== 0 || taken.has(m) || !kin(m, item) || !looks(m) || (byKey && m.item.key !== item.key)) continue;
       const d = apart(m, item);
       if (d <= backD) {
         back = m;

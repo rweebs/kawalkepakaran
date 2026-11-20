@@ -376,12 +376,16 @@ export function createVolleys(game: SceneGame, mobile: boolean): Layer & { setSh
     // Across the ground: the arrow's middle, and how far from it a hull circle's centre must keep.
     const mx = (hx + bx) / 2;
     const mz = (hz + bz) / 2;
-    const reach = Math.hypot(hx - bx, hz - bz) / 2 + THICK + HULL.r + HIDE.near;
+    const ax = hx - bx;
+    const az = hz - bz;
+    const reach = Math.sqrt(ax * ax + az * az) / 2 + THICK + HULL.r + HIDE.near;
     const way = ahead ? leadX * leadX + leadZ * leadZ : 0;
     for (let k = 0; k < HULL.offsets.length; k++) {
       // The point of the centre's way nearest the middle: the centre itself when not looking ahead.
       const u = way > 0 ? clamp(((mx - hullX[k]) * leadX + (mz - hullZ[k]) * leadZ) / way, 0, 1) : 0;
-      if (Math.hypot(mx - hullX[k] - u * leadX, mz - hullZ[k] - u * leadZ) < reach) return true;
+      const ex = mx - hullX[k] - u * leadX;
+      const ez = mz - hullZ[k] - u * leadZ;
+      if (Math.sqrt(ex * ex + ez * ez) < reach) return true;
     }
     return false;
   }

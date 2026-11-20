@@ -1514,6 +1514,22 @@ describe('hints', () => {
     expect(inFront(s, lessonCopy(s).at, 4)).toBe(true);
   });
 
+  it('the sight lesson ends with the active phase: a skip to the record right after it fires does not keep it through the outro (L748)', () => {
+    // Stopped beside its copy, which would keep the lesson for 12 s; HINT_SECONDS have passed since it fired.
+    const s = lessonScene(0.5, 3, HINT_SECONDS + 0.5);
+    expect(hudOf(s, desktop).hint).toBe('sight');
+    let t = skipToRecord(s).state;
+    expect(t.run.phase).not.toBe('active');
+    t = step(t, IDLE);
+    expect(t.hintCopy).toBeNull();
+    expect(hudOf(t, desktop).hint).toBeNull();
+    expect(lessonCopy(t).state).toBe('open');
+    // The same scene without the skip keeps the lesson: the phase, not the copy, let it go.
+    const kept = step(s, IDLE);
+    expect(kept.hintCopy).not.toBeNull();
+    expect(hudOf(kept, desktop).hint).toBe('sight');
+  });
+
   it('a hint that comes due meanwhile replaces the sight lesson under the queue rules, and sight does not come back', () => {
     // steer not yet shown: 31° off the way to L1 it comes due at once, and the lesson has been up for HINT_MIN.
     let s = lessonScene(6, 0, 4, ['ride', 'rewrites', 'sight']);

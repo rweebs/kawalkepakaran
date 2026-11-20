@@ -169,7 +169,9 @@ export function createGround(game: SceneGame, mobile: boolean): Layer {
     const rgb = tufts.instanceColor!.array as Float32Array;
     let n = 0;
     for (let k = 0; k < pooled && n < ring.cap; k++) {
-      const f = tuftFade(Math.hypot(poolAt[k * 2] - car.x, poolAt[k * 2 + 1] - car.z), ring.radius);
+      const dx = poolAt[k * 2] - car.x;
+      const dz = poolAt[k * 2 + 1] - car.z;
+      const f = tuftFade(Math.sqrt(dx * dx + dz * dz), ring.radius);
       if (f <= 0) continue;
       // Column-major: the first three columns hold the turn and size, the last the place.
       for (let e = 0; e < 12; e++) pose[n * 16 + e] = poolPose[k * 16 + e] * f;

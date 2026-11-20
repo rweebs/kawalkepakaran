@@ -692,12 +692,13 @@ function lessonCopyOf(s: GameState): number | null {
 
 /**
  * The copy the sight lesson still follows in the frame ending at `clock`, decided on `s`, the frame before: kept while
- * that copy was still open within SIGHT_LESSON.passed m and the lesson is younger than SIGHT_LESSON.most s. Deciding on
- * the frame before keeps the lesson up through the frame in which the copy is taken, filed or passed.
+ * the lakon is active, that copy was still open within SIGHT_LESSON.passed m and the lesson is younger than
+ * SIGHT_LESSON.most s. Deciding on the frame before keeps the lesson up through the frame in which the copy is taken,
+ * filed or passed; a lakon that left its active part (a skip to its record) lets the copy go.
  */
 function stillFollowed(s: GameState, clock: number): number | null {
   const id = s.hintCopy;
-  if (id === null || clock - s.hintAt >= SIGHT_LESSON.most) return null;
+  if (id === null || s.run.phase !== 'active' || clock - s.hintAt >= SIGHT_LESSON.most) return null;
   for (let k = 0; k < s.decoys.length; k++) {
     if (s.decoys[k].id === id) return openGap(s.car, s.decoys[k]) <= PASSED_SQ ? id : null;
   }

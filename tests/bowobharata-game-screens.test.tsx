@@ -1440,6 +1440,64 @@ describe('Radar fades and eases (the model behind it)', () => {
       expect(timings).toBe(98);
     });
 
+    it('one Mata tap of 250 to 400 ms while turning at 60°/s: each block\'s outline comes back by its key and stays at 0.75 or more (ruling 845)', () => {
+      // At (40, 20), level 4: in a turn the blocks' outlines move more than MATCH_PX on the radar while Mata is on, so
+      // the copy each left as Mata came on must come back by its key, wherever it now lies, or the outline dips to 0.51.
+      const def = missionFor(1, ['a', 'b']);
+      const s0 = startChapter(def, def.start, 1, radarWorld);
+      let cases = 0;
+      for (let tap = 250; tap <= 400; tap += 50) {
+        for (const onAt of [450, 500]) {
+          const what = `a ${tap} ms tap from ${onAt} ms at 60°/s`;
+          // A snapshot every 100 ms, turning on the spot at 60°/s; Mata on from `onAt` for `tap` ms, seen at the next snapshot.
+          const snaps: HudSnapshot[] = [];
+          for (let k = 0; k <= 30; k++) {
+            const t = k * 100;
+            const car = initChariot(40, 20, ((60 * Math.PI) / 180) * k * 0.1);
+            const sight = { ...s0.sight, on: t >= onAt && t < onAt + tap };
+            snaps.push(hudOf({ ...s0, car, route: { target: 'test', points: NORTH_ROUTE }, run: { ...s0.run, phase: 'active' as const }, riuh: { ...s0.riuh, value: 4.2 }, sight }, radarWorld));
+          }
+          const blocks = [...new Set(snaps.flatMap((h) => h.radar.filter((i) => i.kind === 'ranks').map((i) => i.key)))].filter((key) => snaps.every((h) => h.radar.some((i) => i.key === key)));
+          expect(blocks.length, what).toBeGreaterThan(0);
+          let m = radarModel(...inputs(snaps[0]), 0);
+          let k = 1;
+          let weakest = 1;
+          for (let t = 16; t <= 3000; t += 16) {
+            while (k < snaps.length && k * 100 <= t) m = stepModel(m, ...inputs(snaps[k++]), t);
+            m = tickModel(m, t);
+            const drawn = drawOrder(m);
+            for (const key of blocks) {
+              const own = drawn.filter((d) => d.mark.item.key === key);
+              weakest = Math.min(weakest, 1 - own.reduce((a, d) => a * (1 - d.opacity), 1));
+            }
+          }
+          expect.soft(weakest, what).toBeGreaterThanOrEqual(0.75);
+          cases++;
+        }
+      }
+      expect(cases).toBe(8);
+    });
+
+    it('two blocks: each outline\'s copy comes back by its own key, however far it now lies, never the nearer copy of the other (ruling 845)', () => {
+      const block = (key: string, x: number, y: number, long: boolean): RadarItem => ({
+        kind: 'ranks', key, x, y, clamped: false, dist: 30,
+        points: [{ x: x - 6, y: y - 4 }, { x: x + 6, y: y - 4 }, { x: x + 6, y: y + (long ? 20 : 4) }, { x: x - 6, y: y + (long ? 20 : 4) }],
+      });
+      // Level 4 (the static cut at 0.3), then Mata on at 300 ms (no cut: the longer outlines), then off at 600 ms with both
+      // blocks 30 px further east: the Kurawa outline's old copy (b) now lies 10 px from the Pandawa outline (a), its own 30 px.
+      const m0 = radarModel([block('ranks:a', 40, 40, false), block('ranks:b', 80, 40, false)], 0.3, false, 0);
+      const keyOf = (m: RadarModel, key: string) => m.marks.find((x) => x.item.key === key && x.to === 1)!.key;
+      const [a0, b0] = [keyOf(m0, 'ranks:a'), keyOf(m0, 'ranks:b')];
+      const m1 = stepModel(m0, [block('ranks:a', 40, 40, true), block('ranks:b', 80, 40, true)], 0, false, 300);
+      expect(m1.marks.filter((x) => x.to === 0).map((x) => x.key).sort()).toEqual([a0, b0].sort());
+      const m2 = stepModel(m1, [block('ranks:a', 70, 40, false), block('ranks:b', 110, 40, false)], 0.3, false, 600);
+      expect(keyOf(m2, 'ranks:a')).toBe(a0);
+      expect(keyOf(m2, 'ranks:b')).toBe(b0);
+      // Each comes back from where its fade had got to (0.4 at 600 ms), and no new mark was made for them.
+      for (const k of [a0, b0]) expect(markOpacity(m2.marks.find((x) => x.key === k)!, 600)).toBeCloseTo(0.4, 6);
+      expect(m2.next).toBe(m1.next);
+    });
+
     it('the route\'s end chevron and its round end are whole at rest, however the route leaves the radius shown', () => {
       // The chevron as drawn: its tip and arm ends under its transform, each with the 2 px stroke's 1 px round end.
       const reachOfChevron = (html: string) => {
