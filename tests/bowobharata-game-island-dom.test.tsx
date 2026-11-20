@@ -86,6 +86,7 @@ describe('the data request (d-pages-2, d-pages-3)', () => {
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(host.querySelector('[role="alert"]')).toBeNull();
       expect(host.querySelector('.bg-fallback')).not.toBeNull();
+      expect(host.querySelector('.bg-loading')).toBeNull();
     });
   }
 

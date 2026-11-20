@@ -823,7 +823,7 @@ describe('bowobharata-game.css stage and HUD', () => {
     expect(reachesBox('.bg-touch__btn::after')).toBe(false);
   });
 
-  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */
+  /** 320×568, 568×320 and 667×375: in the page under their measured headers (79, 69, 69 px) and in full screen. */
   const SMALL: Stage[] = ([[320, 568, 79], [568, 320, 69], [667, 375, 69]] as const).flatMap(([vw, vh, nav]) => [
     { name: `${vw}×${vh} in the page`, vw, vh, w: vw - 32, h: Math.min(vh - nav, 896) },
     { name: `${vw}×${vh} in full screen`, vw, vh, w: vw, h: vh },

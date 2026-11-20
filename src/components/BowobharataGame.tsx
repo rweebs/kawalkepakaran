@@ -136,6 +136,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   const scrolledFor = useRef(-1);
   /** Whether the island has rendered once: the scroll on a screen change leaves the first render alone. */
   const shownOnce = useRef(false);
+  const prevScreen = useRef(flow.screen);
   // The last screen each runtime was given its command for (see the command effect), and the plays started so far.
   const issued = useRef<{ rt: Runtime | null; screen: Screen | null; chapter: number }>({ rt: null, screen: null, chapter: -1 });
   const plays = useRef(0);
@@ -579,13 +580,17 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
   }, [flow.screen]);
   // Any other screen change (Start, a chapter's next screen, the version without animation's every step) can shrink the
   // page under the reader, whose scroll the browser then clamps onto the credits and the footer: when the game's top has
-  // gone above the sticky header, it is brought back under it at once. A 3D play's start scrolls itself (above).
+  // gone above the sticky header, it is brought back under it at once. A 3D play's start scrolls itself (above), and a
+  // restore changes only the chapter of a gate that is already showing; but a restart from the finale reaches the gate by a
+  // screen change, from the page's longest screen, so it is brought back like any other.
   useEffect(() => {
+    const from = prevScreen.current;
+    prevScreen.current = flow.screen;
     if (!shownOnce.current) {
       shownOnce.current = true;
       return;
     }
-    if (flow.screen === 'gate' || (flow.screen === 'play' && flowRef.current.mode === '3d')) return;
+    if ((flow.screen === 'gate' && from === 'gate') || (flow.screen === 'play' && flowRef.current.mode === '3d')) return;
     const game = gameRef.current;
     if (!game) return;
     const nav = document.querySelector('.nav');

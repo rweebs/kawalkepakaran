@@ -1160,10 +1160,14 @@ describe('island wiring (source)', () => {
   it('brings the game back under the header after a screen change that left its top above it (C-ISLAND-1), with a scroll margin', () => {
     // Comments become spaces, so a commented-out line does not pass.
     const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => ' '.repeat(c.length));
-    const effect = code.match(/useEffect\(\(\) => \{\s*if \(!shownOnce\.current\) \{[\s\S]*?\n {2}\}, \[flow\.screen, flow\.chapter\]\);/)?.[0] ?? '';
+    const effect = code.match(/useEffect\(\(\) => \{\s*const from = prevScreen\.current;[\s\S]*?\n {2}\}, \[flow\.screen, flow\.chapter\]\);/)?.[0] ?? '';
     expect(effect, 'the effect on [flow.screen, flow.chapter] that skips the first render').not.toBe('');
     expect(effect).toMatch(/shownOnce\.current = true;\s*return;/);
-    expect(effect).toMatch(/flow\.screen === 'gate' \|\| \(flow\.screen === 'play' && flowRef\.current\.mode === '3d'\)\) return;/);
+    // The gate is skipped only when it was already the gate (a restore); a restart from the finale reaches it by a screen change.
+    expect(effect).toMatch(/const from = prevScreen\.current;\s*prevScreen\.current = flow\.screen;/);
+    expect(effect).toMatch(/\(flow\.screen === 'gate' && from === 'gate'\) \|\| \(flow\.screen === 'play' && flowRef\.current\.mode === '3d'\)\) return;/);
+    expect(effect).not.toMatch(/flow\.screen === 'gate' \|\|/);
+    expect(code).toMatch(/const prevScreen = useRef\(flow\.screen\);/);
     expect(effect).toContain("document.querySelector('.nav')");
     expect(effect).toMatch(/if \(game\.getBoundingClientRect\(\)\.top < navBottom\) game\.scrollIntoView\(\{ block: 'start', behavior: 'auto' \}\);/);
     expect(effect).toMatch(/const game = gameRef\.current;/);

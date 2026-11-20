@@ -764,14 +764,21 @@ describe('world/report-map: the scene objects, built in node without a renderer'
 // ── createReportMap against the stub renderer ──────────────────────────────────────────────────────────────────────────
 
 type Listener = (e: unknown) => void;
+/** The DOM takes a listener off only by the capture flag it was added with: `true` or `{ capture: true }` against absent. */
+const captureOf = (o?: boolean | { capture?: boolean }) => (typeof o === 'boolean' ? o : o?.capture === true);
 class Target {
   map = new Map<string, Set<Listener>>();
-  addEventListener(t: string, f: Listener) {
+  private captured = new Map<string, Map<Listener, boolean>>();
+  addEventListener(t: string, f: Listener, o?: boolean | { capture?: boolean }) {
     if (!this.map.has(t)) this.map.set(t, new Set());
     this.map.get(t)!.add(f);
+    if (!this.captured.has(t)) this.captured.set(t, new Map());
+    this.captured.get(t)!.set(f, captureOf(o));
   }
-  removeEventListener(t: string, f: Listener) {
+  removeEventListener(t: string, f: Listener, o?: boolean | { capture?: boolean }) {
+    if (this.captured.get(t)?.get(f) !== captureOf(o)) return;
     this.map.get(t)?.delete(f);
+    this.captured.get(t)!.delete(f);
   }
   emit(t: string, e: unknown = {}) {
     for (const f of [...(this.map.get(t) ?? [])]) f(e);
@@ -870,15 +877,21 @@ describe('world/report-map: createReportMap with a stub renderer', () => {
     const added = vi.spyOn(page.doc, 'addEventListener');
     const removed = vi.spyOn(page.doc, 'removeEventListener');
     const { api } = open(page, true);
+    // OrbitControls takes its own listeners off during construction, which the spy has also recorded: only dispose counts.
+    removed.mockClear();
     // OrbitControls adds a keydown capture listener to the canvas's root node, the document while it is in the page.
     const capture = (c: unknown[]) => (c[2] as EventListenerOptions | undefined)?.capture === true;
     expect(added.mock.calls.filter((c) => c[0] === 'keydown' && capture(c))).toHaveLength(1);
     expect(keyListeners()).toBe(before + 1);
+    // Holding Control adds its keyup capture listener, which has to come off too.
+    page.doc.emit('keydown', { key: 'Control' });
+    expect(keyListeners()).toBe(before + 2);
     // As React unmounts: the canvas leaves the page first, so its root node is now the detached subtree.
     const detached = new Target();
     page.canvas.getRootNode = () => detached as typeof page.doc;
     api.dispose();
     expect(removed.mock.calls.some((c) => c[0] === 'keydown' && capture(c))).toBe(true);
+    expect(removed.mock.calls.some((c) => c[0] === 'keyup' && capture(c))).toBe(true);
     expect(keyListeners()).toBe(before);
   });
 
