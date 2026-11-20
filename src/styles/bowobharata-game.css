@@ -10,7 +10,7 @@
   background: var(--bg-card); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); overflow-wrap: anywhere; box-sizing: border-box; }
 .bg-game[data-mode='3d'] .bg-screen { background: rgba(11, 16, 32, 0.86); min-height: 0; max-height: 100%; overflow-y: auto; align-self: start; }
 /* The screens that scroll inside the stage leave room for their last control to clear the fixed song pill. */
-.bg-game[data-mode='3d'] :is(.bg-recorded, .bg-sanjaya, .bg-fail, .bg-paused, .bg-error, .bg-slow, .bg-finale) { padding-bottom: 4.5rem; }
+.bg-game[data-mode='3d'] :is(.bg-recorded, .bg-sanjaya, .bg-fail, .bg-paused, .bg-error, .bg-loading, .bg-slow, .bg-finale) { padding-bottom: 4.5rem; }
 .bg-screen h2, .bg-screen h3 { margin: 0; }
 .bg-screen p { margin: 0; }
 .bg-title { font-size: clamp(1.8rem, 6vw, 2.6rem); letter-spacing: 0.08em; }

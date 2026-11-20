@@ -677,6 +677,15 @@ export function DataError({ locale, onRetry }: { locale: Locale; onRetry: () => 
   );
 }
 
+/** While a play waits for the game data: one line in a polite live region, until the data or the error comes. */
+export function DataLoading({ locale }: { locale: Locale }) {
+  return (
+    <section className="bg-screen bg-loading" role="status" aria-live="polite">
+      <p>{GAME_COPY[locale].dataError.loading}</p>
+    </section>
+  );
+}
+
 /** The pause panel, in the brief's order: resume (and, when given, retry, the way to the marker and, during a replay, the
  * way out of it); FRAMING, the notes and the reply link; the controls; the two settings toggles; then the link to the
  * version without animation. */
@@ -687,11 +696,23 @@ export function Paused({ locale, onResume, settings, onSettings, onRetry, onToMa
   const c = GAME_COPY[locale];
   const framing = locale === 'en' ? FRAMING_EN : FRAMING;
   const toggle = (key: keyof Settings) => () => onSettings({ ...settings, [key]: !settings[key] });
+  const resume = useRef<HTMLButtonElement>(null);
+  // The panel takes the focus as it opens, so a screen reader hears it and Tab starts on Resume, not under the panel. As it
+  // closes the focus goes back where it was, or else to the HUD's Pause; neither moves the page.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const hudPause = resume.current?.closest('.bg-stage')?.querySelector<HTMLElement>('.bg-hud .bg-objective .btn') ?? null;
+    resume.current?.focus({ preventScroll: true });
+    return () => {
+      const back = before && before !== document.body && before.isConnected ? before : hudPause;
+      if (back?.isConnected) back.focus({ preventScroll: true });
+    };
+  }, []);
   return (
     <section className="bg-screen bg-paused" aria-labelledby="bg-paused-title">
       <h2 id="bg-paused-title">{c.hud.pause}</h2>
       <div className="bg-actions">
-        <button type="button" className="btn" onClick={onResume}>{c.actions.resume}</button>
+        <button ref={resume} type="button" className="btn" onClick={onResume}>{c.actions.resume}</button>
         {onRetry && <button type="button" className="btn" onClick={onRetry}>{c.settings.retry}</button>}
         {onToMarker && <button type="button" className="btn" onClick={onToMarker}>{c.settings.toMarker}</button>}
         {onLeaveReplay && <button type="button" className="btn" onClick={onLeaveReplay}>{c.settings.leaveReplay}</button>}

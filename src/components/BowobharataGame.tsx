@@ -13,7 +13,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as 
 import type { Locale } from '../i18n';
 import { PARVAS } from '../lib/bowobharata';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
-import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
+import { GAME_DATA_SRC, gameDataOf, type GameData } from '../lib/bowobharata-game/data';
 import { speedOf } from '../lib/bowobharata-game/drive';
 import type { FrameInput, GameState } from '../lib/bowobharata-game/engine';
 import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
@@ -24,7 +24,7 @@ import { toastPump, type Toast } from '../lib/bowobharata-game/toast-queue';
 import { DRIVE, MISSION_TIMING } from '../lib/bowobharata-game/tuning';
 import type { RoamOpts, Runtime } from '../lib/bowobharata-game/world/runtime';
 import {
-  DataError, FailCard, FallbackPlay, Finale, GameHud, Gate, type GatePosters, type HudToast, Intro, MissionCard, Paused, Recorded,
+  DataError, DataLoading, FailCard, FallbackPlay, Finale, GameHud, Gate, type GatePosters, type HudToast, Intro, MissionCard, Paused, Recorded,
   SanjayaReport, SlowPrompt, toastText, TouchControls,
 } from './bowobharata-game/screens';
 import '../styles/bowobharata-game.css';
@@ -183,10 +183,13 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     setWipe(null);
   };
 
-  /** Whether a skip may be asked for: the lakon card is up and its intro has run MISSION_TIMING.introSkipAfter. */
+  /**
+   * Whether a skip may be asked for: the game is not paused (the pad is polled while paused, and a skip taken then would
+   * wait for the resume), the lakon card is up and its intro has run MISSION_TIMING.introSkipAfter.
+   */
   const canSkip = () => {
     const run = runtimeRef.current?.state()?.run;
-    return missionUp.current && run?.phase === 'intro' && run.phaseT >= MISSION_TIMING.introSkipAfter;
+    return !flowRef.current.paused && missionUp.current && run?.phase === 'intro' && run.phaseT >= MISSION_TIMING.introSkipAfter;
   };
 
   /** The chapter whose lakon runs: the play's own, or the finished one a replay brought back. */
@@ -306,9 +309,11 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
     if (!given) {
       let live = true;
       setLoadError(false);
-      fetch(GAME_DATA_SRC).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      // A stalled request ends after 20 s in the same message and retry as a failed one; so does JSON of another shape.
+      fetch(GAME_DATA_SRC, { signal: AbortSignal.timeout(20000) }).then((r) => (r.ok ? r.json() : null)).then((d: unknown) => {
         if (!live) return;
-        if (d) setData(d as GameData); else setLoadError(true);
+        const ok = gameDataOf(d, COUNT);
+        if (ok) setData(ok); else setLoadError(true);
       }).catch(() => { if (live) setLoadError(true); });
       return () => { live = false; };
     }
@@ -678,6 +683,7 @@ export default function BowobharataGame({ locale, forceFallback, data: given, po
 
       {slowShown && <SlowPrompt locale={locale} onUseStill={() => dispatch({ type: 'useFallback' })} onKeepPlaying={() => setSlow(false)} />}
       {loadError && !data && flow.screen !== 'gate' && flow.screen !== 'intro' && <DataError locale={locale} onRetry={() => setAttempt((n) => n + 1)} />}
+      {flow.screen === 'play' && !data && !loadError && <DataLoading locale={locale} />}
       {flow.screen === 'gate' && <Gate locale={locale} fallback={flow.mode === 'fallback'} onStart={() => dispatch({ type: 'start' })} posters={posters} />}
       {flow.screen === 'intro' && <Intro locale={locale} chapterIndex={flow.chapter} onNext={next} layout={show3d ? 'corner' : undefined} />}
       {flow.screen === 'play' && flow.mode === 'fallback' && data && (

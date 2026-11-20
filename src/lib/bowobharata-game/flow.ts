@@ -77,7 +77,8 @@ export function reduce(s: FlowState, ev: FlowEvent): FlowState {
     case 'skip':
       return s.screen === 'lost' && s.fails >= SKIP_AFTER_FAILS ? go(s, 'recorded') : s;
     case 'hidden':
-      return { ...s, paused: true };
+      // Only a play pauses: an intro's orbit and the finale's circle would stay frozen behind their cards until the next screen.
+      return s.screen === 'play' ? { ...s, paused: true } : s;
     case 'visible':
       return s;
     case 'contextLost':

@@ -97,6 +97,15 @@ describe('flow reducer', () => {
     expect(s.paused).toBe(false);
   });
 
+  it('a hidden tab on an intro or the finale leaves it unpaused, so its scene moves again when the tab returns (C-ISLAND-3)', () => {
+    for (const screen of ['intro', 'finale'] as const) {
+      const s = at({ screen });
+      expect(reduce(s, { type: 'hidden' }).paused, screen).toBe(false);
+      expect(reduce(reduce(s, { type: 'hidden' }), { type: 'visible' }).paused, screen).toBe(false);
+    }
+    expect(reduce(at({ screen: 'play' }), { type: 'hidden' }).paused).toBe(true);
+  });
+
   it('restores a saved chapter only at the gate, clamped', () => {
     expect(reduce(initFlow(COUNT, {}), { type: 'restore', chapter: 3, best: 900 })).toMatchObject({ chapter: 3, best: 900 });
     expect(reduce(initFlow(COUNT, {}), { type: 'restore', chapter: 99, best: 0 }).chapter).toBe(COUNT - 1);

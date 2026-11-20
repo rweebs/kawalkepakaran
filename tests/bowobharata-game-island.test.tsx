@@ -19,7 +19,7 @@ import {
   EMPTY_TOASTS, TOAST_GAP_MS, TOAST_QUEUE_MAX, queueToasts, toastPump, type Toast,
 } from '../src/lib/bowobharata-game/toast-queue';
 import {
-  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, FallbackPlay, FailCard, MissionCard, Recorded, SlowPrompt, TouchControls,
+  Gate, Intro, SanjayaReport, CatchCard, Finale, Paused, DataError, DataLoading, FallbackPlay, FailCard, MissionCard, Recorded, SlowPrompt, TouchControls,
   cardView, GameHud, Radar, chapterInfo, toastText, type GatePosters, type HudToast,
 } from '../src/components/bowobharata-game/screens';
 import type { EventCard } from '../src/lib/bowobharata-game/data';
@@ -300,6 +300,7 @@ describe("Sanjaya's report", () => {
         if (label === 'replay') expect(html, 'the replay snapshot').toContain(esc(GAME_COPY[locale].roam.replay));
       }
       put(locale, <DataError locale={locale} onRetry={noop} />);
+      put(locale, <DataLoading locale={locale} />);
       put(locale, <SlowPrompt locale={locale} onUseStill={noop} onKeepPlaying={noop} />);
       // The pause panel, less FRAMING, which it shows whole and which is pinned below.
       put(locale, pausedEl(locale), framingParas(locale));
@@ -307,16 +308,16 @@ describe("Sanjaya's report", () => {
     // Per locale: Sanjaya ×10, Intro ×10, MissionCard ×9, FallbackPlay ×18 (each lakon before its first step, the
     // prologue's dates, and each parva with its cards taken in), CatchCard ×24, Recorded ×9 (each parva's Tercatat and the
     // prologue's), FailCard ×2, the finale, TouchControls, GameHud for 3 snapshots (their toasts with them), the Radar,
-    // DataError, SlowPrompt and the pause panel.
+    // DataError, DataLoading, SlowPrompt and the pause panel.
     expect(CHAPTER_TYPES).toHaveLength(COUNT - 1);
     const tally: Record<string, number> = {};
     for (const c of checked) tally[c.component] = (tally[c.component] ?? 0) + 1;
     expect(tally).toEqual({
       SanjayaReport: 2 * COUNT, Intro: 2 * COUNT, MissionCard: 2 * (COUNT - 1), FallbackPlay: 2 * (COUNT - 1 + 1 + PARVAS.length),
       CatchCard: 2 * game.events.flat().length, Recorded: 2 * (PARVAS.length + 1), FailCard: 2 * 2, Finale: 2, TouchControls: 2, GameHud: 2 * 3,
-      Radar: 2, DataError: 2, SlowPrompt: 2, Paused: 2,
+      Radar: 2, DataError: 2, DataLoading: 2, SlowPrompt: 2, Paused: 2,
     });
-    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + (COUNT - 1 + 1 + PARVAS.length) + game.events.flat().length + (PARVAS.length + 1) + 2 + 1 + 1 + 3 + 1 + 3));
+    expect(checked).toHaveLength(2 * (COUNT + COUNT + (COUNT - 1) + (COUNT - 1 + 1 + PARVAS.length) + game.events.flat().length + (PARVAS.length + 1) + 2 + 1 + 1 + 3 + 1 + 4));
     expect(checked.filter((c) => c.html.includes('class="bg-hud')).length).toBe(2 * 3);
     // The HUD's toasts (HudToast): the course snapshot's two records, with their dates and channels.
     expect(checked.map((c) => c.html).join('\n').split('class="bg-toast"').length - 1).toBe(2 * 2);
@@ -1039,6 +1040,14 @@ describe('island wiring (source)', () => {
     expect(effect).toMatch(/const game = gameRef\.current;/);
     const css = readFileSync('src/styles/bowobharata-game.css', 'utf8');
     expect(css).toMatch(/^\.bg-game \{[^}]*scroll-margin-top: var\(--nav-h, 59px\);/m);
+  });
+
+  it('refuses a skip while paused, so a pad\'s skip pressed in the pause panel does not end the intro on resume (C-ISLAND-2)', () => {
+    const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => ' '.repeat(c.length));
+    const body = code.match(/const canSkip = \(\) => \{([\s\S]*?)\n {2}\};/)?.[1] ?? '';
+    expect(body).toMatch(/return !flowRef\.current\.paused && missionUp\.current && /);
+    // The pad's poll asks canSkip for its skip.
+    expect(code).toMatch(/if \(skipDown && !padHeld\.current\.skip && canSkip\(\)\) skipPulse\.current = true;/);
   });
 
   it('reads touch and a gamepad, guarded, and feeds the rings to TouchControls', () => {

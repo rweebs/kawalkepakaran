@@ -55,7 +55,7 @@ export interface GameCopy {
   /** Server-rendered text shown until the island loads, and the link to the readable case page. */
   noscript: string;
   /** The dossier data did not load: message and the retry button. */
-  dataError: { message: string; retry: string };
+  dataError: { message: string; retry: string; loading: string };
   readLink: string;
   kicker: string;
   gateTitle: string;
@@ -169,7 +169,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     entryNote: 'Versi permainan dari alegori ini. Alegori dan opini penulis.',
     monitorNote: 'Ada juga BOWOBHARATA, permainan alegori Mahabharata yang memakai berkas gelar perkara ini. Alegori dan opini penulis, bukan pernyataan fakta.',
     noscript: 'Memuat permainan… Jika tidak muncul, aktifkan JavaScript atau baca versi halaman.',
-    dataError: { message: 'Data permainan gagal dimuat.', retry: 'Coba lagi' },
+    dataError: { message: 'Data permainan gagal dimuat.', retry: 'Coba lagi', loading: 'Memuat data...' },
     readLink: 'Baca kisah Bowobharata',
     kicker: 'Kiasan Mahabharata yang bisa dimainkan',
     gateTitle: 'Sebelum bermain',
@@ -377,7 +377,7 @@ export const GAME_COPY: Record<Locale, GameCopy> = {
     entryNote: "A playable version of this allegory. Allegory and the author's opinion.",
     monitorNote: "There is also BOWOBHARATA, a Mahabharata allegory game that uses this case-review file. Allegory and the author's opinion, not a statement of fact.",
     noscript: 'Loading the game… If it does not appear, enable JavaScript or read the page version.',
-    dataError: { message: 'The game data failed to load.', retry: 'Try again' },
+    dataError: { message: 'The game data failed to load.', retry: 'Try again', loading: 'Loading the data...' },
     readLink: 'Read the Bowobharata story',
     kicker: 'A playable Mahabharata allegory',
     gateTitle: 'Before you play',
