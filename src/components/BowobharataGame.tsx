@@ -13,7 +13,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as 
 import type { Locale } from '../i18n';
 import { PARVAS } from '../lib/bowobharata';
 import type { KurukshetraScene } from '../lib/bowobharata/KurukshetraScene';
-import { GAME_DATA_SRC, gameDataOf, type GameData } from '../lib/bowobharata-game/data';
+import { GAME_DATA_SRC, type GameData } from '../lib/bowobharata-game/data';
 import { speedOf } from '../lib/bowobharata-game/drive';
 import type { FrameInput, GameState } from '../lib/bowobharata-game/engine';
 import { initFlow, readSaved, reduce, writeSaved, type Screen, type Settings } from '../lib/bowobharata-game/flow';
@@ -59,6 +59,21 @@ const storage = (): Storage | undefined => {
  */
 type DevInput = (s: GameState) => Omit<FrameInput, 'aspect'>;
 let devInput: DevInput | null = null;
+
+const isObject = (v: unknown): v is object => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * The payload as GameData when it has the game's shape: chapters, events and prologue are lists, one chapter for each of
+ * the island's `count` (the lakon table's chapters and the finale), and totals and report are objects. Anything else (a
+ * stale or foreign file, {} or [], null) is null, which the island shows as its data error with a retry.
+ */
+export function gameDataOf(d: unknown, count: number): GameData | null {
+  if (!isObject(d)) return null;
+  const g = d as Partial<Record<keyof GameData, unknown>>;
+  if (!Array.isArray(g.chapters) || !Array.isArray(g.events) || !Array.isArray(g.prologue)) return null;
+  if (g.chapters.length !== count || !isObject(g.totals) || !isObject(g.report)) return null;
+  return d as GameData;
+}
 
 /** Whether a key went to a text field of the page, which the game leaves alone. */
 function typing(target: EventTarget | null): boolean {

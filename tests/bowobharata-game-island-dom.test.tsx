@@ -4,7 +4,7 @@ import { act, type ReactElement } from 'react';
 import type { Root } from 'react-dom/client';
 import { GAME_COPY } from '../src/lib/bowobharata-game/copy';
 import { gameData } from '../src/lib/bowobharata-game/data-build';
-import { GAME_DATA_SRC, gameDataOf } from '../src/lib/bowobharata-game/data';
+import { GAME_DATA_SRC } from '../src/lib/bowobharata-game/data';
 import type { Perkara } from '../src/lib/perkara';
 import { PARVAS } from '../src/lib/bowobharata';
 import { fakePage, type FakeElement, type FakePage } from './bowobharata-game-dom';
@@ -19,6 +19,7 @@ const COUNT = PARVAS.length + 2;
 let page: FakePage;
 let createRoot: typeof import('react-dom/client').createRoot;
 let BowobharataGame: typeof import('../src/components/BowobharataGame').default;
+let gameDataOf: typeof import('../src/components/BowobharataGame').gameDataOf;
 let Paused: typeof import('../src/components/bowobharata-game/screens').Paused;
 let root: Root | null = null;
 
@@ -27,7 +28,7 @@ beforeAll(async () => {
   page = fakePage({ reduced: true });
   page.install();
   ({ createRoot } = await import('react-dom/client'));
-  BowobharataGame = (await import('../src/components/BowobharataGame')).default;
+  ({ default: BowobharataGame, gameDataOf } = await import('../src/components/BowobharataGame'));
   ({ Paused } = await import('../src/components/bowobharata-game/screens'));
 });
 
